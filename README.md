@@ -21,11 +21,34 @@ A complete billing and accounting web application + installable PWA designed for
    - **Start Command:** `npm start`
    - **Plan:** `Free` (or Starter if you want a Persistent Disk)
 6. Add Environment Variables:
+   - `NODE_VERSION` = `20.18.0` *(Important: ensures Node 20 LTS for better-sqlite3)*
    - `NODE_ENV` = `production`
-   - `JWT_SECRET` = *(Click "Generate" or enter a secure string)*
+   - `JWT_SECRET` = *(Click "Generate" or enter any secure string)*
+   *(⚠️ Do NOT add a `PORT` variable manually in Environment Variables — Render reserves and manages `PORT` automatically).*
 7. Click **Create Web Service**.
 8. Within 2 minutes, Render will build the React SPA, compile SQLite, boot Express, and give you your **permanent live link**:
    `https://billpro-xxxx.onrender.com`
+
+### Method 2: Deploy with Docker on Render (Zero-Config Alternative)
+If you encounter host-level library issues, Render can build via the included `Dockerfile`:
+1. In Render Web Service settings, choose **Runtime: Docker** instead of Node.
+2. Render builds the container using Node 20 Bullseye with all native build tools pre-installed.
+3. No build command or start command required — it works out of the box!
+
+---
+
+## 🔧 Render Troubleshooting & Build Failure Fixes
+
+If your build on Render fails, check these 3 common causes:
+
+1. **"PORT is a reserved environment variable and cannot be set"**:
+   - **Fix:** In your Render dashboard under **Environment**, delete any variable named `PORT`. Render injects its own port (e.g. 10000) automatically.
+
+2. **"better-sqlite3: The engine node is incompatible" or compilation failure**:
+   - **Fix:** Render was running an older Node version (like Node 14/16). We added `.node-version` (`20.18.0`) and `.nvmrc` (`20`). You can also add `NODE_VERSION=20.18.0` in Render's Environment Variables.
+
+3. **"Cannot find module 'esbuild'"**:
+   - **Fix:** We moved `esbuild`, `react`, and `react-dom` into production `dependencies`, and made `tools/build.js` fallback cleanly to the committed `www/app.js` bundle if needed.
 
 ---
 

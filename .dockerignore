@@ -1,0 +1,9 @@
+node_modules
+data
+data-test
+*.db
+*.db-wal
+*.db-shm
+vendor_archive.tar.gz
+.git
+.DS_Store

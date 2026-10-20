@@ -8,14 +8,15 @@ services:
     startCommand: npm start
     autoDeploy: true
     envVars:
+      - key: NODE_VERSION
+        value: 20.18.0
       - key: NODE_ENV
         value: production
-      - key: PORT
-        value: 10000
       - key: JWT_SECRET
         generateValue: true
+      # NOTE: Do NOT add a PORT variable here; Render automatically assigns and manages PORT.
+      #
       # To enable persistent storage on Render (Starter plan or above):
-      # Uncomment the disk configuration below so SQLite survives all redeploys:
       # - key: BILLPRO_DATA_DIR
       #   value: /var/data
     # disk:
