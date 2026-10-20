@@ -242,16 +242,24 @@ table.tbl tfoot td { font-weight: 750; background: var(--surface-2); border-top:
 .pill.brand { background: var(--brand-soft); color: var(--brand); }
 
 /* ---------- modal ---------- */
-.modal-bg { position: fixed; inset: 0; background: rgba(15,23,42,.5); backdrop-filter: blur(3px); display: flex; align-items: flex-start; justify-content: center; padding: 40px 16px; z-index: 100; overflow-y: auto; }
-.modal { background: var(--surface); border-radius: 18px; box-shadow: var(--shadow-lg); width: 100%; max-width: 560px; animation: pop .16s ease; }
+.modal-bg { position: fixed; inset: 0; background: rgba(15,23,42,.5); backdrop-filter: blur(3px); display: flex; align-items: center; justify-content: center; padding: 16px; z-index: 100; overflow: hidden; }
+.modal { background: var(--surface); border-radius: 18px; box-shadow: var(--shadow-lg); width: 100%; max-width: 560px; max-height: calc(100vh - 32px); display: flex; flex-direction: column; animation: pop .16s ease; overflow: hidden; }
 .modal.wide { max-width: 900px; }
-.modal.xwide { max-width: 1120px; }
-.modal-h { display: flex; align-items: center; gap: 10px; padding: 16px 18px; border-bottom: 1px solid var(--line); }
+.modal.xwide { max-width: 1140px; }
+.modal-h { flex-shrink: 0; display: flex; align-items: center; gap: 10px; padding: 11px 18px; border-bottom: 1px solid var(--line); }
 .modal-h h3 { font-size: 15.5px; }
 .modal-h .sub { font-size: 11.5px; color: var(--muted); }
-.modal-b { padding: 18px; max-height: calc(100vh - 230px); overflow-y: auto; }
-.modal-f { display: flex; gap: 8px; justify-content: flex-end; padding: 14px 18px; border-top: 1px solid var(--line); background: var(--surface-2); border-radius: 0 0 18px 18px; }
+.modal-b { flex: 1 1 auto; padding: 14px 18px; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+.modal-f { flex-shrink: 0; display: flex; gap: 8px; align-items: center; justify-content: flex-end; padding: 10px 18px; border-top: 1px solid var(--line); background: var(--surface-2); border-radius: 0 0 18px 18px; }
 @keyframes pop { from { opacity: 0; transform: translateY(-8px) scale(.99); } to { opacity: 1; transform: none; } }
+
+/* Document Editor items table - allows dropdowns to float without clipping */
+.modal-b .form-grid { gap: 10px; }
+.doc-tbl-wrap { position: relative; overflow: visible; margin-bottom: 6px; }
+table.doc-tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
+table.doc-tbl th { padding: 6px 8px; }
+table.doc-tbl td { position: relative; padding: 4px 6px; vertical-align: top; }
+.tot-box .kv { display: flex; justify-content: space-between; padding: 1.5px 0; font-size: 12px; }
 
 /* ---------- toasts ---------- */
 .toasts { position: fixed; bottom: 20px; right: 20px; z-index: 200; display: flex; flex-direction: column; gap: 8px; }

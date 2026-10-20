@@ -221,10 +221,17 @@ export function Picker({ items, value, onChange, placeholder, onAddNew, render, 
       </div>
       {open && (
         <div style={{
-          position: 'absolute', top: '100%', left: 0, right: 0, background: 'var(--surface)', border: '1px solid var(--line)',
-          borderRadius: 11, boxShadow: 'var(--shadow-lg)', zIndex: 40, marginTop: 4, maxHeight: 280, overflowY: 'auto', padding: 4
+          position: 'absolute', top: '100%', left: 0, minWidth: 320, maxWidth: 460, width: 'max-content',
+          background: 'var(--surface)', border: '1px solid var(--line-2)',
+          borderRadius: 11, boxShadow: '0 12px 28px -4px rgba(15,23,42,0.22), 0 4px 10px rgba(0,0,0,0.08)',
+          zIndex: 150, marginTop: 4, maxHeight: 280, overflowY: 'auto', padding: 4
         }}>
           {filtered.length === 0 && !onAddNew && <div style={{ padding: 12, color: 'var(--muted)', fontSize: 12.5 }}>{emptyText}</div>}
+          {filtered.length === 0 && onAddNew && !q && (
+            <div style={{ padding: '10px 12px', color: 'var(--muted)', fontSize: 12 }}>
+              Type item name to search or add…
+            </div>
+          )}
           {filtered.map((it) => (
             <div key={it.id} className="item" style={{ display: 'flex', gap: 9, alignItems: 'center', padding: '8px 9px', borderRadius: 8, cursor: 'pointer' }}
               onMouseDown={(e) => { e.preventDefault(); onChange(it); setOpen(false); setQ(''); }}>

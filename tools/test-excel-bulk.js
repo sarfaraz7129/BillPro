@@ -19,11 +19,13 @@ async function testBulk() {
   const token = loginData.token;
   const bizId = loginData.businesses?.[0]?.id || loginData.user?.business_id;
 
+  const ts = Date.now().toString().slice(-8);
+
   // 1. Test Bulk Products
   const prodItems = [
     {
-      name: 'Excel Test Basmati Rice 5kg',
-      barcode: '9901002003001',
+      name: `Excel Test Basmati Rice ${ts}`,
+      barcode: `9901${ts}1`,
       category: 'Grains',
       unit: 'bag',
       sale_price: 450,
@@ -34,8 +36,8 @@ async function testBulk() {
       low_stock_at: 5
     },
     {
-      name: 'Excel Test Handcrafted Wooden Spoon',
-      barcode: '9901002003002',
+      name: `Excel Test Handcrafted Wooden Spoon ${ts}`,
+      barcode: `9901${ts}2`,
       category: 'Handicrafts',
       unit: 'pcs',
       sale_price: 180,
@@ -64,8 +66,8 @@ async function testBulk() {
   // Test updating one existing item
   const updateItems = [
     {
-      name: 'Excel Test Basmati Rice 5kg',
-      barcode: '9901002003001',
+      name: `Excel Test Basmati Rice ${ts}`,
+      barcode: `9901${ts}1`,
       sale_price: 475,
       purchase_price: 400,
       gst_rate: 5,
@@ -89,11 +91,11 @@ async function testBulk() {
   // 2. Test Bulk Parties
   const partyItems = [
     {
-      name: 'Excel Test Supermart Udupi',
+      name: `Excel Test Supermart ${ts}`,
       type: 'customer',
       contact_name: 'Suresh Bhat',
-      phone: '9845112233',
-      email: 'suresh@supermart.in',
+      phone: `98${ts}`,
+      email: `suresh_${ts}@supermart.in`,
       gstin: '29AAAAA0000A1Z5',
       city: 'Udupi',
       state: 'Karnataka',
@@ -102,10 +104,10 @@ async function testBulk() {
       credit_limit: 50000
     },
     {
-      name: 'Excel Test Spices Wholesale Supplier',
+      name: `Excel Test Spices Wholesale ${ts}`,
       type: 'supplier',
       contact_name: 'Ravi Rao',
-      phone: '9845998877',
+      phone: `97${ts}`,
       city: 'Mangalore',
       opening_balance: 28000,
       balance_type: 'CR',

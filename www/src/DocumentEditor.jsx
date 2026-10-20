@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { api, money, today } from '../src/api.js';
+import { api, money, today, pdfUrl } from '../src/api.js';
 import { Icon } from '../src/ui.jsx';
 import { Field, Picker, Modal, GstRateInput } from '../src/components.jsx';
 
@@ -92,7 +92,8 @@ export default function DocumentEditor({ business, type, doc, onClose, onSaved, 
     }));
   };
 
-  const save = async () => {
+  const save = async (opts = {}) => {
+    const andPrint = opts && opts.andPrint;
     setErr('');
     const valid = form.items.filter((l) => l.name && Number(l.qty) > 0 && Number(l.rate) >= 0);
     if (!valid.length) return setErr('Add at least one line item with a name, quantity and rate.');
@@ -101,7 +102,11 @@ export default function DocumentEditor({ business, type, doc, onClose, onSaved, 
     try {
       const payload = { ...form, items: valid, supplyType };
       const res = doc ? await api.updateDocument(doc.id, payload) : await api.createDocument(payload);
-      onSaved(res.document);
+      const savedDoc = res.document;
+      if (andPrint && savedDoc && savedDoc.id) {
+        window.open(pdfUrl(`invoice/${savedDoc.id}`), '_blank');
+      }
+      onSaved(savedDoc);
     } catch (e) { setErr(e.message); } finally { setSaving(false); }
   };
 
@@ -120,8 +125,20 @@ export default function DocumentEditor({ business, type, doc, onClose, onSaved, 
           <div style={{ flex: 1, color: 'var(--muted)', fontSize: 12 }}>
             {type !== 'expense' && (supplyType === 'inter' ? 'Inter-state supply - IGST applies' : 'Intra-state supply - CGST + SGST apply')}
           </div>
-          <button className="btn" onClick={onClose}>Cancel</button>
-          <button className="btn primary" onClick={save} disabled={saving}>{saving ? 'Saving…' : doc ? 'Save changes' : 'Save & generate'}</button>
+          <button type="button" className="btn" onClick={onClose}>Cancel</button>
+          <button
+            type="button"
+            className="btn"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 650, color: 'var(--brand)', borderColor: 'var(--brand)' }}
+            onClick={() => save({ andPrint: true })}
+            disabled={saving}
+            title="Save this document and immediately open print-ready A4 PDF"
+          >
+            <Icon.print size={15} /> {saving ? 'Saving…' : 'Save & Print'}
+          </button>
+          <button type="button" className="btn primary" onClick={() => save({ andPrint: false })} disabled={saving}>
+            {saving ? 'Saving…' : doc ? 'Save changes' : 'Save & generate'}
+          </button>
         </>
       }
     >
@@ -201,13 +218,11 @@ export default function DocumentEditor({ business, type, doc, onClose, onSaved, 
             )}
         </Field>
         <Field label="Document date"><input type="date" className="input" value={form.date} onChange={(e) => set('date', e.target.value)} /></Field>
-        {type !== 'expense' && <Field label="Due date" hint="Drives overdue reminders"><input type="date" className="input" value={form.dueDate} onChange={(e) => set('dueDate', e.target.value)} /></Field>}
+        {type !== 'expense' && <Field label="Due date"><input type="date" className="input" value={form.dueDate} onChange={(e) => set('dueDate', e.target.value)} /></Field>}
         {type !== 'expense' && (
           <>
             <Field label="GSTIN (party)"><input className="input" value={form.partyGstin} onChange={(e) => set('partyGstin', e.target.value.toUpperCase())} placeholder="29AAAAA1111A1Z1" /></Field>
-            <Field label="Place of supply (state code)" hint="Different from your state → IGST">
-              <input className="input" value={form.partyStateCode} onChange={(e) => set('partyStateCode', e.target.value.replace(/\D/g, '').slice(0, 2))} placeholder="29" />
-            </Field>
+            <Field label="Place of supply"><input className="input" value={form.partyStateCode} onChange={(e) => set('partyStateCode', e.target.value.replace(/\D/g, '').slice(0, 2))} placeholder="29 (State code)" title="Different from your state triggers IGST" /></Field>
             <Field label="Payment mode">
               <select className="input" value={form.paymentMode} onChange={(e) => set('paymentMode', e.target.value)}>
                 {['upi', 'cash', 'bank', 'card', 'cheque', 'credit'].map((m) => <option key={m} value={m}>{m.toUpperCase()}</option>)}
@@ -217,7 +232,7 @@ export default function DocumentEditor({ business, type, doc, onClose, onSaved, 
         )}
       </div>
 
-      <hr className="divider" />
+      <hr className="divider" style={{ margin: '8px 0' }} />
 
       <div className="lines">
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
@@ -225,8 +240,8 @@ export default function DocumentEditor({ business, type, doc, onClose, onSaved, 
           <div className="spacer" />
           <button className="btn sm" onClick={addLine}><Icon.plus size={14} /> Add line</button>
         </div>
-        <div className="tbl-wrap">
-          <table className="tbl">
+        <div className="doc-tbl-wrap">
+          <table className="tbl doc-tbl">
             <thead>
               <tr>
                 <th style={{ width: '26%' }}>Item / service</th>
@@ -246,7 +261,7 @@ export default function DocumentEditor({ business, type, doc, onClose, onSaved, 
                 const afterDisc = gross - (gross * (Number(it.discountPct) || 0)) / 100 - (Number(it.discountFlat) || 0);
                 const withTax = afterDisc * (1 + (Number(it.gstRate) || 0) / 100);
                 return (
-                  <tr key={i}>
+                  <tr key={i} style={{ position: 'relative', zIndex: form.items.length - i + 10 }}>
                     <td>
                       <Picker items={products} value={it.product_id ? { id: it.product_id, name: it.name } : null}
                         onChange={(p) => pickProduct(i, p)} placeholder="Type or pick an item…"
@@ -283,7 +298,7 @@ export default function DocumentEditor({ business, type, doc, onClose, onSaved, 
         </div>
       </div>
 
-      <div className="grid" style={{ gridTemplateColumns: '1fr 320px', marginTop: 14 }}>
+      <div className="grid" style={{ gridTemplateColumns: '1fr 320px', marginTop: 10, gap: 14 }}>
         <div>
           <div className="form-grid">
             <Field label="Discount on the whole bill">
@@ -291,22 +306,19 @@ export default function DocumentEditor({ business, type, doc, onClose, onSaved, 
                 <select className="input" style={{ width: 84 }} value={form.discountType} onChange={(e) => set('discountType', e.target.value)}>
                   <option value="flat">Flat</option><option value="pct">%</option>
                 </select>
-                <input className="input" type="number" value={form.discountValue} onChange={(e) => set('discountValue', Number(e.target.value))} />
+                <input className="input" type="number" min="0" value={form.discountValue} onChange={(e) => set('discountValue', Number(e.target.value))} />
               </div>
             </Field>
-            <Field label="Amount received now" hint={type === 'expense' ? 'Amount paid out' : 'Leaves the rest as credit in the khata'}>
-              <input className="input" type="number" value={form.paidAmount} onChange={(e) => set('paidAmount', Number(e.target.value))} />
-            </Field>
             <Field label="Notes / terms shown on the PDF" full>
-              <textarea className="input" value={form.notes} onChange={(e) => set('notes', e.target.value)} placeholder="Anything the customer should know" />
+              <textarea className="input" rows={2} style={{ resize: 'vertical' }} value={form.notes} onChange={(e) => set('notes', e.target.value)} placeholder="Terms & conditions, bank details, delivery note, etc." />
             </Field>
           </div>
 
-          <button className="btn sm" style={{ marginTop: 10 }} onClick={() => setShowEwb(!showEwb)}>
+          <button className="btn sm" style={{ marginTop: 8 }} onClick={() => setShowEwb(!showEwb)}>
             <Icon.truck size={14} /> E-Way Bill / transport details
           </button>
           {showEwb && (
-            <div className="form-grid c3" style={{ marginTop: 10 }}>
+            <div className="form-grid c3" style={{ marginTop: 8 }}>
               <Field label="E-Way Bill no"><input className="input" value={form.ewaybillNo} onChange={(e) => set('ewaybillNo', e.target.value)} placeholder="Leave blank to generate after saving" /></Field>
               <Field label="Vehicle no"><input className="input" value={form.vehicleNo} onChange={(e) => set('vehicleNo', e.target.value)} placeholder="KA19AB1234" /></Field>
               <Field label="LR / transport doc no"><input className="input" value={form.transportDocNo} onChange={(e) => set('transportDocNo', e.target.value)} /></Field>
@@ -323,14 +335,74 @@ export default function DocumentEditor({ business, type, doc, onClose, onSaved, 
             ? <Row label="IGST" value={t.igst} />
             : <><Row label="CGST" value={t.cgst} /><Row label="SGST / UTGST" value={t.sgst} /></>}
           {form.roundOff && <Row label="Round off" value={t.roundOff} />}
-          <div className="grand"><span style={{ fontWeight: 700 }}>Total</span><span className="v">{money(t.total)}</span></div>
-          <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 6 }}>{t.amountInWords}</div>
-          {Number(form.paidAmount) > 0 && (
-            <div className="kv" style={{ marginTop: 8 }}><span className="k">Balance due</span><span className="v neg">{money(Math.max(0, t.total - Number(form.paidAmount)))}</span></div>
-          )}
-          <label className="checkbox" style={{ marginTop: 10 }}>
-            <input type="checkbox" checked={!!form.roundOff} onChange={(e) => set('roundOff', e.target.checked)} /> Round off total to the nearest rupee
-          </label>
+          <div className="grand" style={{ paddingTop: 6, marginTop: 4 }}><span style={{ fontWeight: 700 }}>Total</span><span className="v">{money(t.total)}</span></div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 3, fontSize: 11, color: 'var(--muted)' }}>
+            <span style={{ maxWidth: 190, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={t.amountInWords}>{t.amountInWords}</span>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer', fontSize: 11 }}>
+              <input type="checkbox" checked={!!form.roundOff} onChange={(e) => set('roundOff', e.target.checked)} style={{ width: 13, height: 13 }} />
+              <span>Round off</span>
+            </label>
+          </div>
+
+          {/* Amount received now - shown right beside/under the Total column */}
+          <div style={{
+            marginTop: 8,
+            padding: '8px 10px',
+            background: 'var(--surface-2)',
+            border: '1.5px solid var(--brand)',
+            borderRadius: 9
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+              <label style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--ink)' }}>
+                {type === 'expense' ? 'Amount Paid' : type === 'purchase' ? 'Amount Paid' : 'Amount Received'}
+              </label>
+              <div style={{ display: 'flex', gap: 3 }}>
+                <button
+                  type="button"
+                  className="btn xs"
+                  style={{ fontSize: 10, padding: '1px 5px', height: 20 }}
+                  onClick={() => set('paidAmount', 0)}
+                  title="Unpaid / Credit bill"
+                >
+                  ₹0
+                </button>
+                <button
+                  type="button"
+                  className="btn xs"
+                  style={{ fontSize: 10, padding: '1px 5px', height: 20, background: 'var(--brand-soft)', color: 'var(--brand)', borderColor: 'var(--brand)', fontWeight: 650 }}
+                  onClick={() => set('paidAmount', t.total)}
+                  title="Mark fully paid"
+                >
+                  Full (₹{t.total})
+                </button>
+              </div>
+            </div>
+            <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+              <span style={{ position: 'absolute', left: 8, fontWeight: 700, color: 'var(--muted)', fontSize: 13 }}>₹</span>
+              <input
+                className="input"
+                type="number"
+                min="0"
+                step="any"
+                style={{ paddingLeft: 22, height: 30, fontWeight: 700, fontSize: 13, color: 'var(--ink)', width: '100%' }}
+                value={form.paidAmount === 0 && form.paidAmount !== '' ? '0' : (form.paidAmount ?? '')}
+                onChange={(e) => set('paidAmount', e.target.value === '' ? '' : Number(e.target.value))}
+                placeholder="0.00"
+              />
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4, fontSize: 11.5, paddingTop: 4, borderTop: '1px dashed var(--line)' }}>
+              <span style={{ color: 'var(--muted)', fontWeight: 600 }}>Balance due:</span>
+              <span style={{
+                fontWeight: 750,
+                fontSize: 12,
+                color: (t.total - (Number(form.paidAmount) || 0)) > 0.005 ? '#dc2626' : '#16a34a'
+              }}>
+                {(t.total - (Number(form.paidAmount) || 0)) > 0.005
+                  ? `${money(Math.max(0, t.total - (Number(form.paidAmount) || 0)))} (Due)`
+                  : '₹0.00 (Fully Paid)'}
+              </span>
+            </div>
+          </div>
 
           {selectedParty && type === 'sale' && (
             <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px dashed var(--border)', fontSize: 12 }}>
