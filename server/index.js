@@ -82,6 +82,22 @@ const PORT = Number(process.env.PORT) || 4173;
 if (require.main === module) {
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`BillPro API + app running on http://0.0.0.0:${PORT}`);
+
+    // Keep-alive pinger for Render free tier to prevent inactivity spin-down
+    const keepAliveUrl = process.env.KEEP_ALIVE_URL || process.env.RENDER_EXTERNAL_URL;
+    if (keepAliveUrl) {
+      const pingUrl = keepAliveUrl.replace(/\/+$/, '') + '/api/health';
+      const PING_INTERVAL = 14 * 60 * 1000; // 14 minutes (Render idle timeout is 15 minutes)
+      console.log(`[Keep-Alive] Active for ${pingUrl} (pinging every 14 min)`);
+      setInterval(() => {
+        const client = pingUrl.startsWith('https') ? require('https') : require('http');
+        client.get(pingUrl, (res) => {
+          console.log(`[Keep-Alive] Pinged ${pingUrl} -> HTTP ${res.statusCode}`);
+        }).on('error', (err) => {
+          console.warn(`[Keep-Alive] Ping error: ${err.message}`);
+        });
+      }, PING_INTERVAL);
+    }
   });
 }
 
