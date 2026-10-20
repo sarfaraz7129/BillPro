@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { api, money, fmtDate, pdfUrl, today } from '../src/api.js';
 import { Icon } from '../src/ui.jsx';
-import { Modal, PayPill, Empty, Confirm, DateRange } from '../src/components.jsx';
+import { Modal, PayPill, Empty, Confirm, DateRange, Field } from '../src/components.jsx';
 import DocumentEditor, { TYPE_LABEL } from '../src/DocumentEditor.jsx';
 import ThermalReceiptModal from '../src/ThermalReceipt.jsx';
 import WhatsAppModal from '../src/WhatsAppModal.jsx';
@@ -233,121 +233,121 @@ function DocViewer({ doc, party, payments, business, onClose, onEdit, onShare, o
   const isSale = doc.type === 'sale';
 
   return (
-    <Modal
-      title={`${TYPE_LABEL[doc.type]} ${doc.number}`}
-      sub={`${doc.party_name}${party && party.gstin ? ' · ' + party.gstin : ''}`}
-      size="wide" onClose={onClose}
-      footer={
-        <>
-          {isSale && doc.due_amount > 0 && doc.status === 'active' && <button className="btn green" onClick={() => setPayOpen(true)}><Icon.rupee size={14} /> Receive payment</button>}
-          <button className="btn" style={{ color: '#059669', borderColor: '#a7f3d0' }} onClick={() => (onWhatsApp ? onWhatsApp(doc, party) : onShare(doc))}><Icon.whatsapp size={14} /> WhatsApp</button>
-          <button className="btn" onClick={() => onThermal && onThermal(doc)}><Icon.print size={14} /> Thermal Slip</button>
-          <button className="btn" onClick={() => onDuplicate(doc)}><Icon.copy size={14} /> Duplicate</button>
-          <button className="btn" onClick={() => onEdit(doc)}><Icon.edit size={14} /> Edit</button>
-          <button className="btn primary" onClick={() => window.open(pdfUrl(`invoice/${doc.id}`), '_blank')}><Icon.print size={14} /> Download PDF</button>
-        </>
-      }
-    >
-      <div className="grid g4" style={{ marginBottom: 14 }}>
-        <MiniStat label="Invoice total" value={money(doc.total)} />
-        <MiniStat label="Paid" value={money(doc.paid_amount)} tone="pos" />
-        <MiniStat label="Balance" value={money(doc.due_amount)} tone={doc.due_amount > 0 ? 'neg' : ''} />
-        <MiniStat label="Status" value={<PayPill status={doc.payment_status} />} />
-      </div>
-
-      {party && (
-        <div style={{
-          marginBottom: 12,
-          padding: '8px 12px',
-          borderRadius: 8,
-          background: party.balance > 0 ? '#fef2f2' : party.balance < 0 ? '#f0fdf4' : '#f8fafc',
-          border: `1px solid ${party.balance > 0 ? '#fecaca' : party.balance < 0 ? '#bbf7d0' : '#e2e8f0'}`,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          flexWrap: 'wrap',
-          gap: 8,
-          fontSize: 12.5
-        }}>
-          <div>
-            <span style={{ fontWeight: 650, color: '#0f172a' }}>👤 {party.name}</span>
-            {party.phone && <span style={{ color: '#64748b', marginLeft: 8 }}>📞 {party.phone}</span>}
-            {party.creditLimit > 0 && (
-              <span style={{ color: '#64748b', marginLeft: 8 }}>
-                Limit: {money(party.creditLimit)}
-                {party.overLimit && <span style={{ color: '#dc2626', fontWeight: 600, marginLeft: 4 }}>⚠️ Over Limit</span>}
-              </span>
-            )}
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ color: '#64748b' }}>Total Khata Balance:</span>
-            <span className={`pill ${party.balance > 0 ? 'red' : party.balance < 0 ? 'green' : 'grey'}`} style={{ fontWeight: 700 }}>
-              {party.balance > 0 ? `${money(party.balance)} (To Collect)` : party.balance < 0 ? `${money(Math.abs(party.balance))} (Advance)` : 'Settled (₹0.00)'}
-            </span>
-          </div>
+    <>
+      <Modal
+        title={`${TYPE_LABEL[doc.type]} ${doc.number}`}
+        sub={`${doc.party_name}${party && party.gstin ? ' · ' + party.gstin : ''}`}
+        size="wide" onClose={onClose}
+        footer={
+          <>
+            {isSale && doc.due_amount > 0 && doc.status === 'active' && <button className="btn green" onClick={() => setPayOpen(true)}><Icon.rupee size={14} /> Receive payment</button>}
+            <button className="btn" onClick={() => onDuplicate(doc)}><Icon.copy size={14} /> Duplicate</button>
+            <button className="btn" onClick={() => onEdit(doc)}><Icon.edit size={14} /> Edit</button>
+            <button className="btn primary" onClick={() => window.open(pdfUrl(`invoice/${doc.id}`), '_blank')}><Icon.print size={14} /> Download PDF</button>
+            <button className="btn" onClick={onClose}>Close</button>
+          </>
+        }
+      >
+        <div className="grid g4" style={{ marginBottom: 14 }}>
+          <MiniStat label="Invoice total" value={money(doc.total)} />
+          <MiniStat label="Paid" value={money(doc.paid_amount)} tone="pos" />
+          <MiniStat label="Balance" value={money(doc.due_amount)} tone={doc.due_amount > 0 ? 'neg' : ''} />
+          <MiniStat label="Status" value={<PayPill status={doc.payment_status} />} />
         </div>
-      )}
 
-      <div className="btn-row" style={{ marginBottom: 12 }}>
-        <button className="btn sm" style={{ color: '#059669', fontWeight: 600, borderColor: '#a7f3d0' }} onClick={() => (onWhatsApp ? onWhatsApp(doc, party) : onShare(doc))}><Icon.whatsapp size={14} /> Send on WhatsApp</button>
-        <button className="btn sm" style={{ fontWeight: 600 }} onClick={() => onThermal && onThermal(doc)}><Icon.print size={14} /> 🧾 Thermal Receipt (58/80mm)</button>
-        <button className="btn sm" onClick={() => window.open(pdfUrl(`invoice/${doc.id}`), '_blank')}><Icon.download size={14} /> PDF</button>
-        {isSale && (doc.irn
-          ? <span className="pill brand"><Icon.stamp size={12} /> IRN {String(doc.irn).slice(0, 16)}…</span>
-          : <button className="btn sm" onClick={() => onEinv(doc)}><Icon.stamp size={14} /> Generate e-Invoice (IRN)</button>)}
-        {isSale && (doc.ewaybill_no
-          ? <span className="pill blue"><Icon.truck size={12} /> EWB {doc.ewaybill_no} valid to {fmtDate(doc.ewaybill_valid_upto)}</span>
-          : <button className="btn sm" onClick={() => setEwbOpen(true)}><Icon.truck size={14} /> Generate E-Way Bill</button>)}
-        {party && party.id && <button className="btn sm" onClick={() => { onClose(); }}><Icon.khata size={14} /> Open khata</button>}
-      </div>
-
-      <div className="card" style={{ boxShadow: 'none' }}>
-        <div className="card-b tight tbl-wrap">
-          <table className="tbl">
-            <thead><tr><th>#</th><th>Item</th><th className="num">Qty</th><th className="num">Rate</th><th className="num">Taxable</th><th className="num">GST</th><th className="num">Amount</th></tr></thead>
-            <tbody>
-              {doc.items.map((l, i) => (
-                <tr key={i}>
-                  <td className="muted">{i + 1}</td>
-                  <td><div className="strong">{l.name}</div><div className="muted">HSN {l.hsn || '-'}</div></td>
-                  <td className="num">{l.qty} {l.unit}</td>
-                  <td className="num">{money(l.rate)}</td>
-                  <td className="num">{money(l.taxable)}</td>
-                  <td className="num muted">{l.gstRate}% · {money(l.cgst + l.sgst + l.igst)}</td>
-                  <td className="num strong">{money(l.total)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <div className="grid g2" style={{ marginTop: 14 }}>
-        <div className="tot-box">
-          <div className="kv"><span className="k">Subtotal</span><span className="v">{money(doc.subtotal)}</span></div>
-          {doc.discount_amount > 0 && <div className="kv"><span className="k">Discount</span><span className="v neg">-{money(doc.discount_amount)}</span></div>}
-          <div className="kv"><span className="k">Taxable value</span><span className="v">{money(doc.taxable_value)}</span></div>
-          {doc.supply_type === 'inter'
-            ? <div className="kv"><span className="k">IGST</span><span className="v">{money(doc.igst)}</span></div>
-            : <>
-              <div className="kv"><span className="k">CGST</span><span className="v">{money(doc.cgst)}</span></div>
-              <div className="kv"><span className="k">SGST</span><span className="v">{money(doc.sgst)}</span></div>
-            </>}
-          <div className="grand"><span style={{ fontWeight: 700 }}>Total</span><span className="v">{money(doc.total)}</span></div>
-          <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 6 }}>{doc.amount_in_words}</div>
-        </div>
-        <div>
-          <h3 style={{ fontSize: 13, marginBottom: 8 }}>Payments on this document</h3>
-          {payments.length === 0 ? <div className="hint">No payment recorded yet.</div> : payments.map((p) => (
-            <div className="kv" key={p.id}>
-              <span className="k">{fmtDate(p.date)} · {String(p.mode || '').toUpperCase()}{p.reference ? ' · ' + p.reference : ''}</span>
-              <span className="v pos">{money(p.amount)}</span>
+        {party && (
+          <div style={{
+            marginBottom: 12,
+            padding: '8px 12px',
+            borderRadius: 8,
+            background: party.balance > 0 ? '#fef2f2' : party.balance < 0 ? '#f0fdf4' : '#f8fafc',
+            border: `1px solid ${party.balance > 0 ? '#fecaca' : party.balance < 0 ? '#bbf7d0' : '#e2e8f0'}`,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: 8,
+            fontSize: 12.5
+          }}>
+            <div>
+              <span style={{ fontWeight: 650, color: '#0f172a' }}>👤 {party.name}</span>
+              {party.phone && <span style={{ color: '#64748b', marginLeft: 8 }}>📞 {party.phone}</span>}
+              {party.creditLimit > 0 && (
+                <span style={{ color: '#64748b', marginLeft: 8 }}>
+                  Limit: {money(party.creditLimit)}
+                  {party.overLimit && <span style={{ color: '#dc2626', fontWeight: 600, marginLeft: 4 }}>⚠️ Over Limit</span>}
+                </span>
+              )}
             </div>
-          ))}
-          {doc.notes && <><hr className="divider" /><div className="hint"><b>Notes:</b> {doc.notes}</div></>}
-          {doc.ewaybill_no && <div className="hint" style={{ marginTop: 8 }}><b>E-Way Bill:</b> {doc.ewaybill_no}, vehicle {doc.vehicle_no || '—'}, valid till {fmtDate(doc.ewaybill_valid_upto)}</div>}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ color: '#64748b' }}>Total Khata Balance:</span>
+              <span className={`pill ${party.balance > 0 ? 'red' : party.balance < 0 ? 'green' : 'grey'}`} style={{ fontWeight: 700 }}>
+                {party.balance > 0 ? `${money(party.balance)} (To Collect)` : party.balance < 0 ? `${money(Math.abs(party.balance))} (Advance)` : 'Settled (₹0.00)'}
+              </span>
+            </div>
+          </div>
+        )}
+
+        <div className="btn-row" style={{ marginBottom: 12, flexWrap: 'wrap' }}>
+          <button className="btn sm" style={{ color: '#059669', fontWeight: 600, borderColor: '#a7f3d0' }} onClick={() => (onWhatsApp ? onWhatsApp(doc, party) : onShare(doc))}><Icon.whatsapp size={14} /> Send on WhatsApp</button>
+          <button className="btn sm" style={{ fontWeight: 600 }} onClick={() => onThermal && onThermal(doc)}><Icon.print size={14} /> 🧾 Thermal Receipt (58/80mm)</button>
+          {isSale && (doc.irn
+            ? <span className="pill brand"><Icon.stamp size={12} /> IRN {String(doc.irn).slice(0, 16)}…</span>
+            : <button className="btn sm" onClick={() => onEinv(doc)}><Icon.stamp size={14} /> Generate e-Invoice (IRN)</button>)}
+          {isSale && (doc.ewaybill_no
+            ? <span className="pill blue"><Icon.truck size={12} /> EWB {doc.ewaybill_no} valid to {fmtDate(doc.ewaybill_valid_upto)}</span>
+            : <button className="btn sm" onClick={() => setEwbOpen(true)}><Icon.truck size={14} /> Generate E-Way Bill</button>)}
+          {party && party.id && <button className="btn sm" onClick={() => { onClose(); }}><Icon.khata size={14} /> Open khata</button>}
         </div>
-      </div>
+
+        <div className="card" style={{ boxShadow: 'none' }}>
+          <div className="card-b tight tbl-wrap">
+            <table className="tbl">
+              <thead><tr><th>#</th><th>Item</th><th className="num">Qty</th><th className="num">Rate</th><th className="num">Taxable</th><th className="num">GST</th><th className="num">Amount</th></tr></thead>
+              <tbody>
+                {doc.items.map((l, i) => (
+                  <tr key={i}>
+                    <td className="muted">{i + 1}</td>
+                    <td><div className="strong">{l.name}</div><div className="muted">HSN {l.hsn || '-'}</div></td>
+                    <td className="num">{l.qty} {l.unit}</td>
+                    <td className="num">{money(l.rate)}</td>
+                    <td className="num">{money(l.taxable)}</td>
+                    <td className="num muted">{l.gstRate}% · {money(l.cgst + l.sgst + l.igst)}</td>
+                    <td className="num strong">{money(l.total)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div className="grid g2" style={{ marginTop: 14 }}>
+          <div className="tot-box">
+            <div className="kv"><span className="k">Subtotal</span><span className="v">{money(doc.subtotal)}</span></div>
+            {doc.discount_amount > 0 && <div className="kv"><span className="k">Discount</span><span className="v neg">-{money(doc.discount_amount)}</span></div>}
+            <div className="kv"><span className="k">Taxable value</span><span className="v">{money(doc.taxable_value)}</span></div>
+            {doc.supply_type === 'inter'
+              ? <div className="kv"><span className="k">IGST</span><span className="v">{money(doc.igst)}</span></div>
+              : <>
+                <div className="kv"><span className="k">CGST</span><span className="v">{money(doc.cgst)}</span></div>
+                <div className="kv"><span className="k">SGST</span><span className="v">{money(doc.sgst)}</span></div>
+              </>}
+            <div className="grand"><span style={{ fontWeight: 700 }}>Total</span><span className="v">{money(doc.total)}</span></div>
+            <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 6 }}>{doc.amount_in_words}</div>
+          </div>
+          <div>
+            <h3 style={{ fontSize: 13, marginBottom: 8 }}>Payments on this document</h3>
+            {payments.length === 0 ? <div className="hint">No payment recorded yet.</div> : payments.map((p) => (
+              <div className="kv" key={p.id}>
+                <span className="k">{fmtDate(p.date)} · {String(p.mode || '').toUpperCase()}{p.reference ? ' · ' + p.reference : ''}</span>
+                <span className="v pos">{money(p.amount)}</span>
+              </div>
+            ))}
+            {doc.notes && <><hr className="divider" /><div className="hint"><b>Notes:</b> {doc.notes}</div></>}
+            {doc.ewaybill_no && <div className="hint" style={{ marginTop: 8 }}><b>E-Way Bill:</b> {doc.ewaybill_no}, vehicle {doc.vehicle_no || '—'}, valid till {fmtDate(doc.ewaybill_valid_upto)}</div>}
+          </div>
+        </div>
+      </Modal>
 
       {payOpen && (
         <Modal title="Receive payment" sub={`${doc.party_name} · balance ${money(doc.due_amount)}`} onClose={() => setPayOpen(false)}
@@ -389,7 +389,7 @@ function DocViewer({ doc, party, payments, business, onClose, onEdit, onShare, o
           {!business.gstin && <div className="banner warn" style={{ marginTop: 10 }}>Add your GSTIN in Settings first - the portal needs it.</div>}
         </Modal>
       )}
-    </Modal>
+    </>
   );
 }
 
