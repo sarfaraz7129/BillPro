@@ -12,8 +12,7 @@ const FEATURES = [
 
 export default function Login({ onAuthed }) {
   const [mode, setMode] = useState('login');
-  // Pre-fill demo credentials so the user can sign in immediately with one click
-  const [form, setForm] = useState({ name: '', email: 'demo@billpro.in', phone: '', password: 'demo1234' });
+  const [form, setForm] = useState({ name: '', email: '', phone: '', password: '' });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
 
@@ -27,7 +26,7 @@ export default function Login({ onAuthed }) {
       setToken(res.token);
       onAuthed(res.user, res.businesses);
     } catch (ex) {
-      setErr(ex.message || 'Login failed. Please check credentials.');
+      setErr(ex.message || 'Login failed. Please check your email and password.');
     } finally {
       setBusy(false);
     }
@@ -39,8 +38,13 @@ export default function Login({ onAuthed }) {
     setBusy(true);
     try {
       if (mode === 'login') {
-        const email = (form.email || '').trim() || 'demo@billpro.in';
-        const password = form.password || 'demo1234';
+        const email = (form.email || '').trim();
+        const password = form.password || '';
+        if (!email || !password) {
+          setErr('Please enter your email and password');
+          setBusy(false);
+          return;
+        }
         await executeLogin(email, password);
       } else {
         const name = (form.name || '').trim();
@@ -60,12 +64,6 @@ export default function Login({ onAuthed }) {
     } finally {
       setBusy(false);
     }
-  };
-
-  const demo = () => {
-    setForm({ name: '', email: 'demo@billpro.in', phone: '', password: 'demo1234' });
-    setMode('login');
-    executeLogin('demo@billpro.in', 'demo1234');
   };
 
   return (
@@ -103,33 +101,7 @@ export default function Login({ onAuthed }) {
           <h2>{mode === 'login' ? 'Welcome back' : 'Create your account'}</h2>
           <p>{mode === 'login' ? 'Sign in to open your businesses.' : 'Set up once, then add as many businesses as you need.'}</p>
 
-          {/* Quick Demo Login button */}
-          <div style={{ marginBottom: 18 }}>
-            <button
-              type="button"
-              className="btn primary lg block"
-              style={{
-                background: 'linear-gradient(135deg, #4338ca 0%, #6366f1 100%)',
-                boxShadow: '0 4px 14px rgba(79,70,229,.35)',
-                fontWeight: 650,
-                fontSize: 14,
-                padding: '12px 18px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 8
-              }}
-              onClick={() => executeLogin('demo@billpro.in', 'demo1234')}
-              disabled={busy}
-            >
-              <Icon.zap size={16} /> {busy ? 'Signing in…' : '1-Click Demo Login (Coastal Traders)'}
-            </button>
-            <div style={{ textAlign: 'center', fontSize: 12, color: 'var(--muted)', marginTop: 8 }}>
-              or enter account details below
-            </div>
-          </div>
-
-          <div className="auth-tabs">
+          <div className="auth-tabs" style={{ marginTop: 20 }}>
             <button
               type="button"
               className={mode === 'login' ? 'on' : ''}
@@ -176,6 +148,7 @@ export default function Login({ onAuthed }) {
                 onChange={set('email')}
                 placeholder="you@business.in"
                 autoComplete="email"
+                required
               />
             </Field>
             <Field label="Password" req full>
@@ -185,25 +158,17 @@ export default function Login({ onAuthed }) {
                 value={form.password}
                 onChange={set('password')}
                 placeholder={mode === 'signup' ? 'At least 6 characters' : 'Your password'}
-                autoComplete="current-password"
+                autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+                required
               />
             </Field>
             {err && <div className="banner err full"><Icon.alert size={15} />{err}</div>}
-            <div className="full">
+            <div className="full" style={{ marginTop: 6 }}>
               <button type="submit" className="btn primary lg block" disabled={busy}>
                 {busy ? 'Please wait…' : mode === 'login' ? 'Sign in' : 'Create account & continue'}
               </button>
             </div>
           </form>
-
-          <div className="demo-box" style={{ marginTop: 16 }}>
-            <b>Demo account:</b> <code>demo@billpro.in</code> / <code>demo1234</code>
-            <div style={{ marginTop: 6 }}>
-              <button type="button" className="btn sm" style={{ padding: '4px 10px', fontSize: 12 }} onClick={demo}>
-                Auto-fill & Sign in
-              </button>
-            </div>
-          </div>
         </div>
       </div>
     </div>
