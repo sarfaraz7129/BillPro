@@ -52,12 +52,25 @@ app.use('/api/transactions', transactionRoutes.router);
 app.use('/api/reports', reportRoutes.router);
 app.use('/api/pdf', pdfRoutes.router);
 
-// Static frontend
-app.use(express.static(WWW, { extensions: ['html'], maxAge: 0 }));
+// Static frontend with strict no-cache headers to ensure immediate live updates
+app.use(express.static(WWW, {
+  extensions: ['html'],
+  maxAge: 0,
+  setHeaders: (res, filePath) => {
+    if (filePath.endsWith('.html') || filePath.endsWith('.js') || filePath.endsWith('.css')) {
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
+    }
+  }
+}));
 
 // SPA fallback
 app.get('*', (req, res, next) => {
   if (req.path.startsWith('/api/')) return next();
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
   res.sendFile(path.join(WWW, 'index.html'));
 });
 
