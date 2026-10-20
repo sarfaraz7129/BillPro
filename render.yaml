@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: billpro
+    runtime: node
+    plan: free
+    region: singapore # Change to oregon or frankfurt if preferred
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: JWT_SECRET
+        generateValue: true
+      # To enable persistent storage on Render (Starter plan or above):
+      # Uncomment the disk configuration below so SQLite survives all redeploys:
+      # - key: BILLPRO_DATA_DIR
+      #   value: /var/data
+    # disk:
+    #   name: billpro-data
+    #   mountPath: /var/data
+    #   sizeGB: 1

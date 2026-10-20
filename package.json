@@ -1,0 +1,30 @@
+{
+  "name": "billpro",
+  "version": "1.0.0",
+  "private": true,
+  "description": "BillPro - multi-business billing, khata, GST & inventory platform",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "build": "node tools/build.js",
+    "start": "node server/index.js",
+    "dev": "node tools/build.js && node server/index.js",
+    "seed": "node tools/seed-demo.js",
+    "test": "BILLPRO_DB=./data-test/test.db node tools/test.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "better-sqlite3": "^11.3.0",
+    "cors": "^2.8.5",
+    "esbuild": "^0.23.1",
+    "express": "^4.19.2",
+    "jsonwebtoken": "^9.0.2",
+    "pdfkit": "^0.15.0",
+    "qrcode": "^1.5.4",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "xlsx": "^0.18.5"
+  }
+}

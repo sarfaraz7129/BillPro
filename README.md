@@ -1,0 +1,132 @@
+# BillPro — Multi-Business Billing, Khata, GST & Inventory Platform
+
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy)
+
+A complete billing and accounting web application + installable PWA designed for Indian SMBs, similar to Khatabook and myBillBook. Manages multiple businesses with independent GSTINs, sequential billing series, stock, ledgers, e-Way bills, e-invoicing (IRN), thermal printing, WhatsApp sharing, and Excel bulk migration.
+
+---
+
+## ⚡ 1-Click Deploy to Render (Permanent Live URL)
+
+### Method 1: Connect your GitHub Repo on Render Dashboard (Recommended)
+
+1. **Push this code to a new repository on your GitHub account** (see instructions below).
+2. Go to **[dashboard.render.com](https://dashboard.render.com)** and log in with GitHub.
+3. Click **New +** → **Web Service**.
+4. Select **"Build and deploy from a Git repository"** and choose your `billpro` repo.
+5. Render will automatically detect Node.js. Fill in the service settings:
+   - **Name:** `billpro` (or your choice)
+   - **Runtime:** `Node`
+   - **Build Command:** `npm install && npm run build`
+   - **Start Command:** `npm start`
+   - **Plan:** `Free` (or Starter if you want a Persistent Disk)
+6. Add Environment Variables:
+   - `NODE_ENV` = `production`
+   - `JWT_SECRET` = *(Click "Generate" or enter a secure string)*
+7. Click **Create Web Service**.
+8. Within 2 minutes, Render will build the React SPA, compile SQLite, boot Express, and give you your **permanent live link**:
+   `https://billpro-xxxx.onrender.com`
+
+---
+
+## 🔄 Real-Time Sync: Updating via Prompts / Commits
+
+When you connect your GitHub repository to Render, **Auto-Deploy is enabled by default**:
+* Every time you push a commit to the `main` branch (either directly, via git push, or after updating features with the prompt assistant), **Render automatically triggers a fresh build and live redeployment within seconds**.
+* You can also trigger an immediate manual redeploy from Render's dashboard under **"Manual Deploy" → "Deploy latest commit"**.
+* **Deploy Hook URL (Instant Webhook):**
+  Under your Render Web Service **Settings** → **Deploy Hook**, you can copy a webhook URL. Hitting that URL from any script or GitHub Action triggers an instant build.
+
+---
+
+## 💾 SQLite Data Persistence on Render
+
+BillPro uses a high-performance, embedded SQLite database (`better-sqlite3` with WAL mode).
+
+* **On Render Free Tier:**
+  Files are ephemeral. If the instance restarts, it re-seeds the demo businesses (`demo@billpro.in` / `demo1234`) automatically so the app is always functional.
+* **For Persistent Production Data (Render Starter Plan + Disk):**
+  1. In your Render Web Service dashboard, go to the **Disks** tab.
+  2. Click **Add Disk**:
+     - **Name:** `billpro-data`
+     - **Mount Path:** `/var/data`
+     - **Size:** `1 GB` (or more)
+  3. In **Environment Variables**, add:
+     - `BILLPRO_DATA_DIR` = `/var/data`
+  4. Now all your businesses, customer khatas, invoices, and products persist permanently across every deployment and server reboot!
+
+---
+
+## 🚀 Quick Local Development
+
+```bash
+# 1. Clone repository
+git clone https://github.com/<your-username>/billpro.git
+cd billpro
+
+# 2. Install dependencies
+npm install
+
+# 3. Build frontend bundle
+npm run build
+
+# 4. Run database seed (preloads demo businesses)
+npm run seed
+
+# 5. Start server
+npm start
+# App is live on http://localhost:4173
+```
+
+### Demo Credentials
+* **Email:** `demo@billpro.in`
+* **Password:** `demo1234`
+* **Pre-seeded Businesses:**
+  - Coastal Traders (`29AAECC1234F1Z5`)
+  - Udupi Tiffin Supply (`29AAEFU5678K1Z2`)
+
+---
+
+## 🛠 Features
+
+- **Multi-Tenant / Multi-Business Architecture:** Independent GSTIN, invoice series, stock, and parties per business with 1-click header switcher and consolidated group overview.
+- **GST Billing & Compliance:** Full CGST, SGST, IGST tax breakdown, arbitrary custom GST rates (e.g. 7.5%, 3%, 0.25%), HSN summaries, and numbers-to-words.
+- **Customer Khata with Live Outstanding Balance:** Persistent outstanding balance cards, live Khata impact calculations (Previous Due + Bill - Paid = Net Closing Balance), and over-limit credit alerts.
+- **Counter POS (Point of Sale):** Quick barcode billing, tap-to-add grid, tender change calculator, and keyboard shortcuts (F2/F9).
+- **Thermal Receipt Printing:** Instant printing for 58mm (2-inch) and 80mm (3-inch) receipt printers with dynamic UPI payment QR codes.
+- **Direct WhatsApp Sharing:** Modal with +91 phone formatting, editable bill text, and direct `wa.me` deep linking.
+- **Excel / CSV Migration:** Two-way bulk import & export with auto-column mapping and live validation preview.
+- **E-Way Bill & e-Invoicing Ready:** JSON payload generation and 12-digit mock EWB issue.
+- **Financial Reports:** GSTR-1 (B2B, B2CS, HSN), GSTR-3B summary, P&L statement, balance sheet, and aged receivables.
+- **Installable PWA:** Offline-capable service worker and installable mobile web app.
+
+---
+
+## 📁 Repository Structure
+
+```
+billpro/
+├── server/
+│   ├── db.js                  # SQLite database connection & schema
+│   ├── index.js               # Express server, PWA routes & API
+│   ├── middleware.js          # JWT auth & multi-business context
+│   ├── lib/
+│   │   ├── gst.js             # GST tax maths, HSN & payload builders
+│   │   ├── pdf.js             # Vector PDFKit invoice generator
+│   │   └── service.js         # Khata ledgers, stock moves & counters
+│   └── routes/                # Express API endpoints
+├── www/                       # Frontend PWA & React client
+│   ├── index.html             # Single-page app HTML
+│   ├── styles.css             # Responsive styling & thermal print media
+│   ├── sw.js                  # Service worker
+│   ├── manifest.webmanifest   # PWA manifest
+│   └── src/                   # React 18 UI components
+├── tools/                     # Build, seed & automated test scripts
+├── render.yaml                # Render Blueprint deployment definition
+└── package.json               # NPM scripts & dependencies
+```
+
+---
+
+## 📜 License
+MIT License. Built for Indian businesses and creators.
