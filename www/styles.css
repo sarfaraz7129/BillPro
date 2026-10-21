@@ -465,3 +465,21 @@ tr:hover .row-actions { opacity: 1; }
   .thermal-wrapper { padding: 10px; }
   .tbl-wrap { border-radius: 8px; }
 }
+
+/* ---------- Floating Picker Portal Dropdown ---------- */
+.picker-dropdown-portal {
+  box-sizing: border-box;
+  font-family: inherit;
+  color: var(--ink);
+}
+.picker-dropdown-portal::-webkit-scrollbar { width: 6px; }
+.picker-dropdown-portal::-webkit-scrollbar-thumb { background: var(--line-2); border-radius: 6px; }
+.picker-row {
+  user-select: none;
+}
+.picker-row.active {
+  background: var(--brand-soft) !important;
+}
+.picker-row:hover {
+  background: var(--brand-soft) !important;
+}

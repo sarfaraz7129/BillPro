@@ -302,14 +302,7 @@ export default function DocumentEditor({ business, type, doc, user, onClose, onS
                           pickProduct(i, p.product);
                           toast(`Added ${name} to inventory`, 'ok');
                         }}
-                        render={(p) => (
-                          <>
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <div style={{ fontSize: 12.5, fontWeight: 600 }}>{p.name}</div>
-                              <div style={{ fontSize: 10.5, color: 'var(--muted)' }}>{money(p.sale_price)} · stock {p.stock} {p.unit}</div>
-                            </div>
-                          </>
-                        )} />
+                      />
                     </td>
                     <td><input className="input" value={it.hsn || ''} onChange={(e) => setItem(i, 'hsn', e.target.value)} /></td>
                     <td><input className="input" type="number" value={it.qty} onChange={(e) => setItem(i, 'qty', Number(e.target.value))} /></td>

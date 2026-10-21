@@ -1,5 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { Icon, initials, colorFor } from './ui.jsx';
+import { money } from './api.js';
 
 /* ---------------- modal ---------------- */
 export function Modal({ title, sub, children, footer, onClose, size = '' }) {
@@ -183,25 +185,108 @@ export function DateRange({ from, to, onChange, presets = true }) {
   );
 }
 
-/* ---------------- party / product autocomplete ---------------- */
+/* ---------------- party / product autocomplete with React Portal ---------------- */
 export function Picker({ items, value, onChange, placeholder, onAddNew, render, emptyText = 'Nothing found' }) {
   const [q, setQ] = useState('');
   const [open, setOpen] = useState(false);
+  const [highlightIndex, setHighlightIndex] = useState(0);
+  const [coords, setCoords] = useState({ top: 0, left: 0, width: 420, maxHeight: 320, showAbove: false });
   const box = useRef(null);
-  useEffect(() => {
-    const h = (e) => { if (box.current && !box.current.contains(e.target)) setOpen(false); };
-    document.addEventListener('mousedown', h);
-    return () => document.removeEventListener('mousedown', h);
-  }, []);
+  const popoverRef = useRef(null);
+
   const needle = q.toLowerCase();
-  const filtered = items.filter((it) => !needle || String(it.name || '').toLowerCase().includes(needle) || String(it.sku || it.phone || '').toLowerCase().includes(needle)).slice(0, 40);
+  const filtered = items.filter((it) =>
+    !needle ||
+    String(it.name || '').toLowerCase().includes(needle) ||
+    String(it.sku || it.barcode || it.phone || it.category || '').toLowerCase().includes(needle)
+  ).slice(0, 50);
+
+  const updateCoords = () => {
+    if (!box.current) return;
+    const rect = box.current.getBoundingClientRect();
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const spaceAbove = rect.top;
+    const showAbove = spaceBelow < 260 && spaceAbove > spaceBelow;
+    const width = Math.max(380, Math.min(rect.width, 560));
+    let left = rect.left;
+    if (left + width > window.innerWidth - 12) {
+      left = Math.max(8, window.innerWidth - width - 12);
+    }
+    const maxHeight = showAbove ? Math.min(300, spaceAbove - 20) : Math.min(320, spaceBelow - 20);
+    setCoords({
+      top: showAbove ? Math.max(8, rect.top - maxHeight - 6) : rect.bottom + 6,
+      left,
+      width,
+      maxHeight,
+      showAbove
+    });
+  };
+
+  useEffect(() => {
+    setHighlightIndex(0);
+  }, [needle]);
+
+  useEffect(() => {
+    if (!open) return;
+    updateCoords();
+    const onDown = (e) => {
+      if (box.current && box.current.contains(e.target)) return;
+      if (popoverRef.current && popoverRef.current.contains(e.target)) return;
+      setOpen(false);
+    };
+    const onScrollOrResize = () => updateCoords();
+    window.addEventListener('mousedown', onDown);
+    window.addEventListener('scroll', onScrollOrResize, true);
+    window.addEventListener('resize', onScrollOrResize);
+    return () => {
+      window.removeEventListener('mousedown', onDown);
+      window.removeEventListener('scroll', onScrollOrResize, true);
+      window.removeEventListener('resize', onScrollOrResize);
+    };
+  }, [open]);
+
+  const onKeyDown = (e) => {
+    if (!open) {
+      if (e.key === 'ArrowDown' || e.key === 'Enter') {
+        e.preventDefault();
+        setOpen(true);
+        updateCoords();
+      }
+      return;
+    }
+    const totalCount = filtered.length + (onAddNew && q ? 1 : 0);
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setHighlightIndex((prev) => (prev + 1) % (totalCount || 1));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setHighlightIndex((prev) => (prev - 1 + (totalCount || 1)) % (totalCount || 1));
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (filtered[highlightIndex]) {
+        onChange(filtered[highlightIndex]);
+        setOpen(false);
+        setQ('');
+      } else if (onAddNew && q) {
+        onAddNew(q);
+        setOpen(false);
+      }
+    } else if (e.key === 'Escape') {
+      setOpen(false);
+    }
+  };
+
   return (
     <div ref={box} style={{ position: 'relative' }}>
       <div className="search" style={{ position: 'relative' }}>
         <Icon.search size={15} />
-        <input className="input" placeholder={placeholder} value={open ? q : (value ? (value.name || '') : '')}
-          onChange={(e) => { setQ(e.target.value); setOpen(true); if (value) onChange(null); }}
-          onFocus={() => { setOpen(true); setQ(''); }}
+        <input
+          className="input"
+          placeholder={placeholder}
+          value={open ? q : (value ? (value.name || '') : '')}
+          onChange={(e) => { setQ(e.target.value); setOpen(true); updateCoords(); if (value) onChange(null); }}
+          onFocus={() => { setOpen(true); setQ(''); updateCoords(); }}
+          onKeyDown={onKeyDown}
           style={value && !open ? { paddingRight: 28 } : {}}
         />
         {value && !open && (
@@ -219,41 +304,225 @@ export function Picker({ items, value, onChange, placeholder, onAddNew, render, 
           </button>
         )}
       </div>
-      {open && (
-        <div style={{
-          position: 'absolute', top: '100%', left: 0, minWidth: 320, maxWidth: 460, width: 'max-content',
-          background: 'var(--surface)', border: '1px solid var(--line-2)',
-          borderRadius: 11, boxShadow: '0 12px 28px -4px rgba(15,23,42,0.22), 0 4px 10px rgba(0,0,0,0.08)',
-          zIndex: 150, marginTop: 4, maxHeight: 280, overflowY: 'auto', padding: 4
-        }}>
-          {filtered.length === 0 && !onAddNew && <div style={{ padding: 12, color: 'var(--muted)', fontSize: 12.5 }}>{emptyText}</div>}
+
+      {open && typeof document !== 'undefined' && createPortal(
+        <div
+          ref={popoverRef}
+          className="picker-dropdown-portal"
+          style={{
+            position: 'fixed',
+            top: coords.top,
+            left: coords.left,
+            width: coords.width,
+            maxHeight: coords.maxHeight,
+            background: 'var(--surface)',
+            border: '1px solid var(--line-2)',
+            borderRadius: 12,
+            boxShadow: '0 20px 40px -8px rgba(15,23,42,0.32), 0 6px 16px rgba(0,0,0,0.12)',
+            zIndex: 999999,
+            overflowY: 'auto',
+            padding: 6,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 2,
+            animation: 'pop 0.15s ease-out'
+          }}
+        >
+          {filtered.length === 0 && !onAddNew && (
+            <div style={{ padding: '16px 14px', color: 'var(--muted)', fontSize: 13, textAlign: 'center' }}>
+              {emptyText}
+            </div>
+          )}
+
           {filtered.length === 0 && onAddNew && !q && (
-            <div style={{ padding: '10px 12px', color: 'var(--muted)', fontSize: 12 }}>
-              Type item name to search or add…
+            <div style={{ padding: '14px 16px', color: 'var(--muted)', fontSize: 12.5, textAlign: 'center' }}>
+              Type an item name or barcode to search catalog…
             </div>
           )}
-          {filtered.map((it) => (
-            <div key={it.id} className="item" style={{ display: 'flex', gap: 9, alignItems: 'center', padding: '8px 9px', borderRadius: 8, cursor: 'pointer' }}
-              onMouseDown={(e) => { e.preventDefault(); onChange(it); setOpen(false); setQ(''); }}>
-              {render ? render(it) : (
-                <>
-                  <Avatar name={it.name} size={26} />
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600 }}>{it.name}</div>
-                    {it.sub && <div style={{ fontSize: 11, color: 'var(--muted)' }}>{it.sub}</div>}
+
+          {filtered.map((it, idx) => {
+            const isHighlighted = highlightIndex === idx;
+            if (render) {
+              return (
+                <div
+                  key={it.id || idx}
+                  className={`picker-row ${isHighlighted ? 'active' : ''}`}
+                  onMouseEnter={() => setHighlightIndex(idx)}
+                  onMouseDown={(e) => { e.preventDefault(); onChange(it); setOpen(false); setQ(''); }}
+                  style={{
+                    padding: '8px 10px',
+                    borderRadius: 8,
+                    cursor: 'pointer',
+                    background: isHighlighted ? 'var(--brand-soft)' : 'transparent'
+                  }}
+                >
+                  {render(it)}
+                </div>
+              );
+            }
+
+            // High-End Product card UI
+            const isProduct = it.sale_price !== undefined || it.stock !== undefined || it.unit !== undefined;
+            if (isProduct) {
+              const stockVal = Number(it.stock) || 0;
+              const lowStock = Number(it.low_stock_at) || 0;
+              const isLow = lowStock > 0 && stockVal <= lowStock && stockVal > 0;
+              const isOut = stockVal <= 0;
+              const price = Number(it.sale_price) || Number(it.rate) || Number(it.purchase_price) || 0;
+
+              return (
+                <div
+                  key={it.id}
+                  className={`picker-row ${isHighlighted ? 'active' : ''}`}
+                  onMouseEnter={() => setHighlightIndex(idx)}
+                  onMouseDown={(e) => { e.preventDefault(); onChange(it); setOpen(false); setQ(''); }}
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    padding: '8px 10px',
+                    borderRadius: 8,
+                    cursor: 'pointer',
+                    background: isHighlighted ? 'var(--brand-soft)' : 'transparent',
+                    borderBottom: '1px solid var(--line-soft)',
+                    transition: 'background 0.1s ease'
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, flex: 1 }}>
+                    <div style={{
+                      width: 32, height: 32, borderRadius: 8,
+                      background: isHighlighted ? 'var(--brand)' : 'var(--surface-2)',
+                      color: isHighlighted ? '#ffffff' : 'var(--brand)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      flexShrink: 0
+                    }}>
+                      <Icon.box size={16} />
+                    </div>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 13.5, fontWeight: 650, color: 'var(--ink)' }}>{it.name}</div>
+                      <div style={{ fontSize: 11, color: 'var(--muted)', display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 1 }}>
+                        {it.category && <span className="pill grey sm" style={{ padding: '0 5px', fontSize: 10 }}>{it.category}</span>}
+                        {it.hsn && <span>HSN: <b>{it.hsn}</b></span>}
+                        {it.barcode && <span>Code: {it.barcode}</span>}
+                      </div>
+                    </div>
                   </div>
-                  {it.right && <div style={{ fontSize: 11.5, fontWeight: 650 }}>{it.right}</div>}
-                </>
-              )}
-            </div>
-          ))}
+
+                  <div style={{ textAlign: 'right', flexShrink: 0, marginLeft: 12 }}>
+                    <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--ink)' }}>
+                      {money(price)} <span style={{ fontSize: 11, fontWeight: 500, color: 'var(--muted)' }}>/{it.unit || 'pcs'}</span>
+                    </div>
+                    <div style={{ marginTop: 2, display: 'flex', gap: 6, justifyContent: 'flex-end', alignItems: 'center' }}>
+                      <span
+                        className={`pill sm ${isOut ? 'red' : isLow ? 'amber' : 'green'}`}
+                        style={{ padding: '0 6px', fontSize: 10.5, fontWeight: 600 }}
+                      >
+                        {isOut ? '✕ 0 in stock' : isLow ? `⚠️ ${stockVal} ${it.unit || 'pcs'} (Low)` : `✓ ${stockVal} ${it.unit || 'pcs'}`}
+                      </span>
+                      {it.gst_rate !== undefined && (
+                        <span className="pill sm grey" style={{ padding: '0 5px', fontSize: 10.5 }}>
+                          {it.gst_rate}% GST
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            }
+
+            // High-End Party card UI
+            const isParty = it.type || it.phone !== undefined || it.gstin !== undefined;
+            if (isParty) {
+              const bal = Number(it.balance || it.opening_balance) || 0;
+              return (
+                <div
+                  key={it.id}
+                  className={`picker-row ${isHighlighted ? 'active' : ''}`}
+                  onMouseEnter={() => setHighlightIndex(idx)}
+                  onMouseDown={(e) => { e.preventDefault(); onChange(it); setOpen(false); setQ(''); }}
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    padding: '8px 10px',
+                    borderRadius: 8,
+                    cursor: 'pointer',
+                    background: isHighlighted ? 'var(--brand-soft)' : 'transparent',
+                    borderBottom: '1px solid var(--line-soft)',
+                    transition: 'background 0.1s ease'
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, flex: 1 }}>
+                    <Avatar name={it.name} size={30} />
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 13.5, fontWeight: 650, color: 'var(--ink)' }}>{it.name}</div>
+                      <div style={{ fontSize: 11, color: 'var(--muted)', display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 1 }}>
+                        {it.phone && <span>📞 {it.phone}</span>}
+                        {it.gstin && <span>GSTIN: <b>{it.gstin}</b></span>}
+                        {it.city && <span>{it.city}</span>}
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ textAlign: 'right', flexShrink: 0, marginLeft: 12 }}>
+                    <span
+                      className={`pill sm ${bal > 0 ? 'red' : bal < 0 ? 'green' : 'grey'}`}
+                      style={{ fontWeight: 650, fontSize: 11 }}
+                    >
+                      {bal > 0 ? `${money(bal)} Due` : bal < 0 ? `${money(Math.abs(bal))} Adv` : 'Settled'}
+                    </span>
+                  </div>
+                </div>
+              );
+            }
+
+            // Default fallback
+            return (
+              <div
+                key={it.id}
+                className={`picker-row ${isHighlighted ? 'active' : ''}`}
+                onMouseEnter={() => setHighlightIndex(idx)}
+                onMouseDown={(e) => { e.preventDefault(); onChange(it); setOpen(false); setQ(''); }}
+                style={{
+                  display: 'flex', gap: 9, alignItems: 'center', padding: '8px 9px', borderRadius: 8,
+                  cursor: 'pointer', background: isHighlighted ? 'var(--brand-soft)' : 'transparent'
+                }}
+              >
+                <Avatar name={it.name} size={26} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600 }}>{it.name}</div>
+                  {it.sub && <div style={{ fontSize: 11, color: 'var(--muted)' }}>{it.sub}</div>}
+                </div>
+                {it.right && <div style={{ fontSize: 11.5, fontWeight: 650 }}>{it.right}</div>}
+              </div>
+            );
+          })}
+
           {onAddNew && q && (
-            <div style={{ display: 'flex', gap: 9, alignItems: 'center', padding: '8px 9px', borderRadius: 8, cursor: 'pointer', color: 'var(--brand)', fontWeight: 600, fontSize: 12.5 }}
-              onMouseDown={(e) => { e.preventDefault(); onAddNew(q); setOpen(false); }}>
-              <Icon.plus size={15} /> Add “{q}”
+            <div
+              className={`picker-row ${highlightIndex === filtered.length ? 'active' : ''}`}
+              onMouseEnter={() => setHighlightIndex(filtered.length)}
+              onMouseDown={(e) => { e.preventDefault(); onAddNew(q); setOpen(false); }}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
+                padding: '10px 12px',
+                borderRadius: 8,
+                cursor: 'pointer',
+                background: highlightIndex === filtered.length ? 'var(--brand-soft)' : 'rgba(79, 70, 229, 0.04)',
+                color: 'var(--brand)',
+                fontWeight: 650,
+                fontSize: 13,
+                marginTop: 4,
+                border: '1px dashed var(--brand)'
+              }}
+            >
+              <Icon.plus size={16} />
+              <span>Add “<b>{q}</b>” to catalog & bill</span>
             </div>
           )}
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
