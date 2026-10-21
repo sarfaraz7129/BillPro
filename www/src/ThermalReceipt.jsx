@@ -156,6 +156,11 @@ export default function ThermalReceiptModal({ doc, business, onClose, onWhatsApp
       {/* Visual thermal roll preview */}
       <div className="thermal-wrapper">
         <div id="thermal-receipt-printable" className={`thermal-receipt w-${width}`}>
+          {business.logo_url && (
+            <div style={{ textAlign: 'center', marginBottom: 6 }}>
+              <img src={business.logo_url} alt="Logo" style={{ maxHeight: 44, maxWidth: 140, objectFit: 'contain', filter: 'grayscale(100%)' }} />
+            </div>
+          )}
           <h2>{business.name}</h2>
           {business.legal_name && business.legal_name !== business.name && (
             <div className="center muted" style={{ fontSize: '0.9em' }}>{business.legal_name}</div>

@@ -19,8 +19,12 @@ export default function BusinessSwitcher({ businesses, active, onSwitch, onAdd, 
   return (
     <div className="biz-switch" ref={ref}>
       <button className="biz-btn" onClick={() => setOpen(!open)}>
-        <span className="biz-dot" style={{ background: active.color || '#4f46e5' }}>
-          {(active.name || '?').slice(0, 1).toUpperCase()}
+        <span className="biz-dot" style={{ background: active.logo_url ? '#ffffff' : (active.color || '#4f46e5'), overflow: 'hidden', border: active.logo_url ? '1px solid var(--line)' : 'none' }}>
+          {active.logo_url ? (
+            <img src={active.logo_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+          ) : (
+            (active.name || '?').slice(0, 1).toUpperCase()
+          )}
         </span>
         <span className="nm">
           {active.name}
@@ -45,7 +49,13 @@ export default function BusinessSwitcher({ businesses, active, onSwitch, onAdd, 
           )}
           {businesses.map((b) => (
             <div key={b.id} className={`item ${b.id === active.id ? 'on' : ''}`} onClick={() => { onSwitch(b); setOpen(false); }}>
-              <span className="biz-dot" style={{ background: b.color || '#4f46e5', width: 26, height: 26, fontSize: 11 }}>{(b.name || '?').slice(0, 1).toUpperCase()}</span>
+              <span className="biz-dot" style={{ background: b.logo_url ? '#ffffff' : (b.color || '#4f46e5'), width: 26, height: 26, fontSize: 11, overflow: 'hidden', border: b.logo_url ? '1px solid var(--line)' : 'none' }}>
+                {b.logo_url ? (
+                  <img src={b.logo_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                ) : (
+                  (b.name || '?').slice(0, 1).toUpperCase()
+                )}
+              </span>
               <div style={{ minWidth: 0 }}>
                 <div className="nm">{b.name}</div>
                 <div className="st">{b.city || 'No city'} · Sales {moneyShort(b.stats ? b.stats.sales : 0)}</div>

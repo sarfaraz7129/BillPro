@@ -111,7 +111,7 @@ router.put('/:id', auth, (req, res) => {
       phone: b.phone ?? biz.phone,
       email: b.email ?? biz.email,
       website: b.website ?? biz.website,
-      logo_url: b.logo_url ?? biz.logo_url,
+      logo_url: b.logo_url !== undefined ? (b.logo_url || null) : biz.logo_url,
       bank_name: b.bank_name ?? biz.bank_name,
       bank_account_no: b.bank_account_no ?? biz.bank_account_no,
       bank_ifsc: b.bank_ifsc ?? biz.bank_ifsc,

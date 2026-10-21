@@ -44,23 +44,45 @@ function render(doc, business, party, accent) {
     pdf.rect(0, 0, pdf.page.width, 92).fill(accent);
     pdf.fillColor('#ffffff');
     const leftX = 40;
-    if (business.logo_url && /^data:image/.test(business.logo_url)) {
+    let logoImg = null;
+    if (business.logo_url) {
       try {
-        const data = business.logo_url.split(',')[1];
-        const img = Buffer.from(data, 'base64');
-        pdf.image(img, leftX, 20, { fit: [54, 54] });
-      } catch (e) { /* bad logo data - skip */ }
+        let imgBuffer = null;
+        if (/^data:image\/(png|jpeg|jpg);base64,/i.test(business.logo_url)) {
+          const base64Data = business.logo_url.replace(/^data:image\/\w+;base64,/, '');
+          imgBuffer = Buffer.from(base64Data, 'base64');
+        } else if (/^data:image/.test(business.logo_url)) {
+          const parts = business.logo_url.split(',');
+          if (parts[1]) imgBuffer = Buffer.from(parts[1], 'base64');
+        }
+        if (imgBuffer) {
+          logoImg = pdf.openImage(imgBuffer);
+        }
+      } catch (e) {
+        logoImg = null;
+      }
     }
-    const textX = business.logo_url ? 104 : leftX;
-    pdf.font('Helvetica-Bold').fontSize(18).text(business.legal_name || business.name, textX, 22, { width: 380 });
+
+    const hasLogo = !!logoImg;
+    const textX = hasLogo ? 114 : leftX;
+
+    if (hasLogo && logoImg) {
+      pdf.save();
+      pdf.roundedRect(leftX, 16, 60, 60, 6).fill('#ffffff');
+      pdf.image(logoImg, leftX + 4, 20, { fit: [52, 52], align: 'center', valign: 'center' });
+      pdf.restore();
+    }
+
+    pdf.fillColor('#ffffff');
+    pdf.font('Helvetica-Bold').fontSize(18).text(business.legal_name || business.name, textX, 22, { width: 380 - (hasLogo ? 74 : 0) });
     pdf.font('Helvetica').fontSize(9);
     const addr = [business.address, business.city, business.state, business.pincode].filter(Boolean).join(', ');
-    if (addr) pdf.text(addr, textX, 44, { width: 380 });
+    if (addr) pdf.text(addr, textX, 44, { width: 380 - (hasLogo ? 74 : 0) });
     const ids = [];
     if (business.gstin) ids.push(`GSTIN: ${business.gstin}`);
     if (business.pan) ids.push(`PAN: ${business.pan}`);
     if (business.phone) ids.push(`Ph: ${business.phone}`);
-    if (ids.length) pdf.text(ids.join('   |   '), textX, 64, { width: 400 });
+    if (ids.length) pdf.text(ids.join('   |   '), textX, 64, { width: 390 - (hasLogo ? 74 : 0) });
 
     pdf.text(title, 400, 26, { width: 175, align: 'right' });
     pdf.font('Helvetica').fontSize(9);
@@ -312,9 +334,32 @@ function statementPdf(business, party, entries, openingLabel) {
     pdf.on('end', () => resolve(Buffer.concat(chunks)));
     pdf.on('error', reject);
 
-    pdf.fontSize(16).font('Helvetica-Bold').fillColor(INK).text(business.legal_name || business.name, 40, 36);
-    pdf.fontSize(9).font('Helvetica').fillColor(MUTED).text([business.address, business.city, business.state].filter(Boolean).join(', '), 40, 56);
-    pdf.text(business.gstin ? `GSTIN: ${business.gstin}` : '', 40, 68);
+    let logoImg = null;
+    if (business.logo_url) {
+      try {
+        let imgBuffer = null;
+        if (/^data:image\/(png|jpeg|jpg);base64,/i.test(business.logo_url)) {
+          const base64Data = business.logo_url.replace(/^data:image\/\w+;base64,/, '');
+          imgBuffer = Buffer.from(base64Data, 'base64');
+        } else if (/^data:image/.test(business.logo_url)) {
+          const parts = business.logo_url.split(',');
+          if (parts[1]) imgBuffer = Buffer.from(parts[1], 'base64');
+        }
+        if (imgBuffer) {
+          logoImg = pdf.openImage(imgBuffer);
+        }
+      } catch (e) {
+        logoImg = null;
+      }
+    }
+    const hasLogo = !!logoImg;
+    const textX = hasLogo ? 100 : 40;
+    if (hasLogo && logoImg) {
+      pdf.image(logoImg, 40, 36, { fit: [48, 48] });
+    }
+    pdf.fontSize(16).font('Helvetica-Bold').fillColor(INK).text(business.legal_name || business.name, textX, 36);
+    pdf.fontSize(9).font('Helvetica').fillColor(MUTED).text([business.address, business.city, business.state].filter(Boolean).join(', '), textX, 56);
+    pdf.text(business.gstin ? `GSTIN: ${business.gstin}` : '', textX, 68);
     pdf.fontSize(14).font('Helvetica-Bold').fillColor(INK).text('ACCOUNT STATEMENT', 380, 40, { width: 196, align: 'right' });
     pdf.fontSize(9).font('Helvetica').fillColor(MUTED).text(`Generated ${formatIstDateTime()}`, 380, 58, { width: 196, align: 'right' });
 

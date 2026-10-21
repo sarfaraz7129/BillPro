@@ -32,6 +32,43 @@ export default function Settings({ business, user, onBusinessSaved, onAddBusines
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
+  const handleLogoUpload = (file) => {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      toast('Please select an image file (PNG, JPG, or WEBP)', 'err');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const img = new Image();
+      img.onload = () => {
+        const maxDim = 360;
+        let w = img.width;
+        let h = img.height;
+        if (w > maxDim || h > maxDim) {
+          if (w > h) {
+            h = Math.round((h * maxDim) / w);
+            w = maxDim;
+          } else {
+            w = Math.round((w * maxDim) / h);
+            h = maxDim;
+          }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, w, h);
+        const dataUrl = canvas.toDataURL('image/png');
+        set('logo_url', dataUrl);
+        toast('Logo updated! Click "Save changes" to save it.', 'ok');
+      };
+      img.onerror = () => toast('Failed to process image file', 'err');
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+  };
+
   const save = async () => {
     setBusy(true);
     try {
@@ -82,8 +119,124 @@ export default function Settings({ business, user, onBusinessSaved, onAddBusines
       <div className="card">
         {tab === 'profile' && (
           <>
-            <div className="card-h"><Icon.building size={16} /><div><h3>Business profile</h3><div className="sub">Printed on every invoice and PDF</div></div></div>
+            <div className="card-h"><Icon.building size={16} /><div><h3>Business profile & White-label Branding</h3><div className="sub">Customise your company details, logo, and invoice appearance</div></div></div>
             <div className="card-b">
+              {/* White-Label Logo Section */}
+              <div style={{
+                background: 'var(--surface)',
+                border: '1px solid var(--line)',
+                borderRadius: 12,
+                padding: '16px 18px',
+                marginBottom: 20
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 14 }}>
+                  <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
+                    <div style={{
+                      width: 80,
+                      height: 80,
+                      borderRadius: 12,
+                      background: '#ffffff',
+                      border: '2px dashed var(--line)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      overflow: 'hidden',
+                      position: 'relative',
+                      boxShadow: '0 2px 6px rgba(0,0,0,0.04)',
+                      flexShrink: 0
+                    }}>
+                      {form.logo_url ? (
+                        <img src={form.logo_url} alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                      ) : (
+                        <div style={{ textAlign: 'center', color: 'var(--muted)', padding: 6 }}>
+                          <Icon.image size={26} />
+                          <div style={{ fontSize: 10, marginTop: 2 }}>No logo</div>
+                        </div>
+                      )}
+                    </div>
+                    <div>
+                      <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--ink)' }}>Company / Shop Logo</div>
+                      <div style={{ fontSize: 12.5, color: 'var(--muted)', maxWidth: 360, marginTop: 2 }}>
+                        Upload your PNG, JPG, or WEBP logo. It will be printed directly on your <b>PDF Invoices</b>, <b>Thermal Slips</b>, and <b>Customer Statements</b>.
+                      </div>
+                      <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+                        <label className="btn sm primary" style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                          <Icon.upload size={14} /> Upload logo
+                          <input
+                            type="file"
+                            accept="image/png,image/jpeg,image/webp,image/gif"
+                            style={{ display: 'none' }}
+                            onChange={(e) => {
+                              if (e.target.files && e.target.files[0]) {
+                                handleLogoUpload(e.target.files[0]);
+                                e.target.value = '';
+                              }
+                            }}
+                          />
+                        </label>
+                        {form.logo_url && (
+                          <button
+                            type="button"
+                            className="btn sm red"
+                            onClick={() => { set('logo_url', ''); toast('Logo removed. Click Save changes.', 'ok'); }}
+                          >
+                            <Icon.trash size={13} /> Remove
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Live Invoice Header Preview */}
+                  <div style={{
+                    minWidth: 260,
+                    flex: '1 1 280px',
+                    maxWidth: 380,
+                    background: form.color || '#4f46e5',
+                    borderRadius: 10,
+                    padding: '12px 14px',
+                    color: '#ffffff',
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.12)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: 10
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+                      <div style={{
+                        width: 44, height: 44, borderRadius: 8, background: '#ffffff',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        flexShrink: 0, padding: 3
+                      }}>
+                        {form.logo_url ? (
+                          <img src={form.logo_url} alt="" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
+                        ) : (
+                          <span style={{ color: form.color || '#4f46e5', fontWeight: 800, fontSize: 16 }}>
+                            {(form.name || 'B').slice(0, 1).toUpperCase()}
+                          </span>
+                        )}
+                      </div>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontSize: 12.5, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {form.legal_name || form.name || 'Your Business Name'}
+                        </div>
+                        <div style={{ fontSize: 10, opacity: 0.85, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {form.city ? `${form.city}, ` : ''}{form.state || 'Karnataka'}
+                        </div>
+                        <div style={{ fontSize: 9.5, opacity: 0.75, marginTop: 1 }}>
+                          GSTIN: {form.gstin || '29AAAAA1111A1Z1'}
+                        </div>
+                      </div>
+                    </div>
+                    <div style={{ textAlign: 'right', flexShrink: 0, borderLeft: '1px solid rgba(255,255,255,0.25)', paddingLeft: 10 }}>
+                      <div style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.04em', opacity: 0.85 }}>Preview</div>
+                      <div style={{ fontSize: 11, fontWeight: 700 }}>INVOICE</div>
+                      <div style={{ fontSize: 9.5, opacity: 0.85 }}>{form.invoice_prefix || 'INV'}-1001</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               <div className="form-grid">
                 <Field label="Business name (shown to customers)" req><input className="input" value={form.name || ''} onChange={(e) => set('name', e.target.value)} /></Field>
                 <Field label="Legal / registered name"><input className="input" value={form.legal_name || ''} onChange={(e) => set('legal_name', e.target.value)} /></Field>

@@ -250,6 +250,57 @@ function DocViewer({ doc, party, payments, business, onClose, onEdit, onShare, o
           </>
         }
       >
+        {/* Business Branding Banner */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          background: 'var(--surface)',
+          border: '1px solid var(--line)',
+          borderRadius: 10,
+          padding: '11px 15px',
+          marginBottom: 14,
+          flexWrap: 'wrap',
+          gap: 12
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            {business.logo_url ? (
+              <div style={{
+                width: 48, height: 48, borderRadius: 8, background: '#fff',
+                border: '1px solid var(--line)', display: 'flex', alignItems: 'center',
+                justifyContent: 'center', padding: 3, flexShrink: 0
+              }}>
+                <img src={business.logo_url} alt="Logo" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
+              </div>
+            ) : (
+              <div style={{
+                width: 44, height: 44, borderRadius: 8, background: business.color || '#4f46e5',
+                color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 18, fontWeight: 700, flexShrink: 0
+              }}>
+                {(business.name || 'B').slice(0, 1).toUpperCase()}
+              </div>
+            )}
+            <div>
+              <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ink)' }}>{business.legal_name || business.name}</div>
+              <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 1 }}>
+                {[business.address, business.city, business.state].filter(Boolean).join(', ')}
+              </div>
+              <div style={{ fontSize: 11.5, color: 'var(--ink-2)', marginTop: 1, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                {business.gstin && <span><b>GSTIN:</b> {business.gstin}</span>}
+                {business.phone && <span><b>Ph:</b> {business.phone}</span>}
+              </div>
+            </div>
+          </div>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: business.color || 'var(--brand)' }}>
+              {TYPE_LABEL[doc.type] || 'TAX INVOICE'}
+            </div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ink)' }}>{doc.number}</div>
+            <div style={{ fontSize: 12, color: 'var(--muted)' }}>Date: {fmtDate(doc.date)}</div>
+          </div>
+        </div>
+
         <div className="grid g4" style={{ marginBottom: 14 }}>
           <MiniStat label="Invoice total" value={money(doc.total)} />
           <MiniStat label="Paid" value={money(doc.paid_amount)} tone="pos" />
