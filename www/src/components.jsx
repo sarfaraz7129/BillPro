@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon, initials, colorFor } from './ui.jsx';
 import { money } from './api.js';
@@ -225,6 +225,10 @@ export function Picker({ items, value, onChange, placeholder, onAddNew, render, 
   useEffect(() => {
     setHighlightIndex(0);
   }, [needle]);
+
+  useLayoutEffect(() => {
+    if (open) updateCoords();
+  }, [open, q]);
 
   useEffect(() => {
     if (!open) return;

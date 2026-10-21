@@ -6,7 +6,7 @@ import { moneyShort } from './api.js';
  * Multi-business switcher. Shows the active business in the top bar, lets you
  * hop between businesses, jump to the consolidated group view, or add a new one.
  */
-export default function BusinessSwitcher({ businesses, active, onSwitch, onAdd, onGroup, group }) {
+export default function BusinessSwitcher({ businesses, active, onSwitch, onAdd, onGroup, onSettings, group }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
   useEffect(() => {
@@ -64,6 +64,11 @@ export default function BusinessSwitcher({ businesses, active, onSwitch, onAdd, 
             </div>
           ))}
           <hr />
+          {onSettings && (
+            <div className="add" style={{ color: 'var(--ink)' }} onClick={() => { onSettings(); setOpen(false); }}>
+              <Icon.settings size={15} /> Business settings & logo
+            </div>
+          )}
           <div className="add" onClick={() => { onAdd(); setOpen(false); }}>
             <Icon.plus size={15} /> Add a new business
           </div>
