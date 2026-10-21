@@ -5,6 +5,7 @@ const { auth, loadBusiness } = require('../middleware');
 const { documentPdf, statementPdf, tablePdf, money } = require('../lib/pdf');
 const { hsnSummary, round2, stateName } = require('../lib/gst');
 const { partyBalance } = require('../lib/service');
+const { istToday } = require('../lib/time');
 
 const router = express.Router();
 router.use(auth, loadBusiness);
@@ -71,8 +72,9 @@ router.get('/stock', async (req, res, next) => {
 /** GSTR-1 summary PDF for the accountant. */
 router.get('/gstr1', async (req, res, next) => {
   try {
-    const from = req.query.from || new Date().toISOString().slice(0, 8) + '01';
-    const to = req.query.to || new Date().toISOString().slice(0, 10);
+    const today = istToday();
+    const from = req.query.from || today.slice(0, 8) + '01';
+    const to = req.query.to || today;
     const docs = db.prepare("SELECT * FROM documents WHERE business_id=? AND type='sale' AND status='active' AND date BETWEEN ? AND ?").all(req.business.id, from, to);
     const lines = [];
     docs.forEach((d) => lines.push(...JSON.parse(d.items)));

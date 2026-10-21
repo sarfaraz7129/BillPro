@@ -4,6 +4,7 @@ const { db } = require('../db');
 const { auth, loadBusiness } = require('../middleware');
 const { round2 } = require('../lib/gst');
 const { logActivity } = require('../lib/service');
+const { istToday } = require('../lib/time');
 
 const router = express.Router();
 router.use(auth, loadBusiness);
@@ -67,7 +68,7 @@ router.post('/', (req, res) => {
   const product = db.prepare('SELECT * FROM products WHERE id = ?').get(info.lastInsertRowid);
   if (Number(b.stock)) {
     db.prepare('INSERT INTO stock_moves (business_id, product_id, qty, date, reason, rate, notes) VALUES (?,?,?,?,?,?,?)')
-      .run(req.business.id, product.id, Number(b.stock), new Date().toISOString().slice(0, 10), 'opening', product.purchase_price, 'Opening stock');
+      .run(req.business.id, product.id, Number(b.stock), istToday(), 'opening', product.purchase_price, 'Opening stock');
   }
   logActivity(req.business.id, req.user.id, 'product.created', b.name);
   res.status(201).json({ product });
@@ -111,7 +112,7 @@ router.post('/:id/stock', (req, res) => {
   if (!p) return res.status(404).json({ error: 'Product not found' });
   const delta = Number(req.body?.qty);
   if (!delta) return res.status(400).json({ error: 'Quantity must be a non-zero number (use a negative number to remove stock)' });
-  const date = req.body?.date || new Date().toISOString().slice(0, 10);
+  const date = req.body?.date || istToday();
   db.prepare('INSERT INTO stock_moves (business_id, product_id, qty, date, reason, rate, notes) VALUES (?,?,?,?,?,?,?)')
     .run(req.business.id, p.id, delta, date, 'adjustment', Number(req.body?.rate) || p.purchase_price, req.body?.notes || 'Stock adjustment');
   db.prepare('UPDATE products SET stock = stock + ? WHERE id = ?').run(delta, p.id);
@@ -173,7 +174,7 @@ router.post('/bulk', (req, res) => {
   let created = 0;
   let updated = 0;
   const errors = [];
-  const todayDate = new Date().toISOString().slice(0, 10);
+  const todayDate = istToday();
 
   const tx = db.transaction(() => {
     items.forEach((raw, idx) => {

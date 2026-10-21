@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { api, setToken, setBizId, getBizId, getToken } from './api.js';
+import { api, setToken, setBizId, getBizId, getToken, syncServerTime } from './api.js';
 import { Icon, initials, colorFor } from './ui.jsx';
 import { Toasts, Modal, Field, GstRateInput } from './components.jsx';
 import BusinessSwitcher from './BusinessSwitcher.jsx';
@@ -101,6 +101,9 @@ export default function App() {
   }, [toast]);
 
   useEffect(() => {
+    // Authoritative Indian Standard Time (+5:30) sync at software level
+    api.time().then((t) => { if (t && t.epoch) syncServerTime(t.epoch); }).catch(() => {});
+
     const t = getToken();
     if (!t) {
       setBooting(false);
@@ -245,7 +248,7 @@ export default function App() {
             <>
               {page === 'dashboard' && <Dashboard business={active} goto={goto} toast={toast} />}
               {page === 'pos' && <POS business={active} toast={toast} />}
-              {page === 'billing' && <Billing business={active} initialType={nav.type} initialDocId={nav.docId} goto={goto} toast={toast} />}
+              {page === 'billing' && <Billing business={active} user={user} initialType={nav.type} initialDocId={nav.docId} goto={goto} toast={toast} />}
               {page === 'khata' && <Khata business={active} initialType={nav.type} initialPartyId={nav.partyId} toast={toast} />}
               {page === 'inventory' && <Inventory business={active} toast={toast} />}
               {page === 'reports' && <Reports business={active} toast={toast} />}

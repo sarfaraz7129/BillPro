@@ -4,6 +4,7 @@ const { db } = require('../db');
 const { auth, loadBusiness } = require('../middleware');
 const { round2 } = require('../lib/gst');
 const { logActivity } = require('../lib/service');
+const { istToday } = require('../lib/time');
 
 const router = express.Router();
 router.use(auth, loadBusiness);
@@ -37,10 +38,11 @@ router.post('/', (req, res) => {
   const party = db.prepare('SELECT * FROM parties WHERE id = ? AND business_id = ?').get(b.partyId, req.business.id);
   if (!party) return res.status(404).json({ error: 'Party not found' });
   const mode = MODES.includes(b.mode) ? b.mode : 'cash';
+  const entryDate = (req.isAdmin && b.date) ? b.date : istToday();
   const info = db.prepare(`INSERT INTO transactions (business_id, party_id, type, amount, date, mode, reference, document_id, notes)
     VALUES (?,?,?,?,?,?,?,?,?)`)
     .run(req.business.id, party.id, b.type === 'you_gave' ? 'you_gave' : 'you_got', amount,
-      b.date || new Date().toISOString().slice(0, 10), mode, b.reference || null, b.documentId || null, b.notes || null);
+      entryDate, mode, b.reference || null, b.documentId || null, b.notes || null);
   logActivity(req.business.id, req.user.id, 'payment.recorded', `${party.name} ${b.type === 'you_gave' ? 'paid out' : 'received'} ${amount}`);
   res.status(201).json({
     transaction: db.prepare('SELECT * FROM transactions WHERE id = ?').get(info.lastInsertRowid),
@@ -76,9 +78,10 @@ router.post('/interest', (req, res) => {
   const onAmount = Number(b.onAmount) || currentBalance(party.id);
   if (onAmount <= 0) return res.status(400).json({ error: 'No outstanding balance to charge interest on' });
   const interest = round2((onAmount * rate * days) / 36500);
+  const interestDate = (req.isAdmin && b.date) ? b.date : istToday();
   const info = db.prepare(`INSERT INTO transactions (business_id, party_id, type, amount, date, mode, notes)
     VALUES (?,?,?,?,?,?,?)`)
-    .run(req.business.id, party.id, 'interest', interest, b.date || new Date().toISOString().slice(0, 10), 'cash',
+    .run(req.business.id, party.id, 'interest', interest, interestDate, 'cash',
       `Interest @${rate}% p.a. for ${days} days on ${round2(onAmount)}`);
   res.status(201).json({ transaction: db.prepare('SELECT * FROM transactions WHERE id = ?').get(info.lastInsertRowid), balance: currentBalance(party.id) });
 });

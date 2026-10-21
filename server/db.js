@@ -30,7 +30,7 @@ CREATE TABLE IF NOT EXISTS users (
   permissions   TEXT NOT NULL DEFAULT '[]',          -- JSON array of permission keys
   active_business_id INTEGER,
   lang          TEXT NOT NULL DEFAULT 'en',
-  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at    TEXT NOT NULL DEFAULT (datetime('now', '+330 minutes'))
 );
 
 CREATE TABLE IF NOT EXISTS businesses (
@@ -65,7 +65,7 @@ CREATE TABLE IF NOT EXISTS businesses (
   terms             TEXT DEFAULT '1. Goods once sold will not be taken back.\n2. Interest @18% p.a. will be charged on overdue bills.\n3. Subject to Karnataka jurisdiction.',
   credit_days       INTEGER NOT NULL DEFAULT 30,
   color             TEXT NOT NULL DEFAULT '#4f46e5',
-  created_at        TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at        TEXT NOT NULL DEFAULT (datetime('now', '+330 minutes'))
 );
 
 CREATE TABLE IF NOT EXISTS parties (
@@ -89,7 +89,7 @@ CREATE TABLE IF NOT EXISTS parties (
   tag          TEXT,
   notes        TEXT,
   inactive     INTEGER NOT NULL DEFAULT 0,
-  created_at   TEXT NOT NULL DEFAULT (datetime('now')),
+  created_at   TEXT NOT NULL DEFAULT (datetime('now', '+330 minutes')),
   UNIQUE(business_id, name, type)
 );
 
@@ -110,7 +110,7 @@ CREATE TABLE IF NOT EXISTS products (
   low_stock_at  REAL NOT NULL DEFAULT 0,
   tax_inclusive INTEGER NOT NULL DEFAULT 0,
   inactive      INTEGER NOT NULL DEFAULT 0,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at    TEXT NOT NULL DEFAULT (datetime('now', '+330 minutes'))
 );
 
 CREATE TABLE IF NOT EXISTS documents (
@@ -156,7 +156,7 @@ CREATE TABLE IF NOT EXISTS documents (
   ack_date      TEXT,
   signed_by     TEXT,
   created_by    INTEGER,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+  created_at    TEXT NOT NULL DEFAULT (datetime('now', '+330 minutes')),
   UNIQUE(business_id, type, number)
 );
 
@@ -171,7 +171,7 @@ CREATE TABLE IF NOT EXISTS transactions (
   reference    TEXT,
   document_id  INTEGER REFERENCES documents(id) ON DELETE SET NULL,
   notes        TEXT,
-  created_at   TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at   TEXT NOT NULL DEFAULT (datetime('now', '+330 minutes'))
 );
 
 CREATE TABLE IF NOT EXISTS stock_moves (
@@ -184,7 +184,7 @@ CREATE TABLE IF NOT EXISTS stock_moves (
   document_id  INTEGER REFERENCES documents(id) ON DELETE SET NULL,
   rate         REAL NOT NULL DEFAULT 0,
   notes        TEXT,
-  created_at   TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at   TEXT NOT NULL DEFAULT (datetime('now', '+330 minutes'))
 );
 
 CREATE TABLE IF NOT EXISTS staff (
@@ -196,7 +196,7 @@ CREATE TABLE IF NOT EXISTS staff (
   role         TEXT NOT NULL DEFAULT 'staff',   -- admin | accountant | staff
   permissions  TEXT NOT NULL DEFAULT '[]',
   invited      INTEGER NOT NULL DEFAULT 0,
-  created_at   TEXT NOT NULL DEFAULT (datetime('now')),
+  created_at   TEXT NOT NULL DEFAULT (datetime('now', '+330 minutes')),
   UNIQUE(business_id, email)
 );
 
@@ -206,7 +206,7 @@ CREATE TABLE IF NOT EXISTS activity (
   user_id     INTEGER,
   action      TEXT NOT NULL,
   detail      TEXT,
-  created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at  TEXT NOT NULL DEFAULT (datetime('now', '+330 minutes'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_parties_biz   ON parties(business_id, type);

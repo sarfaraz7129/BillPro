@@ -13,7 +13,7 @@ const TABS = [
   { id: 'expense', label: 'Expenses', icon: 'wallet' }
 ];
 
-export default function Billing({ business, initialType, initialDocId, goto, toast }) {
+export default function Billing({ business, user, initialType, initialDocId, goto, toast }) {
   const [type, setType] = useState(initialType || 'sale');
   const [rows, setRows] = useState([]);
   const [totals, setTotals] = useState(null);
@@ -166,7 +166,7 @@ export default function Billing({ business, initialType, initialDocId, goto, toa
 
       {editor && (
         <DocumentEditor
-          business={business} type={editor.type} doc={editor.doc} toast={toast}
+          business={business} type={editor.type} doc={editor.doc} user={user} toast={toast}
           onClose={() => setEditor(null)}
           onSaved={(doc) => { setEditor(null); setView(null); toast(`${TYPE_LABEL[doc.type]} ${doc.number} saved`, 'ok'); load(); api.document(doc.id).then(setView); }}
         />

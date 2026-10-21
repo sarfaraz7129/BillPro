@@ -3,6 +3,8 @@
  * Indian GST + money helpers shared by the API and the PDF generator.
  */
 
+const { istToday } = require('./time');
+
 const ONES = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten',
   'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
 const TENS = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
@@ -262,7 +264,7 @@ function buildEinvoicePayload(doc, business, party) {
       Nm: business.bank_name || '',
       AccNo: business.bank_account_no || '',
       Mode: 'Cash',
-      FinDt: toEinvDate(new Date().toISOString().slice(0, 10)),
+      FinDt: toEinvDate(istToday()),
       PayInstr: business.bank_ifsc || ''
     },
     RefDtls: {},

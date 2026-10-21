@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { api, money, today, pdfUrl } from '../src/api.js';
+import { api, money, today, pdfUrl, isAdmin } from '../src/api.js';
 import { Icon } from '../src/ui.jsx';
 import { Field, Picker, Modal, GstRateInput } from '../src/components.jsx';
 
@@ -17,7 +17,8 @@ const blank = (business, type) => ({
  * Full GST document editor used for invoices, purchase bills, quotations and expenses.
  * Mirrors the server-side totals maths so the preview matches the saved invoice exactly.
  */
-export default function DocumentEditor({ business, type, doc, onClose, onSaved, toast }) {
+export default function DocumentEditor({ business, type, doc, user, onClose, onSaved, toast }) {
+  const isUserAdmin = isAdmin(user);
   const [form, setForm] = useState(() => {
     if (!doc) return blank(business, type);
     return {
@@ -100,7 +101,8 @@ export default function DocumentEditor({ business, type, doc, onClose, onSaved, 
     if (type !== 'expense' && !form.partyId && !form.partyName) return setErr('Choose a customer/supplier, or type a name for a walk-in party.');
     setSaving(true);
     try {
-      const payload = { ...form, items: valid, supplyType };
+      const finalDate = isUserAdmin ? form.date : (doc ? doc.date : today());
+      const payload = { ...form, date: finalDate, items: valid, supplyType };
       const res = doc ? await api.updateDocument(doc.id, payload) : await api.createDocument(payload);
       const savedDoc = res.document;
       if (andPrint && savedDoc && savedDoc.id) {
@@ -217,7 +219,34 @@ export default function DocumentEditor({ business, type, doc, onClose, onSaved, 
               </>
             )}
         </Field>
-        <Field label="Document date"><input type="date" className="input" value={form.date} onChange={(e) => set('date', e.target.value)} /></Field>
+        <Field
+          label={
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+              <span>Document date</span>
+              {!isUserAdmin && (
+                <span className="badge sm warn" style={{ fontSize: 10, padding: '1px 6px', fontWeight: 650 }}>
+                  🔒 Locked · Admin only
+                </span>
+              )}
+            </div>
+          }
+          hint={
+            isUserAdmin
+              ? 'Admin authorized · Indian Standard Time (+5:30)'
+              : 'Indian Standard Time (+5:30) · Client system clock sync disabled'
+          }
+        >
+          <input
+            type="date"
+            className="input"
+            value={form.date}
+            disabled={!isUserAdmin}
+            readOnly={!isUserAdmin}
+            onChange={(e) => isUserAdmin && set('date', e.target.value)}
+            style={!isUserAdmin ? { backgroundColor: 'var(--bg-subtle, #f8fafc)', cursor: 'not-allowed', opacity: 0.85, fontWeight: 600 } : {}}
+            title={!isUserAdmin ? 'Only Admin can edit or backdate bill date. Region: Indian Standard Time (+5:30).' : 'Indian Standard Time (+5:30)'}
+          />
+        </Field>
         {type !== 'expense' && <Field label="Due date"><input type="date" className="input" value={form.dueDate} onChange={(e) => set('dueDate', e.target.value)} /></Field>}
         {type !== 'expense' && (
           <>

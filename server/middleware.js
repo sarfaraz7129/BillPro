@@ -54,6 +54,23 @@ function auth(req, res, next) {
   }
 }
 
+/** Determine effective role for this user within a specific business. */
+function getEffectiveRole(user, business) {
+  if (!user) return 'staff';
+  if (business && business.owner_id === user.id) return 'owner';
+  if (user.role === 'admin' || user.role === 'owner') return user.role;
+  if (business && business.id) {
+    const staffRow = db.prepare('SELECT role FROM staff WHERE business_id = ? AND lower(email) = ?')
+      .get(business.id, (user.email || '').toLowerCase());
+    if (staffRow && staffRow.role) return staffRow.role;
+  }
+  return user.role || 'staff';
+}
+
+function isAdminRole(role) {
+  return role === 'admin' || role === 'owner';
+}
+
 /**
  * Resolves the business the request is acting on (X-Business-Id header, or the
  * user's active business) and checks the user actually has access to it.
@@ -69,6 +86,8 @@ function loadBusiness(req, res, next) {
   if (!biz) return res.status(400).json({ error: 'No business selected. Create one first.' });
   req.business = biz;
   req.businesses = list;
+  req.userRole = getEffectiveRole(req.user, biz);
+  req.isAdmin = isAdminRole(req.userRole);
   next();
 }
 
@@ -82,4 +101,4 @@ const PERMISSIONS = {
   staff: 'Manage staff & roles'
 };
 
-module.exports = { sign, auth, loadBusiness, getUserBusinesses, JWT_SECRET, PERMISSIONS };
+module.exports = { sign, auth, loadBusiness, getUserBusinesses, getEffectiveRole, isAdminRole, JWT_SECRET, PERMISSIONS };

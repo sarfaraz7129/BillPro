@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { api, money, fmtDate } from './api.js';
+import { api, money, fmtDate, fmtDateTime } from './api.js';
 import { Icon } from './ui.jsx';
 import { Modal } from './components.jsx';
 
@@ -56,6 +56,7 @@ export default function ThermalReceiptModal({ doc, business, onClose, onWhatsApp
       business.phone ? center(`Tel: ${business.phone}`) : '',
       line,
       row(`Tax Invoice: ${doc.number}`, fmtDate(doc.date)),
+      row('Time (IST):', fmtDateTime(doc.created_at || doc.date)),
       row(`Customer: ${doc.party_name || 'Walk-in'}`, doc.payment_mode ? `Mode: ${doc.payment_mode.toUpperCase()}` : ''),
       line,
       row('Item', 'Qty x Rate   Total'),
@@ -173,6 +174,10 @@ export default function ThermalReceiptModal({ doc, business, onClose, onWhatsApp
           <div style={{ display: 'flex', justifyContent: 'space-between' }}>
             <span><b>Bill:</b> {doc.number}</span>
             <span>{fmtDate(doc.date)}</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#64748b', marginTop: 1 }}>
+            <span>Standard Time:</span>
+            <span>{fmtDateTime(doc.created_at || doc.date)}</span>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 2 }}>
             <span><b>Party:</b> {doc.party_name || 'Walk-in Customer'}</span>

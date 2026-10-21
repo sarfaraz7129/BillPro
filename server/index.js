@@ -30,6 +30,18 @@ app.use((req, res, next) => {
   next();
 });
 
+const { istToday, istTime, istIso, formatIstDateTime } = require('./lib/time');
+
+// Global Standard Indian Time (+5:30) and server time headers
+app.use((req, res, next) => {
+  const nowMs = Date.now();
+  res.setHeader('X-Server-Time', String(nowMs));
+  res.setHeader('X-IST-Date', istToday(nowMs));
+  res.setHeader('X-IST-Time', istTime(nowMs));
+  res.setHeader('X-IST-Iso', istIso(nowMs));
+  next();
+});
+
 const WWW = path.join(__dirname, '..', 'www');
 
 // PWA files must be served from the app root so the service worker scope covers the whole site.
@@ -37,10 +49,36 @@ app.get('/sw.js', (req, res) => res.sendFile(path.join(WWW, 'sw.js')));
 app.get('/manifest.webmanifest', (req, res) => res.sendFile(path.join(WWW, 'manifest.webmanifest')));
 app.use('/icons', express.static(path.join(WWW, 'icons'), { maxAge: '7d' }));
 
+// Authoritative Indian Standard Time endpoint (+05:30)
+app.get('/api/time', (req, res) => {
+  const nowMs = Date.now();
+  res.json({
+    ok: true,
+    epoch: nowMs,
+    ist_date: istToday(nowMs),
+    ist_time: istTime(nowMs),
+    ist_iso: istIso(nowMs),
+    formatted: formatIstDateTime(nowMs),
+    timezone: 'Asia/Kolkata',
+    offset: '+05:30'
+  });
+});
+
 app.get('/api/health', (req, res) => {
   const businesses = db.prepare('SELECT COUNT(*) n FROM businesses').get().n;
   const docs = db.prepare('SELECT COUNT(*) n FROM documents').get().n;
-  res.json({ ok: true, service: 'BillPro', version: '1.0.0', businesses, documents: docs, time: new Date().toISOString() });
+  res.json({
+    ok: true,
+    service: 'BillPro',
+    version: '1.0.0',
+    businesses,
+    documents: docs,
+    time: istIso(),
+    ist_date: istToday(),
+    ist_time: istTime(),
+    epoch: Date.now(),
+    offset: '+05:30'
+  });
 });
 
 app.use('/api/auth', authRoutes.router);

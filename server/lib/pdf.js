@@ -6,6 +6,7 @@
  */
 const PDFDocument = require('pdfkit');
 const QRCode = require('qrcode');
+const { formatIstDateTime, istToday } = require('./time');
 const { amountInWords, hsnSummary, round2 } = require('./gst');
 
 const INK = '#0f172a';
@@ -258,7 +259,7 @@ function statementPdf(business, party, entries, openingLabel) {
     pdf.fontSize(9).font('Helvetica').fillColor(MUTED).text([business.address, business.city, business.state].filter(Boolean).join(', '), 40, 56);
     pdf.text(business.gstin ? `GSTIN: ${business.gstin}` : '', 40, 68);
     pdf.fontSize(14).font('Helvetica-Bold').fillColor(INK).text('ACCOUNT STATEMENT', 380, 40, { width: 196, align: 'right' });
-    pdf.fontSize(9).font('Helvetica').fillColor(MUTED).text(`Generated ${new Date().toISOString().slice(0, 10)}`, 380, 58, { width: 196, align: 'right' });
+    pdf.fontSize(9).font('Helvetica').fillColor(MUTED).text(`Generated ${formatIstDateTime()}`, 380, 58, { width: 196, align: 'right' });
 
     pdf.fontSize(10).font('Helvetica-Bold').fillColor(INK).text(party.name, 40, 92);
     pdf.font('Helvetica').fontSize(8.5).fillColor(MUTED)
@@ -312,7 +313,7 @@ function tablePdf(title, business, columns, rows, subtitle) {
     pdf.fontSize(15).font('Helvetica-Bold').fillColor(INK).text(title, 36, 36);
     pdf.fontSize(9).font('Helvetica').fillColor(MUTED).text(`${business.legal_name || business.name}${business.gstin ? '  |  GSTIN ' + business.gstin : ''}`, 36, 56);
     if (subtitle) pdf.text(subtitle, 36, 68);
-    pdf.fontSize(8).text(`Generated ${new Date().toISOString().slice(0, 10)}`, 36, 80);
+    pdf.fontSize(8).text(`Generated ${formatIstDateTime()}`, 36, 80);
 
     const colW = columns.map((c) => (W / columns.length) * (c.weight || 1));
     let y = 100;

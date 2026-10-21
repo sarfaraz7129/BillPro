@@ -5,6 +5,7 @@ const { db } = require('../db');
 const { auth, loadBusiness } = require('../middleware');
 const { buildDocument, DOC_COLS, DOC_PLACEHOLDERS, docValues, postStock, unwindStock, logActivity, partyBalance } = require('../lib/service');
 const { buildEinvoicePayload, buildEwayBillPayload, round2, hsnSummary } = require('../lib/gst');
+const { istToday, istTime, istIso, istAddDays, formatIstDateTime } = require('../lib/time');
 
 const router = express.Router();
 router.use(auth, loadBusiness);
@@ -76,7 +77,24 @@ router.get('/:id', (req, res) => {
 router.post('/', (req, res) => {
   const type = req.body?.type || 'sale';
   if (!TYPES.includes(type)) return res.status(400).json({ error: `type must be one of ${TYPES.join(', ')}` });
-  const doc = buildDocument(req.business, req.body, type);
+
+  const body = { ...(req.body || {}) };
+  const todayIST = istToday();
+
+  // Role restriction: Only Admin/Owner can customize or backdate bill dates.
+  // Other roles (staff, accountant, etc.) are strictly locked to Indian Standard Time (+5:30).
+  if (!req.isAdmin) {
+    if (body.date && body.date !== todayIST) {
+      return res.status(403).json({
+        error: 'Permission denied: Only Admin can customize or backdate the bill date. Date is locked to Indian Standard Time (IST +05:30).'
+      });
+    }
+    body.date = todayIST;
+  } else {
+    body.date = body.date || todayIST;
+  }
+
+  const doc = buildDocument(req.business, body, type);
   const tx = db.transaction(() => {
     const info = db.prepare(`INSERT INTO documents (${DOC_COLS}) VALUES (${DOC_PLACEHOLDERS})`).run(...docValues(doc));
     doc.id = info.lastInsertRowid;
@@ -97,7 +115,19 @@ router.put('/:id', (req, res) => {
   const existing = getDoc(req, req.params.id);
   if (!existing) return res.status(404).json({ error: 'Document not found' });
   const body = { ...(req.body || {}), type: existing.type };
-  if (body.date === undefined) body.date = existing.date;
+
+  // Role restriction: Only Admin/Owner can edit the bill date of an existing invoice/bill.
+  if (!req.isAdmin) {
+    if (body.date !== undefined && body.date !== existing.date) {
+      return res.status(403).json({
+        error: 'Permission denied: Only Admin can edit the bill date of an existing invoice/bill.'
+      });
+    }
+    body.date = existing.date; // Enforce original date
+  } else {
+    if (body.date === undefined) body.date = existing.date;
+  }
+
   if (body.partyStateCode === undefined) body.partyStateCode = existing.party_state_code;
   const doc = buildDocument(req.business, body, existing.type, existing);
   const tx = db.transaction(() => {
@@ -150,9 +180,11 @@ router.post('/:id/duplicate', (req, res) => {
   const src = getDoc(req, req.params.id);
   if (!src) return res.status(404).json({ error: 'Document not found' });
   const items = JSON.parse(src.items).map((l) => ({ ...l, discountFlat: 0, docDiscount: 0 }));
+  const todayIST = istToday();
+  const targetDate = (req.isAdmin && req.body?.date) ? req.body.date : todayIST;
   const body = {
     type: src.type, partyId: src.party_id, partyName: src.party_name, partyGstin: src.party_gstin,
-    partyStateCode: src.party_state_code, date: new Date().toISOString().slice(0, 10),
+    partyStateCode: src.party_state_code, date: targetDate,
     items, paymentMode: src.payment_mode, notes: src.notes, status: 'active'
   };
   const doc = buildDocument(req.business, body, src.type);
@@ -172,7 +204,8 @@ router.post('/:id/payment', (req, res) => {
   const amount = round2(Number(req.body?.amount));
   if (!amount || amount <= 0) return res.status(400).json({ error: 'Enter a payment amount' });
   const mode = req.body?.mode || 'cash';
-  const date = req.body?.date || new Date().toISOString().slice(0, 10);
+  const todayIST = istToday();
+  const date = (req.isAdmin && req.body?.date) ? req.body.date : todayIST;
   const tx = db.transaction(() => {
     db.prepare(`INSERT INTO transactions (business_id, party_id, type, amount, date, mode, document_id, reference, notes)
       VALUES (?,?,?,?,?,?,?,?,?)`)
@@ -193,9 +226,9 @@ router.post('/:id/ewaybill', (req, res) => {
   if (!req.business.gstin) return res.status(400).json({ error: 'Add your GSTIN in business settings before generating an E-Way Bill' });
   const b = req.body || {};
   const party = doc.party_id ? db.prepare('SELECT * FROM parties WHERE id = ?').get(doc.party_id) : null;
-  const today = new Date().toISOString().slice(0, 10);
+  const today = istToday();
   const validDays = Number(b.validDays) || (doc.total > 50000 ? 4 : 1);
-  const validUpto = new Date(Date.now() + validDays * 86400000).toISOString().slice(0, 10);
+  const validUpto = istAddDays(validDays);
   // E-Way Bill numbers are 12 digits; locally we mint a reference in the same shape.
   const ewbNo = String(b.ewaybillNo || generateEwbNumber());
   const payload = buildEwayBillPayload({ ...doc, vehicle_no: b.vehicleNo || doc.vehicle_no, transport_doc_no: b.transportDocNo || doc.transport_doc_no, ewaybill_date: today }, req.business, party);
@@ -214,7 +247,7 @@ router.post('/:id/einvoice', async (req, res) => {
   // In production this JSON is POSTed to an IRP/GSP gateway; we mint a local IRN reference.
   const irn = b64(`${doc.number}|${doc.total}|${Date.now()}`);
   const ack = `${req.business.gstin.slice(0, 2)}${new Date().getFullYear()}${String(doc.id).padStart(6, '0')}`;
-  const now = new Date().toISOString().slice(0, 10);
+  const now = istToday();
   db.prepare('UPDATE documents SET irn = ?, ack_no = ?, ack_date = ? WHERE id = ?').run(irn, ack, now, doc.id);
   const qr = await QRCode.toDataURL(upiLink(req.business, doc), { margin: 1, width: 260 }).catch(() => null);
   res.json({ irn, ackNo: ack, ackDate: now, payload, qrDataUrl: qr });

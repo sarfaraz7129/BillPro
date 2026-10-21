@@ -4,6 +4,7 @@ const { db } = require('../db');
 const { auth, loadBusiness, getUserBusinesses, PERMISSIONS } = require('../middleware');
 const { normaliseGstin } = require('../lib/gst');
 const { logActivity } = require('../lib/service');
+const { istToday } = require('../lib/time');
 const { ALL_PERMS } = require('./auth');
 
 const router = express.Router();
@@ -173,7 +174,7 @@ router.delete('/:id/staff/:staffId', auth, (req, res) => {
 });
 
 function businessStats(businessId) {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = istToday();
   const monthStart = today.slice(0, 8) + '01';
   const one = (sql, ...args) => (db.prepare(sql).get(...args) || {});
   const sales = one("SELECT COALESCE(SUM(total),0) s, COUNT(*) n FROM documents WHERE business_id=? AND type='sale' AND status='active'", businessId).s;

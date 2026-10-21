@@ -10,6 +10,8 @@ if (process.env.BILLPRO_DB) require('fs').rmSync(process.env.BILLPRO_DB, { force
 const { seed, EMAIL, PASSWORD } = require('./seed-demo');
 seed();
 
+const jwt = require('jsonwebtoken');
+const { JWT_SECRET } = require('../server/middleware');
 const { app } = require('../server/index');
 
 let passed = 0;
@@ -179,6 +181,57 @@ async function run() {
   ok('a brand new business has no invoices (data isolation)', emptyB.body.documents.length === 0, emptyB.body.documents.length);
   const otherParty = await call('GET', `/api/parties/${kerala.id}`, undefined, { 'X-Business-Id': String(nb.body.business.id) });
   ok('cannot read another business\'s party', otherParty.status === 404, otherParty.status);
+
+  console.log('\n--- Indian Standard Time (+5:30) & Bill Date Role Lock ---');
+  const tApi = await call('GET', '/api/time');
+  ok('/api/time returns offset +05:30', tApi.body.offset === '+05:30', tApi.body.offset);
+  ok('/api/time returns Asia/Kolkata timezone', tApi.body.timezone === 'Asia/Kolkata', tApi.body.timezone);
+  ok('API headers contain x-server-time', Boolean(tApi.headers.get('x-server-time')), tApi.headers.get('x-server-time'));
+  ok('API headers contain x-ist-date', Boolean(tApi.headers.get('x-ist-date')), tApi.headers.get('x-ist-date'));
+
+  // Invite a staff member
+  const staffInvite = await call('POST', `/api/businesses/${bizA.id}/staff`, {
+    name: 'Test Cashier', email: 'cashier@test.in', role: 'staff', permissions: ['billing']
+  });
+  ok('invites cashier staff member', staffInvite.status === 201, staffInvite.status);
+
+  // Create a real staff user in DB and mint token
+  const { db } = require('../server/db');
+  const bcrypt = require('bcryptjs');
+  const staffUserId = db.prepare("INSERT INTO users (name, email, password_hash, role, permissions) VALUES (?,?,?,?,?)")
+    .run('Test Cashier', 'cashier@test.in', bcrypt.hashSync('pass1234', 10), 'staff', JSON.stringify(['billing'])).lastInsertRowid;
+  const staffJwt = jwt.sign({ uid: staffUserId, email: 'cashier@test.in', role: 'staff' }, JWT_SECRET);
+
+  // Staff attempts backdated invoice -> 403 Forbidden
+  const staffBackdate = await fetch(base + '/api/documents', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + staffJwt, 'X-Business-Id': String(bizA.id) },
+    body: JSON.stringify({ type: 'sale', date: '2024-01-01', items: [{ name: 'Rice', qty: 1, rate: 50, gstRate: 5 }] })
+  });
+  ok('staff forbidden from backdating bill date (403)', staffBackdate.status === 403, staffBackdate.status);
+
+  // Staff creates bill with default date -> 201 OK and locked to IST date
+  const staffNormal = await fetch(base + '/api/documents', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + staffJwt, 'X-Business-Id': String(bizA.id) },
+    body: JSON.stringify({ type: 'sale', items: [{ name: 'Rice', qty: 1, rate: 50, gstRate: 5 }] })
+  });
+  const staffDoc = await staffNormal.json();
+  ok('staff bill succeeds and defaults to IST date', staffNormal.status === 201 && staffDoc.document.date === tApi.body.ist_date, staffDoc.document?.date);
+
+  // Staff attempts to edit bill date of existing invoice -> 403 Forbidden
+  const staffEditDate = await fetch(base + `/api/documents/${staffDoc.document.id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + staffJwt, 'X-Business-Id': String(bizA.id) },
+    body: JSON.stringify({ date: '2025-01-01', items: [{ name: 'Rice', qty: 1, rate: 50, gstRate: 5 }] })
+  });
+  ok('staff forbidden from editing existing bill date (403)', staffEditDate.status === 403, staffEditDate.status);
+
+  // Admin/Owner can set custom date
+  const adminCustom = await call('POST', '/api/documents', {
+    type: 'sale', date: '2025-05-20', items: [{ name: 'Admin Custom Line', qty: 1, rate: 100, gstRate: 5 }]
+  });
+  ok('admin permitted to customize bill date', adminCustom.status === 201 && adminCustom.body.document.date === '2025-05-20', adminCustom.body.document?.date);
 
   server.close();
   console.log(`\n${passed} passed, ${failed} failed\n`);

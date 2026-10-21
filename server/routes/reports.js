@@ -3,6 +3,7 @@ const express = require('express');
 const { db } = require('../db');
 const { auth, loadBusiness } = require('../middleware');
 const { round2, hsnSummary, financialYear, stateName } = require('../lib/gst');
+const { istToday, istFinancialYear, istAddDays } = require('../lib/time');
 
 const router = express.Router();
 router.use(auth, loadBusiness);
@@ -10,15 +11,15 @@ router.use(auth, loadBusiness);
 /** Home dashboard numbers for the active business. */
 router.get('/dashboard', (req, res) => {
   const biz = req.business.id;
-  const today = new Date().toISOString().slice(0, 10);
+  const today = istToday();
   const monthStart = today.slice(0, 8) + '01';
-  const start6 = new Date(Date.now() - 5 * 86400000).toISOString().slice(0, 10);
+  const start6 = istAddDays(-5);
 
   const salesSeries = db.prepare(`SELECT date, SUM(total) s, COUNT(*) n FROM documents
     WHERE business_id = ? AND type='sale' AND status='active' AND date >= ? GROUP BY date ORDER BY date`).all(biz, start6);
   const days = [];
   for (let i = 5; i >= 0; i--) {
-    const d = new Date(Date.now() - i * 86400000).toISOString().slice(0, 10);
+    const d = istAddDays(-i);
     const row = salesSeries.find((r) => r.date === d);
     days.push({ date: d, total: round2(row ? row.s : 0), count: row ? row.n : 0 });
   }
@@ -195,7 +196,7 @@ router.get('/profit', (req, res) => {
 
 /** Receivables ageing buckets (0-30, 31-60, 61-90, 90+ days). */
 router.get('/aging', (req, res) => {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = istToday();
   const rows = db.prepare(`SELECT d.*, COALESCE(p.name, d.party_name) party FROM documents d LEFT JOIN parties p ON p.id=d.party_id
     WHERE d.business_id=? AND d.type='sale' AND d.status='active' AND d.due_amount>0 ORDER BY d.date`).all(req.business.id);
   const buckets = { '0-30': 0, '31-60': 0, '61-90': 0, '90+': 0 };
@@ -210,7 +211,7 @@ router.get('/aging', (req, res) => {
 
 /** Day book: everything that happened on one date. */
 router.get('/daybook', (req, res) => {
-  const date = req.query.date || new Date().toISOString().slice(0, 10);
+  const date = req.query.date || istToday();
   const docs = db.prepare('SELECT id, type, number, party_name, date, total, payment_status FROM documents WHERE business_id=? AND date=? AND status=? ORDER BY id').all(req.business.id, date, 'active');
   const txns = db.prepare(`SELECT t.*, p.name AS party_name FROM transactions t LEFT JOIN parties p ON p.id=t.party_id WHERE t.business_id=? AND t.date=? ORDER BY t.id`).all(req.business.id, date);
   const moves = db.prepare(`SELECT s.*, p.name AS product_name FROM stock_moves s LEFT JOIN products p ON p.id=s.product_id WHERE s.business_id=? AND s.date=? ORDER BY s.id`).all(req.business.id, date);
@@ -300,9 +301,9 @@ function partyRunningBalance(partyId) {
 }
 
 function period(req) {
-  const now = new Date();
-  const defaultTo = now.toISOString().slice(0, 10);
-  const defaultFrom = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
+  const today = istToday();
+  const defaultTo = today;
+  const defaultFrom = today.slice(0, 8) + '01';
   return { from: req.query.from || defaultFrom, to: req.query.to || defaultTo };
 }
 

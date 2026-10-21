@@ -6,6 +6,7 @@
  */
 const { db } = require('../db');
 const { round2, computeTotals, nextDocumentNumber, financialYear } = require('./gst');
+const { istToday, istFinancialYear } = require('./time');
 
 /**
  * Party balance, in "what they owe us" terms:
@@ -53,12 +54,12 @@ function refreshPaymentStatus(docId, paidOverride) {
 function takeNumber(businessId, type) {
   const biz = db.prepare('SELECT * FROM businesses WHERE id = ?').get(businessId);
   if (type === 'quotation') {
-    const fy = financialYear(new Date().toISOString());
+    const fy = istFinancialYear();
     const n = biz.quoter_counter + 1;
     db.prepare('UPDATE businesses SET quoter_counter = ? WHERE id = ?').run(n, businessId);
     return `${biz.quoter_prefix}-${fy}-${n}`;
   }
-  const fy = financialYear(new Date().toISOString());
+  const fy = istFinancialYear();
   const n = biz.invoice_counter + 1;
   db.prepare('UPDATE businesses SET invoice_counter = ? WHERE id = ?').run(n, businessId);
   return `${biz.invoice_prefix}-${fy}-${n}`;
@@ -105,7 +106,7 @@ function buildDocument(business, body, type, existing) {
     party_name: body.partyName || 'Walk-in Customer',
     party_gstin: body.partyGstin || null,
     party_state_code: body.partyStateCode || null,
-    date: body.date || new Date().toISOString().slice(0, 10),
+    date: body.date || istToday(),
     due_date: body.dueDate || null,
     place_of_supply: body.placeOfSupply || business.state_code,
     supply_type: supplyType,
