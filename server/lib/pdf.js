@@ -68,7 +68,13 @@ function render(doc, business, party, accent) {
     pdf.text(`Date: ${doc.date}`, 400, 56, { width: 175, align: 'right' });
     if (doc.due_date) pdf.text(`Due date: ${doc.due_date}`, 400, 68, { width: 175, align: 'right' });
     if (doc.status === 'cancelled') {
-      pdf.fillColor('#b91c1c').font('Helvetica-Bold').fontSize(20).text('CANCELLED', 380, 100, { width: 200, align: 'center' });
+      pdf.rect(470, 70, 105, 16).fill('#dc2626');
+      pdf.fillColor('#ffffff').font('Helvetica-Bold').fontSize(9).text('CANCELLED', 470, 74, { width: 105, align: 'center' });
+      pdf.save();
+      pdf.rotate(-25, { origin: [290, 420] });
+      pdf.fillColor('#dc2626').opacity(0.12).font('Helvetica-Bold').fontSize(58).text('CANCELLED', 40, 400, { width: 500, align: 'center', lineBreak: false });
+      pdf.restore();
+      pdf.opacity(1.0);
     }
 
     // ---------- parties ----------

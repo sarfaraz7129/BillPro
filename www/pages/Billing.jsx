@@ -142,6 +142,7 @@ export default function Billing({ business, user, initialType, initialDocId, got
                         >
                           <Icon.file size={14} />
                         </button>
+                        <a className="icon-btn" title="Download PDF" href={pdfUrl(`invoice/${r.id}`, true)} download={`${r.number}.pdf`}><Icon.download size={14} /></a>
                         <button className="icon-btn" title="Open A4 PDF" onClick={() => window.open(pdfUrl(`invoice/${r.id}`), '_blank')}><Icon.print size={14} /></button>
                         <button className="icon-btn" title="Edit" onClick={() => api.document(r.id).then((d) => setEditor({ type: d.document.type, doc: d.document }))}><Icon.edit size={14} /></button>
                         <button className="icon-btn danger" title={r.type === 'sale' ? 'Cancel' : 'Delete'} onClick={() => setConfirm(r)}><Icon.trash size={14} /></button>
@@ -243,7 +244,8 @@ function DocViewer({ doc, party, payments, business, onClose, onEdit, onShare, o
             {isSale && doc.due_amount > 0 && doc.status === 'active' && <button className="btn green" onClick={() => setPayOpen(true)}><Icon.rupee size={14} /> Receive payment</button>}
             <button className="btn" onClick={() => onDuplicate(doc)}><Icon.copy size={14} /> Duplicate</button>
             <button className="btn" onClick={() => onEdit(doc)}><Icon.edit size={14} /> Edit</button>
-            <button className="btn primary" onClick={() => window.open(pdfUrl(`invoice/${doc.id}`), '_blank')}><Icon.print size={14} /> Download PDF</button>
+            <a href={pdfUrl(`invoice/${doc.id}`, true)} download={`${doc.number}.pdf`} className="btn primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Icon.download size={14} /> Download PDF</a>
+            <a href={pdfUrl(`invoice/${doc.id}`)} target="_blank" rel="noreferrer" className="btn" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }} title="Open print-ready PDF in new tab"><Icon.print size={14} /> Print</a>
             <button className="btn" onClick={onClose}>Close</button>
           </>
         }

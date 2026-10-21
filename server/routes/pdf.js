@@ -10,9 +10,9 @@ const { istToday } = require('../lib/time');
 const router = express.Router();
 router.use(auth, loadBusiness);
 
-const send = (res, buf, filename) => {
+const send = (res, buf, filename, asDownload = false) => {
   res.setHeader('Content-Type', 'application/pdf');
-  res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
+  res.setHeader('Content-Disposition', `${asDownload ? 'attachment' : 'inline'}; filename="${filename}"`);
   res.send(buf);
 };
 
@@ -23,7 +23,7 @@ router.get('/invoice/:id', async (req, res, next) => {
     if (!doc) return res.status(404).json({ error: 'Document not found' });
     const party = doc.party_id ? db.prepare('SELECT * FROM parties WHERE id = ?').get(doc.party_id) : null;
     const buf = await documentPdf(doc, req.business, party);
-    send(res, buf, `${doc.number.replace(/[^\w-]/g, '_')}.pdf`);
+    send(res, buf, `${doc.number.replace(/[^\w-]/g, '_')}.pdf`, req.query.download === '1');
   } catch (e) { next(e); }
 });
 

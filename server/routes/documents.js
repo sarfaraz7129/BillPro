@@ -8,6 +8,23 @@ const { buildEinvoicePayload, buildEwayBillPayload, round2, hsnSummary } = requi
 const { istToday, istTime, istIso, istAddDays, formatIstDateTime } = require('../lib/time');
 
 const router = express.Router();
+
+/** Public direct PDF download link (used by WhatsApp, SMS, email, and direct bill download). */
+router.get('/:id/pdf', async (req, res, next) => {
+  try {
+    const doc = db.prepare('SELECT * FROM documents WHERE id = ?').get(req.params.id);
+    if (!doc) return res.status(404).send('Document not found');
+    const business = db.prepare('SELECT * FROM businesses WHERE id = ?').get(doc.business_id);
+    const party = doc.party_id ? db.prepare('SELECT * FROM parties WHERE id = ?').get(doc.party_id) : null;
+    const { documentPdf } = require('../lib/pdf');
+    const buf = await documentPdf(doc, business, party);
+    const filename = `${doc.number.replace(/[^\w-]/g, '_')}.pdf`;
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `${req.query.download === '1' ? 'attachment' : 'inline'}; filename="${filename}"`);
+    res.send(buf);
+  } catch (e) { next(e); }
+});
+
 router.use(auth, loadBusiness);
 
 const TYPES = ['sale', 'purchase', 'quotation', 'expense'];
