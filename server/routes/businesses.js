@@ -1,5 +1,6 @@
 'use strict';
 const express = require('express');
+const bcrypt = require('bcryptjs');
 const { db } = require('../db');
 const { auth, loadBusiness, getUserBusinesses, PERMISSIONS } = require('../middleware');
 const { normaliseGstin } = require('../lib/gst');
@@ -145,17 +146,50 @@ router.get('/:id/summary', auth, (req, res) => {
   res.json({ business: biz, stats: businessStats(biz.id) });
 });
 
-/** Invite a staff member / accountant to this business with a role + permissions. */
+/** Add/invite a staff member or accountant to this business with role, password and permissions. */
 router.post('/:id/staff', auth, (req, res) => {
   const biz = db.prepare('SELECT * FROM businesses WHERE id = ? AND owner_id = ?').get(req.params.id, req.user.id);
   if (!biz) return res.status(404).json({ error: 'Business not found' });
-  const { name, email, phone, role, permissions } = req.body || {};
+  const { name, email, phone, role, permissions, password } = req.body || {};
   if (!name || !email) return res.status(400).json({ error: 'Name and email are required' });
+  const cleanEmail = String(email).trim().toLowerCase();
+  const staffRole = role || 'staff';
+  const staffPerms = JSON.stringify(permissions || ALL_PERMS);
+
+  // Check if a user with this email already exists in users table
+  const existingUser = db.prepare('SELECT * FROM users WHERE email = ?').get(cleanEmail);
+
+  if (password && String(password).trim().length < 6) {
+    return res.status(400).json({ error: 'Password must be at least 6 characters' });
+  }
+
+  if (existingUser) {
+    // If a new password is provided, update it
+    if (password) {
+      const hash = bcrypt.hashSync(String(password).trim(), 10);
+      db.prepare(`UPDATE users SET password_hash = ?, role = COALESCE(?, role), active_business_id = COALESCE(active_business_id, ?) WHERE id = ?`)
+        .run(hash, staffRole, biz.id, existingUser.id);
+    }
+  } else {
+    // For new accounts, require a password so they can log in
+    const pwd = password ? String(password).trim() : 'staff1234'; // Default fallback if not provided
+    const hash = bcrypt.hashSync(pwd, 10);
+    db.prepare(`INSERT INTO users (name, email, phone, password_hash, role, permissions, active_business_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?)`)
+      .run(name, cleanEmail, phone || null, hash, staffRole, staffPerms, biz.id);
+  }
+
   try {
-    db.prepare('INSERT INTO staff (business_id, name, email, phone, role, permissions, invited) VALUES (?,?,?,?,?,?,1)')
-      .run(biz.id, name, String(email).toLowerCase(), phone || null, role || 'staff', JSON.stringify(permissions || ALL_PERMS));
+    const existingStaff = db.prepare('SELECT id FROM staff WHERE business_id = ? AND lower(email) = ?').get(biz.id, cleanEmail);
+    if (existingStaff) {
+      db.prepare('UPDATE staff SET name = ?, phone = ?, role = ?, permissions = ? WHERE id = ?')
+        .run(name, phone || null, staffRole, staffPerms, existingStaff.id);
+    } else {
+      db.prepare('INSERT INTO staff (business_id, name, email, phone, role, permissions, invited) VALUES (?,?,?,?,?,?,0)')
+        .run(biz.id, name, cleanEmail, phone || null, staffRole, staffPerms);
+    }
   } catch (e) {
-    return res.status(409).json({ error: 'That person is already added to this business' });
+    return res.status(409).json({ error: 'Failed to record staff member: ' + e.message });
   }
   res.status(201).json({ staff: db.prepare('SELECT * FROM staff WHERE business_id = ?').all(biz.id) });
 });
@@ -164,6 +198,32 @@ router.get('/:id/staff', auth, (req, res) => {
   const biz = db.prepare('SELECT * FROM businesses WHERE id = ? AND owner_id = ?').get(req.params.id, req.user.id);
   if (!biz) return res.status(404).json({ error: 'Business not found' });
   res.json({ staff: db.prepare('SELECT * FROM staff WHERE business_id = ?').all(biz.id) });
+});
+
+/** Reset or change password for a team member */
+router.put('/:id/staff/:staffId/password', auth, (req, res) => {
+  const biz = db.prepare('SELECT * FROM businesses WHERE id = ? AND owner_id = ?').get(req.params.id, req.user.id);
+  if (!biz) return res.status(404).json({ error: 'Business not found' });
+  const staffMember = db.prepare('SELECT * FROM staff WHERE id = ? AND business_id = ?').get(req.params.staffId, biz.id);
+  if (!staffMember) return res.status(404).json({ error: 'Staff member not found' });
+
+  const { newPassword } = req.body || {};
+  if (!newPassword || String(newPassword).trim().length < 6) {
+    return res.status(400).json({ error: 'New password must be at least 6 characters' });
+  }
+
+  const hash = bcrypt.hashSync(String(newPassword).trim(), 10);
+  const cleanEmail = staffMember.email.toLowerCase();
+  const user = db.prepare('SELECT id FROM users WHERE email = ?').get(cleanEmail);
+  if (user) {
+    db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(hash, user.id);
+  } else {
+    db.prepare(`INSERT INTO users (name, email, phone, password_hash, role, permissions, active_business_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?)`)
+      .run(staffMember.name, cleanEmail, staffMember.phone, hash, staffMember.role, staffMember.permissions, biz.id);
+  }
+
+  res.json({ ok: true, message: `Password for ${staffMember.name} updated successfully` });
 });
 
 router.delete('/:id/staff/:staffId', auth, (req, res) => {

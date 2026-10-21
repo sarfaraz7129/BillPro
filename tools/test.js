@@ -189,18 +189,16 @@ async function run() {
   ok('API headers contain x-server-time', Boolean(tApi.headers.get('x-server-time')), tApi.headers.get('x-server-time'));
   ok('API headers contain x-ist-date', Boolean(tApi.headers.get('x-ist-date')), tApi.headers.get('x-ist-date'));
 
-  // Invite a staff member
+  // Invite a staff member (which creates user account with password in users table)
   const staffInvite = await call('POST', `/api/businesses/${bizA.id}/staff`, {
-    name: 'Test Cashier', email: 'cashier@test.in', role: 'staff', permissions: ['billing']
+    name: 'Test Cashier', email: 'cashier@test.in', role: 'staff', permissions: ['billing'], password: 'password123'
   });
-  ok('invites cashier staff member', staffInvite.status === 201, staffInvite.status);
+  ok('invites cashier staff member and creates account', staffInvite.status === 201, staffInvite.status);
 
-  // Create a real staff user in DB and mint token
-  const { db } = require('../server/db');
-  const bcrypt = require('bcryptjs');
-  const staffUserId = db.prepare("INSERT INTO users (name, email, password_hash, role, permissions) VALUES (?,?,?,?,?)")
-    .run('Test Cashier', 'cashier@test.in', bcrypt.hashSync('pass1234', 10), 'staff', JSON.stringify(['billing'])).lastInsertRowid;
-  const staffJwt = jwt.sign({ uid: staffUserId, email: 'cashier@test.in', role: 'staff' }, JWT_SECRET);
+  // Verify staff can log in with their created password
+  const staffLogin = await call('POST', '/api/auth/login', { email: 'cashier@test.in', password: 'password123' });
+  ok('staff can log in with created password', staffLogin.status === 200 && Boolean(staffLogin.body.token), staffLogin.status);
+  const staffJwt = staffLogin.body.token;
 
   // Staff attempts backdated invoice -> 403 Forbidden
   const staffBackdate = await fetch(base + '/api/documents', {

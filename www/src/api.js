@@ -250,6 +250,7 @@ export const api = {
   groupOverview: () => request('GET', '/api/businesses/group/overview'),
   staff: (id) => request('GET', `/api/businesses/${id}/staff`),
   addStaff: (id, b) => request('POST', `/api/businesses/${id}/staff`, b),
+  resetStaffPassword: (businessId, staffId, newPassword) => request('PUT', `/api/businesses/${businessId}/staff/${staffId}/password`, { newPassword }),
   removeStaff: (id, sid) => request('DELETE', `/api/businesses/${id}/staff/${sid}`),
 
   // parties

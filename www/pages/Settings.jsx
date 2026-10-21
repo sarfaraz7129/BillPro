@@ -21,6 +21,7 @@ export default function Settings({ business, user, onBusinessSaved, onAddBusines
   const [busy, setBusy] = useState(false);
   const [staff, setStaff] = useState([]);
   const [staffModal, setStaffModal] = useState(null);
+  const [resetStaffModal, setResetStaffModal] = useState(null);
   const [confirm, setConfirm] = useState(null);
   const [me, setMe] = useState({ name: user.name, phone: user.phone || '', email: user.email });
   const [pw, setPw] = useState({ currentPassword: '', newPassword: '' });
@@ -202,7 +203,29 @@ export default function Settings({ business, user, onBusinessSaved, onAddBusines
                         <td className="muted">{s.email}</td><td className="muted">{s.phone || '—'}</td>
                         <td><span className="pill grey">{s.role}</span></td>
                         <td className="muted">{JSON.parse(s.permissions || '[]').join(', ')}</td>
-                        <td><button className="icon-btn danger" onClick={async () => { await api.removeStaff(business.id, s.id); setStaff(staff.filter((x) => x.id !== s.id)); toast('Access removed', 'ok'); }}><Icon.trash size={14} /></button></td>
+                        <td>
+                          <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', alignItems: 'center' }}>
+                            <button
+                              className="btn sm"
+                              style={{ fontSize: 11, padding: '3px 8px', display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                              title="Set or reset password for this user"
+                              onClick={() => setResetStaffModal({ staff: s, newPassword: '' })}
+                            >
+                              <Icon.lock size={11} /> Reset password
+                            </button>
+                            <button
+                              className="icon-btn danger"
+                              title="Remove access"
+                              onClick={async () => {
+                                await api.removeStaff(business.id, s.id);
+                                setStaff(staff.filter((x) => x.id !== s.id));
+                                toast('Access removed', 'ok');
+                              }}
+                            >
+                              <Icon.trash size={14} />
+                            </button>
+                          </div>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -250,13 +273,58 @@ export default function Settings({ business, user, onBusinessSaved, onAddBusines
           footer={<>
             <button className="btn" onClick={() => setStaffModal(null)}>Cancel</button>
             <button className="btn primary" onClick={async () => {
+              if (!staffModal.name || !staffModal.email) return toast('Name and email are required', 'err');
+              if (staffModal.password && staffModal.password.length < 6) return toast('Password must be at least 6 characters', 'err');
               try {
                 const r = await api.addStaff(business.id, staffModal);
-                setStaff(r.staff); setStaffModal(null); toast(`${staffModal.name} added with ${staffModal.role || 'staff'} access`, 'ok');
+                setStaff(r.staff);
+                setStaffModal(null);
+                toast(`${staffModal.name} added with ${staffModal.role || 'staff'} access`, 'ok');
               } catch (e) { toast(e.message, 'err'); }
             }}>Add person</button>
           </>}>
           <StaffForm value={staffModal} onChange={setStaffModal} />
+        </Modal>
+      )}
+
+      {resetStaffModal && (
+        <Modal
+          title={`Set password for ${resetStaffModal.staff.name}`}
+          sub={`${resetStaffModal.staff.email} · Role: ${resetStaffModal.staff.role}`}
+          onClose={() => setResetStaffModal(null)}
+          footer={<>
+            <button className="btn" onClick={() => setResetStaffModal(null)}>Cancel</button>
+            <button
+              className="btn primary"
+              onClick={async () => {
+                if (!resetStaffModal.newPassword || resetStaffModal.newPassword.length < 6) {
+                  return toast('Password must be at least 6 characters', 'err');
+                }
+                try {
+                  await api.resetStaffPassword(business.id, resetStaffModal.staff.id, resetStaffModal.newPassword);
+                  toast(`Password updated for ${resetStaffModal.staff.name}`, 'ok');
+                  setResetStaffModal(null);
+                } catch (e) {
+                  toast(e.message, 'err');
+                }
+              }}
+            >
+              Save new password
+            </button>
+          </>}
+        >
+          <div className="form-grid">
+            <Field label="New login password" req hint="Must be at least 6 characters">
+              <input
+                className="input"
+                type="password"
+                autoFocus
+                value={resetStaffModal.newPassword}
+                onChange={(e) => setResetStaffModal({ ...resetStaffModal, newPassword: e.target.value })}
+                placeholder="Enter new password"
+              />
+            </Field>
+          </div>
         </Modal>
       )}
 
@@ -277,8 +345,17 @@ function StaffForm({ value, onChange }) {
   return (
     <div className="form-grid">
       <Field label="Name" req><input className="input" value={value.name || ''} onChange={(e) => set('name', e.target.value)} autoFocus /></Field>
-      <Field label="Email" req><input className="input" type="email" value={value.email || ''} onChange={(e) => set('email', e.target.value)} /></Field>
-      <Field label="Mobile"><input className="input" value={value.phone || ''} onChange={(e) => set('phone', e.target.value)} /></Field>
+      <Field label="Email (login ID)" req><input className="input" type="email" value={value.email || ''} onChange={(e) => set('email', e.target.value)} placeholder="user@company.in" /></Field>
+      <Field label="Login Password" req hint="Initial password for account sign in (min 6 characters)">
+        <input
+          className="input"
+          type="password"
+          value={value.password || ''}
+          onChange={(e) => set('password', e.target.value)}
+          placeholder="Min 6 characters (e.g. staff1234)"
+        />
+      </Field>
+      <Field label="Mobile"><input className="input" value={value.phone || ''} onChange={(e) => set('phone', e.target.value)} placeholder="98XXXXXXXX" /></Field>
       <Field label="Role">
         <select className="input" value={role} onChange={(e) => set('role', e.target.value)}>
           {ROLES.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
