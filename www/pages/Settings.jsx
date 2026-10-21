@@ -27,8 +27,8 @@ export default function Settings({ business, user, onBusinessSaved, onAddBusines
   const [pw, setPw] = useState({ currentPassword: '', newPassword: '' });
   const [pwMsg, setPwMsg] = useState('');
 
-  useEffect(() => { setForm({ ...business }); }, [business.id]);
-  useEffect(() => { api.staff(business.id).then((r) => setStaff(r.staff)).catch(() => {}); }, [business.id]);
+  useEffect(() => { setForm({ ...business }); }, [business?.id, business?.logo_url, business?.name, business?.color]);
+  useEffect(() => { if (business?.id) api.staff(business.id).then((r) => setStaff(r.staff)).catch(() => {}); }, [business?.id]);
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 

@@ -81,14 +81,18 @@ router.get('/group/overview', auth, (req, res) => {
 });
 
 router.get('/:id', auth, (req, res) => {
-  const biz = db.prepare('SELECT * FROM businesses WHERE id = ? AND owner_id = ?').get(req.params.id, req.user.id);
+  const userBizs = getUserBusinesses(req.user.id, req.user.email);
+  const biz = userBizs.find((b) => b.id === Number(req.params.id));
   if (!biz) return res.status(404).json({ error: 'Business not found' });
   res.json({ business: biz, stats: businessStats(biz.id) });
 });
 
 router.put('/:id', auth, (req, res) => {
-  const biz = db.prepare('SELECT * FROM businesses WHERE id = ? AND owner_id = ?').get(req.params.id, req.user.id);
+  const userBizs = getUserBusinesses(req.user.id, req.user.email);
+  const biz = userBizs.find((b) => b.id === Number(req.params.id));
   if (!biz) return res.status(404).json({ error: 'Business not found' });
+  const role = getEffectiveRole(req.user, biz);
+  if (!isAdminRole(role)) return res.status(403).json({ error: 'Only business owners and admins can edit business settings' });
   const b = req.body || {};
   const gstin = normaliseGstin(b.gstin || biz.gstin);
   db.prepare(`UPDATE businesses SET name=@name, legal_name=@legal_name, gstin=@gstin, pan=@pan, address=@address,
