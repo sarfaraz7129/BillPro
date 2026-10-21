@@ -106,7 +106,7 @@ export default function POS({ business, toast }) {
         <div>
           <div className="card" style={{ marginBottom: 14 }}>
             <div className="card-b">
-              <div className="grid" style={{ gridTemplateColumns: '1fr 240px', gap: 10 }}>
+              <div className="pos-search-grid">
                 <div className="search">
                   <Icon.search size={15} />
                   <input className="input" placeholder="Search items by name, SKU or category…" value={q} onChange={(e) => setQ(e.target.value)} autoFocus />

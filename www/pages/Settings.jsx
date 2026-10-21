@@ -60,7 +60,7 @@ export default function Settings({ business, user, onBusinessSaved, onAddBusines
   ];
 
   return (
-    <div className="grid" style={{ gridTemplateColumns: '220px 1fr', alignItems: 'start' }}>
+    <div className="settings-layout">
       <div className="card">
         <div className="card-b" style={{ padding: 8 }}>
           {TABS.map((t) => {

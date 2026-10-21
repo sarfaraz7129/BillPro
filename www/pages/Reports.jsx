@@ -285,7 +285,7 @@ function Aging({ d }) {
   ];
   return (
     <>
-      <div className="grid" style={{ gridTemplateColumns: '1fr 1.6fr', marginBottom: 14 }}>
+      <div className="grid grid-split" style={{ marginBottom: 14 }}>
         <Card title="Receivables ageing" sub={`Total outstanding ${money(d.total)}`}>
           <Donut segments={segs.filter((s) => s.value > 0)} center={moneyShort(d.total)} />
         </Card>

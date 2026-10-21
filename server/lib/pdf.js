@@ -77,35 +77,50 @@ function render(doc, business, party, accent) {
     pdf.text('PLACE OF SUPPLY', 320, y, { width: 120 });
     pdf.text('TRANSPORT', 460, y, { width: 120 });
     y += 13;
-    pdf.font('Helvetica-Bold').fontSize(10).fillColor(INK).text((party && party.name) || doc.party_name || 'Walk-in Customer', 40, y, { width: 270 });
+    pdf.font('Helvetica-Bold').fontSize(9.5).fillColor(INK).text((party && party.name) || doc.party_name || 'Walk-in Customer', 40, y, { width: 270 });
+    let partyY = y + 13;
     pdf.font('Helvetica').fontSize(8.5).fillColor(MUTED);
     const partyAddr = party ? [party.address, party.city, party.state, party.pincode].filter(Boolean).join(', ') : '';
-    if (partyAddr) pdf.text(partyAddr, 40, y + 13, { width: 270 });
+    if (partyAddr) {
+      pdf.text(partyAddr, 40, partyY, { width: 270 });
+      partyY += pdf.heightOfString(partyAddr, { width: 270 }) + 3;
+    }
     const partyIds = [];
     if (party && party.gstin) partyIds.push(`GSTIN: ${party.gstin}`);
     if (party && party.phone) partyIds.push(`Ph: ${party.phone}`);
-    if (partyIds.length) pdf.text(partyIds.join('   '), 40, y + 24, { width: 270 });
+    if (partyIds.length) {
+      pdf.text(partyIds.join('   '), 40, partyY, { width: 270 });
+      partyY += 12;
+    }
 
     pdf.fillColor(INK).font('Helvetica').fontSize(8.5);
     pdf.text(`${doc.place_of_supply || ''}`, 320, y, { width: 130 });
     pdf.font('Helvetica-Bold').fontSize(8.5).text(doc.supply_type === 'inter' ? 'INTER-STATE' : 'INTRA-STATE', 320, y + 12, { width: 130 });
-    if (doc.ewaybill_no) pdf.font('Helvetica').fontSize(8).fillColor(MUTED).text(`EWB: ${doc.ewaybill_no}`, 320, y + 24, { width: 130 });
-    if (doc.irn) pdf.text(`IRN: ${String(doc.irn).slice(0, 24)}...`, 320, y + 34, { width: 130 });
+    let posExtraY = y + 24;
+    if (doc.ewaybill_no) {
+      pdf.font('Helvetica').fontSize(8).fillColor(MUTED).text(`EWB: ${doc.ewaybill_no}`, 320, posExtraY, { width: 130 });
+      posExtraY += 11;
+    }
+    if (doc.irn) {
+      pdf.font('Helvetica').fontSize(7.5).fillColor(MUTED).text(`IRN: ${String(doc.irn).slice(0, 24)}...`, 320, posExtraY, { width: 130 });
+      posExtraY += 11;
+    }
 
     pdf.fillColor(INK).font('Helvetica').fontSize(8.5);
-    if (doc.vehicle_no) pdf.text(`Vehicle: ${doc.vehicle_no}`, 460, y, { width: 120 });
-    if (doc.transport_doc_no) pdf.text(`LR No: ${doc.transport_doc_no}`, 460, y + 12, { width: 120 });
-    pdf.text(`Supply: ${doc.supply_type === 'inter' ? 'Inter' : 'Intra'}`, 460, y + 24, { width: 120 });
+    let transY = y;
+    if (doc.vehicle_no) { pdf.text(`Vehicle: ${doc.vehicle_no}`, 460, transY, { width: 120 }); transY += 12; }
+    if (doc.transport_doc_no) { pdf.text(`LR No: ${doc.transport_doc_no}`, 460, transY, { width: 120 }); transY += 12; }
+    pdf.text(`Supply: ${doc.supply_type === 'inter' ? 'Inter' : 'Intra'}`, 460, transY, { width: 120 }); transY += 12;
 
-    y = Math.max(y + 48, 170);
+    y = Math.max(partyY, posExtraY, transY, 172) + 8;
 
     // ---------- line items ----------
     const tableTop = y;
     const cols = [
       { label: '#', x: 40, w: 18, align: 'left' },
-      { label: 'ITEM / SERVICE', x: 60, w: 150, align: 'left' },
-      { label: 'HSN/SAC', x: 212, w: 48, align: 'left' },
-      { label: 'QTY', x: 262, w: 34, align: 'right' },
+      { label: 'ITEM / SERVICE', x: 60, w: 148, align: 'left' },
+      { label: 'HSN/SAC', x: 212, w: 46, align: 'left' },
+      { label: 'QTY', x: 260, w: 36, align: 'right' },
       { label: 'RATE', x: 298, w: 56, align: 'right' },
       { label: 'DISC', x: 356, w: 44, align: 'right' },
       { label: 'TAXABLE', x: 402, w: 58, align: 'right' },
@@ -116,7 +131,7 @@ function render(doc, business, party, accent) {
     const isInter = doc.supply_type === 'inter';
     if (isInter) {
       cols[8].label = 'IGST';
-      cols[8].w = 76;
+      cols[8].w = 78;
       cols.pop();
     }
 
@@ -127,10 +142,23 @@ function render(doc, business, party, accent) {
     let rowY = tableTop + 20;
     pdf.font('Helvetica').fontSize(8);
     lines.forEach((l, i) => {
-      if (rowY > 700) { pdf.addPage(); rowY = 50; }
-      const cellH = 16;
+      const rawName = String(l.name || '');
+      const itemName = rawName.length > 80 ? rawName.slice(0, 78) + '\u2026' : rawName;
+      const nameH = pdf.heightOfString(itemName, { width: cols[1].w });
+      const cellH = Math.max(16, Math.min(36, Math.ceil(nameH) + 4));
+
+      if (rowY + cellH > 660) {
+        pdf.addPage();
+        rowY = 50;
+        pdf.rect(40, rowY - 10, 536, 18).fill('#f1f5f9');
+        pdf.fillColor(INK).font('Helvetica-Bold').fontSize(7.5);
+        cols.forEach((c) => pdf.text(c.label, c.x, rowY - 4.5, { width: c.w, align: c.align }));
+        rowY += 14;
+        pdf.font('Helvetica').fontSize(8);
+      }
+
       pdf.fillColor(MUTED).text(String(i + 1), cols[0].x, rowY, { width: cols[0].w });
-      pdf.fillColor(INK).font('Helvetica-Bold').text(truncate(l.name, 42), cols[1].x, rowY, { width: cols[1].w, lineBreak: false });
+      pdf.fillColor(INK).font('Helvetica-Bold').text(itemName, cols[1].x, rowY, { width: cols[1].w });
       pdf.font('Helvetica');
       pdf.text(l.hsn || '-', cols[2].x, rowY, { width: cols[2].w });
       pdf.text(`${l.qty} ${l.unit || ''}`.trim(), cols[3].x, rowY, { width: cols[3].w, align: 'right' });
@@ -147,14 +175,21 @@ function render(doc, business, party, accent) {
       pdf.moveTo(40, rowY - 3).lineTo(576, rowY - 3).strokeColor(LINE).lineWidth(0.5).stroke();
     });
 
-    // ---------- totals ----------
-    rowY += 8;
-    const totalsX = 400;
+    // Check if totals and summary section fit on the current page
+    let summaryY = rowY + 10;
+    if (summaryY > 520) {
+      pdf.addPage();
+      summaryY = 50;
+    }
+
+    // ---------- totals (right column) ----------
+    let totalsY = summaryY;
+    const totalsX = 390;
     const row = (label, value, bold) => {
       pdf.font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(bold ? 9.5 : 8.5);
-      pdf.fillColor(bold ? INK : MUTED).text(label, totalsX, rowY, { width: 100 });
-      pdf.fillColor(INK).text(fmt(value), totalsX + 102, rowY, { width: 74, align: 'right' });
-      rowY += 14;
+      pdf.fillColor(bold ? INK : MUTED).text(label, totalsX, totalsY, { width: 106 });
+      pdf.fillColor(INK).text(fmt(value), totalsX + 108, totalsY, { width: 78, align: 'right' });
+      totalsY += 15;
     };
     row('Subtotal', doc.subtotal);
     if (doc.discount_amount) row(`Discount (${doc.discount_type === 'pct' ? doc.discount_value + '%' : 'flat'})`, -doc.discount_amount);
@@ -163,23 +198,27 @@ function render(doc, business, party, accent) {
     else { row('CGST', doc.cgst); row('SGST / UTGST', doc.sgst); }
     if (doc.cess) row('Cess', doc.cess);
     if (doc.round_off) row('Round off', doc.round_off);
-    pdf.moveTo(totalsX, rowY - 2).lineTo(576, rowY - 2).strokeColor(accent).lineWidth(1).stroke();
+    pdf.moveTo(totalsX, totalsY - 2).lineTo(576, totalsY - 2).strokeColor(accent).lineWidth(1).stroke();
     row('TOTAL', doc.total, true);
 
-    // ---------- left column: words, HSN summary, bank, QR ----------
-    let ly = tableTop + 20;
-    const leftWidth = 340;
-    pdf.fillColor(INK).font('Helvetica-Bold').fontSize(8).text('AMOUNT IN WORDS', 40, ly);
-    ly += 11;
-    pdf.font('Helvetica-Oblique').fontSize(8.5).fillColor(MUTED).text(doc.amount_in_words || amountInWords(doc.total), 40, ly, { width: leftWidth });
-    ly += 26;
+    // ---------- left column: words, HSN summary, bank ----------
+    let ly = summaryY;
+    const leftWidth = 330;
+    const wordsText = doc.amount_in_words || amountInWords(doc.total);
+    if (wordsText) {
+      pdf.fillColor(INK).font('Helvetica-Bold').fontSize(8).text('AMOUNT IN WORDS', 40, ly);
+      ly += 11;
+      pdf.font('Helvetica-Oblique').fontSize(8.5).fillColor(MUTED).text(wordsText, 40, ly, { width: leftWidth });
+      const wordsH = pdf.heightOfString(wordsText, { width: leftWidth });
+      ly += wordsH + 10;
+    }
 
     const hsn = hsnSummary(lines, doc.supply_type);
     if (hsn.length) {
       pdf.font('Helvetica-Bold').fontSize(8).fillColor(INK).text('HSN SUMMARY', 40, ly);
       ly += 11;
       pdf.font('Helvetica').fontSize(7.5).fillColor(MUTED);
-      hsn.slice(0, 6).forEach((h) => {
+      hsn.slice(0, 5).forEach((h) => {
         pdf.text(`${h.hsn}  |  ${h.gstRate}%  |  Qty ${h.qty}  |  Taxable ${fmt(h.taxable)}  |  Tax ${fmt(h.cgst + h.sgst + h.igst + h.cess)}`, 40, ly, { width: leftWidth });
         ly += 10;
       });
@@ -190,32 +229,44 @@ function render(doc, business, party, accent) {
       pdf.font('Helvetica-Bold').fontSize(8).fillColor(INK).text('PAYMENT DETAILS', 40, ly);
       ly += 11;
       pdf.font('Helvetica').fontSize(7.5).fillColor(MUTED);
-      if (business.bank_name) pdf.text(`${business.bank_name}${business.bank_branch ? ' - ' + business.bank_branch : ''}`, 40, ly, { width: leftWidth }), (ly += 10);
-      if (business.bank_account_no) pdf.text(`A/C ${business.bank_account_no}${business.bank_ifsc ? '   IFSC ' + business.bank_ifsc : ''}`, 40, ly, { width: leftWidth }), (ly += 10);
-      if (business.upi_id) pdf.text(`UPI: ${business.upi_id}`, 40, ly, { width: leftWidth }), (ly += 10);
+      if (business.bank_name) {
+        pdf.text(`${business.bank_name}${business.bank_branch ? ' - ' + business.bank_branch : ''}`, 40, ly, { width: leftWidth });
+        ly += 10;
+      }
+      if (business.bank_account_no) {
+        pdf.text(`A/C ${business.bank_account_no}${business.bank_ifsc ? '   IFSC ' + business.bank_ifsc : ''}`, 40, ly, { width: leftWidth });
+        ly += 10;
+      }
+      if (business.upi_id) {
+        pdf.text(`UPI: ${business.upi_id}`, 40, ly, { width: leftWidth });
+        ly += 10;
+      }
       ly += 4;
     }
 
     // ---------- footer ----------
-    const footY = Math.max(rowY, ly) + 14;
-    if (footY < 760) {
-      pdf.moveTo(40, footY).lineTo(576, footY).strokeColor(LINE).lineWidth(0.5).stroke();
-      let fy = footY + 8;
-      if (business.terms) {
-        pdf.font('Helvetica-Bold').fontSize(7.5).fillColor(INK).text('TERMS & CONDITIONS', 40, fy);
-        fy += 10;
-        pdf.font('Helvetica').fontSize(7).fillColor(MUTED).text(business.terms, 40, fy, { width: 340 });
-      }
-      if (doc.notes) {
-        pdf.font('Helvetica-Bold').fontSize(7.5).fillColor(INK).text('NOTES', 420, footY + 8, { width: 156 });
-        pdf.font('Helvetica').fontSize(7).fillColor(MUTED).text(doc.notes, 420, footY + 18, { width: 156 });
-      }
-      // signature block, bottom right
-      pdf.font('Helvetica').fontSize(8).fillColor(MUTED).text('For ' + (business.legal_name || business.name), 440, 690, { width: 136, align: 'center' });
-      pdf.moveTo(440, 736).lineTo(576, 736).strokeColor(MUTED).lineWidth(0.5).stroke();
-      pdf.font('Helvetica').fontSize(7).text('Authorised Signatory', 440, 740, { width: 136, align: 'center' });
-      pdf.text(business.invoice_footer || 'This is a computer generated invoice.', 40, 782, { width: 536, align: 'center' });
+    let footY = Math.max(totalsY, ly) + 12;
+    if (footY > 640) {
+      pdf.addPage();
+      footY = 50;
     }
+
+    pdf.moveTo(40, footY).lineTo(576, footY).strokeColor(LINE).lineWidth(0.5).stroke();
+    let fy = footY + 8;
+    if (business.terms) {
+      pdf.font('Helvetica-Bold').fontSize(7.5).fillColor(INK).text('TERMS & CONDITIONS', 40, fy);
+      fy += 10;
+      pdf.font('Helvetica').fontSize(7).fillColor(MUTED).text(business.terms, 40, fy, { width: 330, height: 50, ellipsis: true });
+    }
+    if (doc.notes) {
+      pdf.font('Helvetica-Bold').fontSize(7.5).fillColor(INK).text('NOTES', 400, footY + 8, { width: 176 });
+      pdf.font('Helvetica').fontSize(7).fillColor(MUTED).text(doc.notes, 400, footY + 18, { width: 176, height: 40, ellipsis: true });
+    }
+    // signature block, bottom right
+    pdf.font('Helvetica').fontSize(8).fillColor(MUTED).text('For ' + (business.legal_name || business.name), 420, 690, { width: 156, align: 'center' });
+    pdf.moveTo(420, 736).lineTo(576, 736).strokeColor(MUTED).lineWidth(0.5).stroke();
+    pdf.font('Helvetica').fontSize(7).text('Authorised Signatory', 420, 740, { width: 156, align: 'center' });
+    pdf.text(business.invoice_footer || 'This is a computer generated invoice.', 40, 782, { width: 536, align: 'center' });
 
     // QR (UPI deep link) bottom-left
     if (business.upi_id) {

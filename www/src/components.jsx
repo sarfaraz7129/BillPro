@@ -167,18 +167,18 @@ export function DateRange({ from, to, onChange, presets = true }) {
     onChange({ from: f, to: t });
   };
   return (
-    <div className="btn-row">
+    <div className="btn-row date-range-wrap">
       {presets && (
         <div className="tabs">
-          <button onClick={() => apply('month')}>This month</button>
-          <button onClick={() => apply('quarter')}>Quarter</button>
-          <button onClick={() => apply('fy')}>FY</button>
-          <button onClick={() => apply('all')}>All</button>
+          <button type="button" onClick={() => apply('month')}>This month</button>
+          <button type="button" onClick={() => apply('quarter')}>Quarter</button>
+          <button type="button" onClick={() => apply('fy')}>FY</button>
+          <button type="button" onClick={() => apply('all')}>All</button>
         </div>
       )}
-      <input type="date" className="input" style={{ width: 150 }} value={from} onChange={(e) => onChange({ from: e.target.value, to })} />
+      <input type="date" className="input date-input" value={from} onChange={(e) => onChange({ from: e.target.value, to })} />
       <span style={{ color: 'var(--muted)' }}>to</span>
-      <input type="date" className="input" style={{ width: 150 }} value={to} onChange={(e) => onChange({ from, to: e.target.value })} />
+      <input type="date" className="input date-input" value={to} onChange={(e) => onChange({ from, to: e.target.value })} />
     </div>
   );
 }

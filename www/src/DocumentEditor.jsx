@@ -123,25 +123,27 @@ export default function DocumentEditor({ business, type, doc, user, onClose, onS
       size="xwide"
       onClose={onClose}
       footer={
-        <>
-          <div style={{ flex: 1, color: 'var(--muted)', fontSize: 12 }}>
-            {type !== 'expense' && (supplyType === 'inter' ? 'Inter-state supply - IGST applies' : 'Intra-state supply - CGST + SGST apply')}
+        <div className="doc-modal-footer">
+          <div className="doc-footer-hint">
+            {type !== 'expense' && (supplyType === 'inter' ? 'Inter-state supply · IGST applies' : 'Intra-state supply · CGST + SGST apply')}
           </div>
-          <button type="button" className="btn" onClick={onClose}>Cancel</button>
-          <button
-            type="button"
-            className="btn"
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 650, color: 'var(--brand)', borderColor: 'var(--brand)' }}
-            onClick={() => save({ andPrint: true })}
-            disabled={saving}
-            title="Save this document and immediately open print-ready A4 PDF"
-          >
-            <Icon.print size={15} /> {saving ? 'Saving…' : 'Save & Print'}
-          </button>
-          <button type="button" className="btn primary" onClick={() => save({ andPrint: false })} disabled={saving}>
-            {saving ? 'Saving…' : doc ? 'Save changes' : 'Save & generate'}
-          </button>
-        </>
+          <div className="doc-footer-buttons">
+            <button type="button" className="btn" onClick={onClose}>Cancel</button>
+            <button
+              type="button"
+              className="btn"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 650, color: 'var(--brand)', borderColor: 'var(--brand)' }}
+              onClick={() => save({ andPrint: true })}
+              disabled={saving}
+              title="Save this document and immediately open print-ready A4 PDF"
+            >
+              <Icon.print size={15} /> {saving ? 'Saving…' : 'Save & Print'}
+            </button>
+            <button type="button" className="btn primary" onClick={() => save({ andPrint: false })} disabled={saving}>
+              {saving ? 'Saving…' : doc ? 'Save changes' : 'Save & generate'}
+            </button>
+          </div>
+        </div>
       }
     >
       {err && <div className="banner err"><Icon.alert size={15} />{err}</div>}
@@ -327,7 +329,7 @@ export default function DocumentEditor({ business, type, doc, user, onClose, onS
         </div>
       </div>
 
-      <div className="grid" style={{ gridTemplateColumns: '1fr 320px', marginTop: 10, gap: 14 }}>
+      <div className="doc-summary-grid">
         <div>
           <div className="form-grid">
             <Field label="Discount on the whole bill">

@@ -49,7 +49,7 @@ export default function Dashboard({ business, goto, toast }) {
         </div>
       )}
 
-      <div className="grid" style={{ gridTemplateColumns: '1.55fr 1fr', marginBottom: 14 }}>
+      <div className="grid grid-split" style={{ marginBottom: 14 }}>
         <div className="card">
           <div className="card-h"><Icon.chart size={16} /><div><h3>Sales - last 6 days</h3><div className="sub">Gross billed value</div></div>
             <div className="spacer" /><span className="pill brand">{moneyShort(d.salesSeries.reduce((s, x) => s + x.total, 0))}</span></div>
@@ -63,7 +63,7 @@ export default function Dashboard({ business, goto, toast }) {
         </div>
       </div>
 
-      <div className="grid" style={{ gridTemplateColumns: '1.55fr 1fr', marginBottom: 14 }}>
+      <div className="grid grid-split" style={{ marginBottom: 14 }}>
         <div className="card">
           <div className="card-h"><Icon.invoice size={16} /><div><h3>Recent documents</h3><div className="sub">Latest activity in this business</div></div>
             <div className="spacer" /><button className="btn sm" onClick={() => goto('billing')}>View all</button></div>

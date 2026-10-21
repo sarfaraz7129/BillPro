@@ -224,15 +224,17 @@ export default function App() {
 
       <div className="main">
         <header className="topbar">
-          <button className="icon-btn mobile-only" onClick={() => setDrawer(true)}><Icon.menu /></button>
+          <button className="icon-btn mobile-only" onClick={() => setDrawer(true)} aria-label="Open navigation menu"><Icon.menu /></button>
           <BusinessSwitcher businesses={businesses} active={active} group={group}
             onSwitch={switchBusiness} onAdd={() => setBizModal(true)} onGroup={() => goto('group')} />
           <div className="spacer" />
-          <div style={{ textAlign: 'right' }}>
-            <div style={{ fontSize: 13, fontWeight: 650 }}>{title}</div>
-            <div className="sub">{sub}</div>
+          <div className="topbar-titles">
+            <div className="topbar-title">{title}</div>
+            <div className="topbar-sub">{sub}</div>
           </div>
-          <button className="btn primary" onClick={() => goto('billing', { type: 'sale', docId: 'new' })}><Icon.plus size={15} /> New invoice</button>
+          <button className="btn primary topbar-action-btn" onClick={() => goto('billing', { type: 'sale', docId: 'new' })} title="New invoice">
+            <Icon.plus size={15} /> <span className="btn-label">New invoice</span>
+          </button>
         </header>
 
         <div className="content">

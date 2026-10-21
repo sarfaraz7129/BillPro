@@ -34,7 +34,7 @@ export default function Group({ businesses, onSwitch, goto, toast }) {
         <Kpi label="Net GST payable" value={money(t.outputTax - t.inputTax)} foot={`Output ${moneyShort(t.outputTax)} - ITC ${moneyShort(t.inputTax)}`} icon={Icon.shield} color="#059669" soft="var(--green-soft)" />
       </div>
 
-      <div className="grid" style={{ gridTemplateColumns: '1.6fr 1fr', marginBottom: 14 }}>
+      <div className="grid grid-split" style={{ marginBottom: 14 }}>
         <div className="card">
           <div className="card-h"><Icon.building size={16} /><div><h3>Business-wise performance</h3><div className="sub">Click a row to switch into that business</div></div></div>
           <div className="card-b tight tbl-wrap">
