@@ -27,7 +27,8 @@ const NAV = [
     { id: 'group', label: 'All businesses', icon: 'layers' }
   ]},
   { section: 'Setup', items: [
-    { id: 'settings', label: 'Settings', icon: 'settings' }
+    { id: 'settings', label: 'Settings', icon: 'settings' },
+    { id: 'signout', label: 'Sign out', icon: 'logout' }
   ]}
 ];
 
@@ -144,14 +145,25 @@ export default function App() {
     try { await api.setActiveBusiness(b.id); toast(`Switched to ${b.name}`, 'ok'); } catch (e) { toast(e.message, 'err'); }
   };
 
+  const handleSignOut = useCallback(() => {
+    setToken(null);
+    setUser(null);
+    setPage('dashboard');
+    setDrawer(false);
+  }, []);
+
   /** Navigate. opts can carry { type, docId, partyId } so a page can deep-link straight to a record. */
   const goto = useCallback((p, opts) => {
+    if (p === 'signout' || p === 'logout') {
+      handleSignOut();
+      return;
+    }
     const o = opts || {};
     setNav({ type: o.type || null, docId: o.docId || null, partyId: o.partyId || null });
     setPage(p);
     setDrawer(false);
     window.scrollTo({ top: 0, behavior: 'smooth' });
-  }, []);
+  }, [handleSignOut]);
 
   /* ---------- service worker cleanup in dev/preview ---------- */
   useEffect(() => {
@@ -165,15 +177,29 @@ export default function App() {
   }, []);
 
   const effectiveNav = useMemo(() => {
-    const list = [...NAV];
-    if (user?.is_superadmin) {
-      list.push({
+    const list = [
+      { section: 'Run the business', items: [
+        { id: 'dashboard', label: 'Dashboard', icon: 'dashboard' },
+        { id: 'pos', label: 'Counter billing (POS)', icon: 'pos' },
+        { id: 'billing', label: 'Invoices & bills', icon: 'invoice' },
+        { id: 'khata', label: 'Khata / ledgers', icon: 'khata' },
+        { id: 'inventory', label: 'Inventory', icon: 'box' }
+      ]},
+      { section: 'Money & compliance', items: [
+        { id: 'reports', label: 'Reports & GST', icon: 'chart' },
+        { id: 'group', label: 'All businesses', icon: 'layers' }
+      ]},
+      ...(user?.is_superadmin ? [{
         section: 'Platform Admin',
         items: [
           { id: 'admin', label: 'Client Manager', icon: 'shield' }
         ]
-      });
-    }
+      }] : []),
+      { section: 'Setup', items: [
+        { id: 'settings', label: 'Settings', icon: 'settings' },
+        { id: 'signout', label: 'Sign out', icon: 'logout' }
+      ]}
+    ];
     return list;
   }, [user?.is_superadmin]);
 
@@ -208,10 +234,16 @@ export default function App() {
             <div key={sec.section}>
               <div className="nav-label">{sec.section}</div>
               {sec.items.map((it) => {
-                const I = Icon[it.icon];
+                const I = Icon[it.icon] || Icon.dot;
+                const isSignOut = it.id === 'signout';
                 return (
-                  <a key={it.id} className={page === it.id ? 'on' : ''} onClick={() => goto(it.id)}>
-                    <I size={16} /> {it.label}
+                  <a
+                    key={it.id}
+                    className={`${page === it.id ? 'on' : ''} ${isSignOut ? 'nav-signout-item' : ''}`}
+                    onClick={() => goto(it.id)}
+                    title={it.label}
+                  >
+                    <I size={16} /> <span>{it.label}</span>
                   </a>
                 );
               })}
@@ -223,13 +255,16 @@ export default function App() {
             {offline ? <Icon.wifiOff size={13} /> : <Icon.cloud size={13} />}
             {offline ? 'Offline - reconnect to sync' : 'Connected · data saved on server'}
           </div>
-          Signed in as <b style={{ color: '#cbd5e1' }}>{user.name}</b>
-          <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
-            <button className="btn sm" style={{ background: 'rgba(255,255,255,.07)', border: 0, color: '#cbd5e1' }} onClick={() => goto('settings')}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+            <span style={{ fontSize: 11, color: '#94a3b8' }}>Signed in as</span>
+            <b style={{ color: '#cbd5e1', fontSize: 12 }}>{user.name}</b>
+          </div>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button className="btn sm" style={{ flex: 1, background: 'rgba(255,255,255,.07)', border: 0, color: '#cbd5e1' }} onClick={() => goto('settings')}>
               <Icon.settings size={13} /> Settings
             </button>
-            <button className="btn sm" style={{ background: 'rgba(255,255,255,.07)', border: 0, color: '#cbd5e1' }}
-              onClick={() => { setToken(null); setUser(null); setPage('dashboard'); }}>
+            <button className="btn sm" style={{ flex: 1, background: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.3)', color: '#fca5a5' }}
+              onClick={handleSignOut} title="Sign out of BillPro">
               <Icon.logout size={13} /> Sign out
             </button>
           </div>
@@ -265,6 +300,15 @@ export default function App() {
           )}
           <button className="icon-btn" onClick={() => goto('settings')} title="Settings & Business Profile" style={{ flexShrink: 0 }}>
             <Icon.settings size={16} />
+          </button>
+          <button
+            className="icon-btn"
+            onClick={handleSignOut}
+            title="Sign out"
+            style={{ flexShrink: 0, color: 'var(--red, #ef4444)' }}
+            aria-label="Sign out"
+          >
+            <Icon.logout size={16} />
           </button>
           <button className="btn primary topbar-action-btn" onClick={() => goto('billing', { type: 'sale', docId: 'new' })} title="New invoice">
             <Icon.plus size={15} /> <span className="btn-label">New invoice</span>

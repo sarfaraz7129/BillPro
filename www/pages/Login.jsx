@@ -273,8 +273,8 @@ export default function Login({ onAuthed }) {
                 </button>
               </div>
 
-              {/* Need License & Super Admin Access Links */}
-              <div className="full" style={{ marginTop: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+              {/* Need License & WhatsApp Inquiry Link */}
+              <div className="full" style={{ marginTop: 12, textAlign: 'center' }}>
                 <button
                   type="button"
                   className="btn text xs"
@@ -282,19 +282,6 @@ export default function Login({ onAuthed }) {
                   onClick={() => { setMode('inquiry'); setErr(''); }}
                 >
                   <Icon.whatsapp size={13} /> Buy License / WhatsApp
-                </button>
-                <button
-                  type="button"
-                  className="btn text xs"
-                  style={{ color: 'var(--ink-3)', fontSize: 11 }}
-                  title="Quick-fill Super Admin credentials"
-                  onClick={() => {
-                    setLoginEmail('demo@billpro.in');
-                    setLoginPassword('demo1234');
-                    executeLogin('demo@billpro.in', 'demo1234');
-                  }}
-                >
-                  <Icon.shield size={11} /> Super Admin Auto-fill
                 </button>
               </div>
             </form>
