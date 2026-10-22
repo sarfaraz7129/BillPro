@@ -262,33 +262,73 @@ try {
     db.exec('ALTER TABLE users ADD COLUMN expires_at TEXT');
   }
 
-  // Ensure initial admin user has superadmin role & lifetime plan
-  db.prepare("UPDATE users SET is_superadmin = 1, plan = 'lifetime', status = 'active' WHERE email = 'demo@billpro.in' OR id = 1").run();
-
-  // Ensure dedicated demo merchant user exists (is_superadmin = 0) for public 1-click feature exploration
-  const existingDemoUser = db.prepare("SELECT id FROM users WHERE email = 'demo.user@billpro.in'").get();
   const bcrypt = require('bcryptjs');
   const ALL_PERMS = JSON.stringify(['dashboard', 'billing', 'khata', 'inventory', 'reports', 'settings', 'staff']);
-  const firstBiz = db.prepare('SELECT id FROM businesses ORDER BY id ASC LIMIT 1').get();
 
-  if (!existingDemoUser) {
-    const demoInfo = db.prepare(`
-      INSERT INTO users (name, email, phone, password_hash, role, permissions, is_superadmin, status, plan, expires_at, active_business_id)
-      VALUES (?, 'demo.user@billpro.in', '9845011223', ?, 'owner', ?, 0, 'active', 'yearly', '2028-12-31', ?)
-    `).run('Demo Merchant', bcrypt.hashSync('demo1234', 10), ALL_PERMS, firstBiz ? firstBiz.id : null);
-    
-    // Attach demo user as staff to existing businesses so they can test invoices, khata & stock
-    const allBizs = db.prepare('SELECT id FROM businesses').all();
-    for (const b of allBizs) {
-      db.prepare(`
-        INSERT OR IGNORE INTO staff (business_id, name, email, phone, role, permissions)
-        VALUES (?, 'Demo Merchant', 'demo.user@billpro.in', '9845011223', 'admin', ?)
-      `).run(b.id, ALL_PERMS);
-    }
+  // Ensure Super Admin account demo@billpro.in ALWAYS exists with password demo1234
+  const existingSuperAdmin = db.prepare("SELECT id FROM users WHERE lower(email) = 'demo@billpro.in'").get();
+  let superAdminId;
+  if (!existingSuperAdmin) {
+    const sInfo = db.prepare(`
+      INSERT INTO users (name, email, phone, password_hash, role, permissions, is_superadmin, status, plan, expires_at)
+      VALUES (?, 'demo@billpro.in', '9845000000', ?, 'owner', ?, 1, 'active', 'lifetime', NULL)
+    `).run('Super Admin', bcrypt.hashSync('demo1234', 10), ALL_PERMS);
+    superAdminId = sInfo.lastInsertRowid;
   } else {
-    // Ensure demo user is NOT superadmin
-    db.prepare("UPDATE users SET is_superadmin = 0, status = 'active', plan = 'yearly' WHERE email = 'demo.user@billpro.in'").run();
+    superAdminId = existingSuperAdmin.id;
+    db.prepare(`
+      UPDATE users 
+      SET password_hash = ?, is_superadmin = 1, status = 'active', plan = 'lifetime', role = 'owner'
+      WHERE id = ?
+    `).run(bcrypt.hashSync('demo1234', 10), superAdminId);
   }
+
+  // Also ensure admin@billpro.in exists as an alias for Super Admin (password: demo1234 or admin1234)
+  const existingAdmin = db.prepare("SELECT id FROM users WHERE lower(email) = 'admin@billpro.in'").get();
+  if (!existingAdmin) {
+    db.prepare(`
+      INSERT INTO users (name, email, phone, password_hash, role, permissions, is_superadmin, status, plan, expires_at)
+      VALUES (?, 'admin@billpro.in', '9845000000', ?, 'owner', ?, 1, 'active', 'lifetime', NULL)
+    `).run('Super Admin', bcrypt.hashSync('demo1234', 10), ALL_PERMS);
+  } else {
+    db.prepare(`
+      UPDATE users 
+      SET password_hash = ?, is_superadmin = 1, status = 'active', plan = 'lifetime', role = 'owner'
+      WHERE id = ?
+    `).run(bcrypt.hashSync('demo1234', 10), existingAdmin.id);
+  }
+
+  // Ensure dedicated demo merchant user exists (is_superadmin = 0) for public 1-click feature exploration
+  const existingDemoUser = db.prepare("SELECT id FROM users WHERE lower(email) = 'demo.user@billpro.in'").get();
+  if (!existingDemoUser) {
+    db.prepare(`
+      INSERT INTO users (name, email, phone, password_hash, role, permissions, is_superadmin, status, plan, expires_at)
+      VALUES (?, 'demo.user@billpro.in', '9845011223', ?, 'owner', ?, 0, 'active', 'yearly', '2028-12-31')
+    `).run('Demo Merchant', bcrypt.hashSync('demo1234', 10), ALL_PERMS);
+  } else {
+    db.prepare("UPDATE users SET password_hash = ?, is_superadmin = 0, status = 'active', plan = 'yearly' WHERE lower(email) = 'demo.user@billpro.in'")
+      .run(bcrypt.hashSync('demo1234', 10));
+  }
+
+  // Ensure starter businesses exist and are linked
+  const ensureBiz = (ownerEmail, bizName) => {
+    const u = db.prepare("SELECT id, active_business_id FROM users WHERE lower(email) = ?").get(ownerEmail);
+    if (!u) return;
+    let b = db.prepare("SELECT id FROM businesses WHERE owner_id = ?").get(u.id);
+    if (!b) {
+      const bInfo = db.prepare(`
+        INSERT INTO businesses (owner_id, name, legal_name, invoice_prefix, quoter_prefix, default_gst_rate, credit_days, color)
+        VALUES (?, ?, ?, 'INV', 'QT', 18, 30, '#4f46e5')
+      `).run(u.id, bizName, bizName);
+      b = { id: bInfo.lastInsertRowid };
+    }
+    if (!u.active_business_id) {
+      db.prepare("UPDATE users SET active_business_id = ? WHERE id = ?").run(b.id, u.id);
+    }
+  };
+  ensureBiz('demo@billpro.in', 'Coastal Traders');
+  ensureBiz('admin@billpro.in', 'BillPro Enterprise');
+  ensureBiz('demo.user@billpro.in', 'Bharat Retail Mart');
 
   // Seed default system settings if missing
   const insertSetting = db.prepare('INSERT OR IGNORE INTO system_settings (key, value) VALUES (?, ?)');

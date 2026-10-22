@@ -92,10 +92,20 @@ router.post('/signup', (req, res) => {
 
 router.post('/login', (req, res) => {
   const { email, password } = req.body || {};
-  const user = db.prepare('SELECT * FROM users WHERE email = ?').get(String(email || '').toLowerCase());
-  if (!user || !bcrypt.compareSync(String(password || ''), user.password_hash)) {
+  const cleanEmail = String(email || '').trim().toLowerCase();
+  const rawPassword = String(password || '');
+  const trimmedPassword = rawPassword.trim();
+
+  const user = db.prepare('SELECT * FROM users WHERE lower(email) = ?').get(cleanEmail);
+  if (!user) {
     return res.status(401).json({ error: 'Incorrect email or password' });
   }
+
+  const pwdMatch = bcrypt.compareSync(rawPassword, user.password_hash) || bcrypt.compareSync(trimmedPassword, user.password_hash);
+  if (!pwdMatch) {
+    return res.status(401).json({ error: 'Incorrect email or password' });
+  }
+
   if (user.status === 'suspended') {
     return res.status(403).json({
       error: 'Your account is suspended by the administrator. Please contact support via WhatsApp.',

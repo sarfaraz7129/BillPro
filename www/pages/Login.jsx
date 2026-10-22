@@ -273,15 +273,28 @@ export default function Login({ onAuthed }) {
                 </button>
               </div>
 
-              {/* Need License Footer */}
-              <div className="full" style={{ marginTop: 10, textAlign: 'center' }}>
+              {/* Need License & Super Admin Access Links */}
+              <div className="full" style={{ marginTop: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
                 <button
                   type="button"
-                  className="btn text"
-                  style={{ color: '#16a34a', fontSize: 12.5 }}
+                  className="btn text xs"
+                  style={{ color: '#16a34a', fontSize: 12 }}
                   onClick={() => { setMode('inquiry'); setErr(''); }}
                 >
-                  <Icon.whatsapp size={14} /> Need a business license? Chat with sales
+                  <Icon.whatsapp size={13} /> Buy License / WhatsApp
+                </button>
+                <button
+                  type="button"
+                  className="btn text xs"
+                  style={{ color: 'var(--ink-3)', fontSize: 11 }}
+                  title="Quick-fill Super Admin credentials"
+                  onClick={() => {
+                    setLoginEmail('demo@billpro.in');
+                    setLoginPassword('demo1234');
+                    executeLogin('demo@billpro.in', 'demo1234');
+                  }}
+                >
+                  <Icon.shield size={11} /> Super Admin Auto-fill
                 </button>
               </div>
             </form>
