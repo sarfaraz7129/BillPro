@@ -14,6 +14,8 @@ const PASSWORD = 'demo1234';
 function reset() {
   const u = db.prepare('SELECT id FROM users WHERE email = ?').get(EMAIL);
   if (u) db.prepare('DELETE FROM users WHERE id = ?').run(u.id);
+  const demoUser = db.prepare("SELECT id FROM users WHERE email = 'demo.user@billpro.in'").get();
+  if (demoUser) db.prepare('DELETE FROM users WHERE id = ?').run(demoUser.id);
 }
 
 function insert(table, obj) {
@@ -29,10 +31,17 @@ function dayOffset(n) {
 function seed() {
   reset();
   const userId = insert('users', {
-    name: 'Demo Owner', email: EMAIL, phone: '9845000000',
+    name: 'Super Admin', email: EMAIL, phone: '9845000000',
     password_hash: bcrypt.hashSync(PASSWORD, 10), role: 'owner',
     permissions: JSON.stringify(['dashboard', 'billing', 'khata', 'inventory', 'reports', 'settings', 'staff']),
     is_superadmin: 1, status: 'active', plan: 'lifetime'
+  });
+
+  const demoUserId = insert('users', {
+    name: 'Demo Merchant', email: 'demo.user@billpro.in', phone: '9845011223',
+    password_hash: bcrypt.hashSync('demo1234', 10), role: 'owner',
+    permissions: JSON.stringify(['dashboard', 'billing', 'khata', 'inventory', 'reports', 'settings', 'staff']),
+    is_superadmin: 0, status: 'active', plan: 'yearly', expires_at: '2028-12-31'
   });
 
   const bizA = insert('businesses', {
@@ -58,6 +67,10 @@ function seed() {
   });
 
   db.prepare('UPDATE users SET active_business_id = ? WHERE id = ?').run(bizA, userId);
+  db.prepare('UPDATE users SET active_business_id = ? WHERE id = ?').run(bizA, demoUserId);
+
+  insert('staff', { business_id: bizA, name: 'Demo Merchant', email: 'demo.user@billpro.in', phone: '9845011223', role: 'admin', permissions: JSON.stringify(['dashboard', 'billing', 'khata', 'inventory', 'reports', 'settings']) });
+  insert('staff', { business_id: bizB, name: 'Demo Merchant', email: 'demo.user@billpro.in', phone: '9845011223', role: 'admin', permissions: JSON.stringify(['dashboard', 'billing', 'khata', 'inventory', 'reports', 'settings']) });
 
   // ---------- products ----------
   const prodA = [

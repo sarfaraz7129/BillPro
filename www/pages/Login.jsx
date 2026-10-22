@@ -201,7 +201,7 @@ export default function Login({ onAuthed }) {
                   type="email"
                   value={loginEmail}
                   onChange={(e) => setLoginEmail(e.target.value)}
-                  placeholder="demo@billpro.in or your email"
+                  placeholder="you@company.in or demo.user@billpro.in"
                   autoComplete="email"
                   required
                 />
@@ -244,22 +244,32 @@ export default function Login({ onAuthed }) {
                 </button>
               </div>
 
-              {/* Quick Demo Helper */}
-              <div className="full" style={{ marginTop: 14, textAlign: 'center', borderTop: '1px solid var(--border)', paddingTop: 14 }}>
-                <div style={{ fontSize: 11.5, color: 'var(--ink-3)', marginBottom: 8 }}>
-                  Super Admin Demo Credentials:
+              {/* Quick 1-Click Demo Account for Prospective Users */}
+              <div className="full" style={{ marginTop: 16, textAlign: 'center', borderTop: '1px solid var(--border)', paddingTop: 14 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink-2)', marginBottom: 2 }}>
+                  Want to explore software features?
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--ink-3)', marginBottom: 10 }}>
+                  Experience GST invoicing, counter POS, Khata ledgers & inventory in 1-click
                 </div>
                 <button
                   type="button"
-                  className="btn sm"
-                  style={{ background: 'var(--bg, #f1f5f9)', border: '1px solid var(--border)' }}
+                  className="btn block"
+                  style={{
+                    background: 'linear-gradient(135deg, #eef2ff 0%, #e0e7ff 100%)',
+                    color: '#4338ca',
+                    border: '1px solid #c7d2fe',
+                    fontWeight: 700,
+                    padding: '10px 14px',
+                    fontSize: 13
+                  }}
                   onClick={() => {
-                    setLoginEmail('demo@billpro.in');
+                    setLoginEmail('demo.user@billpro.in');
                     setLoginPassword('demo1234');
-                    executeLogin('demo@billpro.in', 'demo1234');
+                    executeLogin('demo.user@billpro.in', 'demo1234');
                   }}
                 >
-                  ⚡ One-click Demo Sign-in (demo@billpro.in)
+                  <Icon.sparkles size={14} style={{ color: '#4f46e5' }} /> ⚡ Try 1-Click Demo Account (Explore Features)
                 </button>
               </div>
 

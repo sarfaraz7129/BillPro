@@ -356,6 +356,21 @@ async function run() {
   });
   ok('non-superadmin is rejected from admin endpoints (403)', nonAdminCheck.status === 403);
 
+  // 10. Dedicated 1-Click Demo Merchant User
+  const demoUserLogin = await fetch(base + '/api/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: 'demo.user@billpro.in', password: 'demo1234' })
+  });
+  const demoUserData = await demoUserLogin.json();
+  ok('demo merchant logs in with sample store data', demoUserLogin.status === 200 && demoUserData.businesses.length >= 1);
+  ok('demo merchant is NOT superadmin (is_superadmin=false)', demoUserData.user.is_superadmin === false);
+
+  const demoAdminDeny = await fetch(base + '/api/admin/stats', {
+    headers: { 'Authorization': 'Bearer ' + demoUserData.token }
+  });
+  ok('demo merchant is blocked from super admin endpoints (403)', demoAdminDeny.status === 403);
+
   server.close();
   console.log(`\n${passed} passed, ${failed} failed\n`);
   process.exit(failed ? 1 : 0);
