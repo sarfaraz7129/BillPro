@@ -218,7 +218,7 @@ function Ledger({ partyId, business, onClose, onChanged, toast }) {
       <div className="card" style={{ boxShadow: 'none' }}>
         <div className="card-b" style={{ padding: '12px 16px' }}>
           <div className="stmt-entry" style={{ fontWeight: 700, fontSize: 11, textTransform: 'uppercase', color: 'var(--muted)', letterSpacing: '.05em' }}>
-            <div>Date</div><div>Particulars</div><div className="num" style={{ textAlign: 'right', width: 92 }}>Debit</div>
+            <div className="dt">Date</div><div>Particulars</div><div className="num" style={{ textAlign: 'right', width: 92 }}>Debit</div>
             <div className="num" style={{ textAlign: 'right', width: 92 }}>Credit</div><div className="bal">Balance</div>
           </div>
           {data.entries.length === 0 && <div className="hint" style={{ padding: '14px 0' }}>No entries yet. Bill this party or record a payment.</div>}

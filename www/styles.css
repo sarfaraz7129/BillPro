@@ -1136,7 +1136,27 @@ tr:hover .row-actions { opacity: 1; }
   .thermal-receipt.w-80 { width: 100%; max-width: 340px; }
   .thermal-receipt.w-58 { width: 100%; max-width: 270px; }
   .thermal-wrapper { padding: 10px; }
-  .tbl-wrap { border-radius: 10px; }
+  .tbl-wrap { border-radius: 10px; contain: inline-size; width: 100% !important; max-width: 100% !important; }
+  .grid.g2 { grid-template-columns: 1fr !important; }
+  .grid.grid-split { grid-template-columns: 1fr !important; }
+  .card-b.tight.tbl-wrap table.tbl { min-width: 100% !important; }
+  .settings-layout { grid-template-columns: 1fr !important; gap: 10px !important; }
+  .settings-nav-card .card-b {
+    display: flex !important;
+    flex-direction: row !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+    padding: 6px !important;
+    gap: 6px;
+  }
+  .settings-nav-card .card-b > div {
+    white-space: nowrap !important;
+    flex-shrink: 0 !important;
+    padding: 7px 12px !important;
+    border-radius: 20px !important;
+    font-size: 12px !important;
+    margin-bottom: 0 !important;
+  }
 }
 
 /* ---------- Floating Picker Portal Dropdown ---------- */

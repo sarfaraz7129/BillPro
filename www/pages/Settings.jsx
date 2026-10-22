@@ -98,12 +98,13 @@ export default function Settings({ business, user, onBusinessSaved, onAddBusines
 
   return (
     <div className="settings-layout">
-      <div className="card">
+      <div className="card settings-nav-card">
         <div className="card-b" style={{ padding: 8 }}>
           {TABS.map((t) => {
             const I = Icon[t.icon];
             return (
               <div key={t.id} onClick={() => setTab(t.id)}
+                className={`settings-nav-item ${tab === t.id ? 'active' : ''}`}
                 style={{
                   display: 'flex', gap: 9, alignItems: 'center', padding: '9px 11px', borderRadius: 9, cursor: 'pointer',
                   fontSize: 13, fontWeight: 600, background: tab === t.id ? 'var(--brand-soft)' : 'transparent',

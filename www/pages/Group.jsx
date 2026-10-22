@@ -36,8 +36,53 @@ export default function Group({ businesses, onSwitch, goto, toast }) {
 
       <div className="grid grid-split" style={{ marginBottom: 14 }}>
         <div className="card">
-          <div className="card-h"><Icon.building size={16} /><div><h3>Business-wise performance</h3><div className="sub">Click a row to switch into that business</div></div></div>
-          <div className="card-b tight tbl-wrap">
+          <div className="card-h"><Icon.building size={16} /><div><h3>Business-wise performance</h3><div className="sub">Tap a business to switch into it</div></div></div>
+          
+          {/* Mobile App Business Cards List */}
+          <div className="mobile-only mobile-cards-list" style={{ padding: 10 }}>
+            {data.businesses.map((b) => (
+              <div
+                key={b.id}
+                className="mobile-invoice-card"
+                onClick={() => { onSwitch(b); goto('dashboard'); }}
+              >
+                <div className="mic-header">
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span className="biz-dot" style={{ background: b.color || '#4f46e5', width: 28, height: 28, fontSize: 12 }}>
+                      {(b.name || '?').slice(0, 1).toUpperCase()}
+                    </span>
+                    <div>
+                      <b style={{ fontSize: 13.5, color: 'var(--ink)' }}>{b.name}</b>
+                      <div style={{ fontSize: 11, color: 'var(--muted)' }}>{b.gstin || 'GSTIN not set'}{b.state ? ' · ' + b.state : ''}</div>
+                    </div>
+                  </div>
+                  <b className="mic-total">{money(b.sales)}</b>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 10, paddingTop: 8, borderTop: '1px dashed var(--line)', fontSize: 11 }}>
+                  <div>
+                    <span style={{ color: 'var(--muted)' }}>To collect: </span>
+                    <b className="neg">{money(b.receivable)}</b>
+                  </div>
+                  <div>
+                    <span style={{ color: 'var(--muted)' }}>To pay: </span>
+                    <b style={{ color: '#d97706' }}>{money(b.payable)}</b>
+                  </div>
+                  <div>
+                    <span style={{ color: 'var(--muted)' }}>Purchases: </span>
+                    <span>{money(b.purchases)}</span>
+                  </div>
+                  <div>
+                    <span style={{ color: 'var(--muted)' }}>Stock value: </span>
+                    <span>{money(b.stockValue)}</span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Desktop Table View */}
+          <div className="card-b tight tbl-wrap desktop-only">
             <table className="tbl">
               <thead><tr><th>Business</th><th className="num">Sales</th><th className="num">Purchases</th><th className="num">Receivable</th><th className="num">Payable</th><th className="num">Net tax</th><th className="num">Stock value</th><th style={{ width: 130 }} /></tr></thead>
               <tbody>
