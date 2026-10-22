@@ -217,6 +217,24 @@ CREATE TABLE IF NOT EXISTS activity (
   created_at  TEXT NOT NULL DEFAULT (datetime('now', '+330 minutes'))
 );
 
+CREATE TABLE IF NOT EXISTS inquiries (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  name        TEXT NOT NULL,
+  phone       TEXT NOT NULL,
+  email       TEXT,
+  shop_name   TEXT,
+  city        TEXT,
+  plan        TEXT DEFAULT 'yearly',
+  message     TEXT,
+  status      TEXT DEFAULT 'new',
+  created_at  TEXT NOT NULL DEFAULT (datetime('now', '+330 minutes'))
+);
+
+CREATE TABLE IF NOT EXISTS system_settings (
+  key   TEXT PRIMARY KEY,
+  value TEXT
+);
+
 CREATE INDEX IF NOT EXISTS idx_parties_biz   ON parties(business_id, type);
 CREATE INDEX IF NOT EXISTS idx_docs_biz      ON documents(business_id, type);
 CREATE INDEX IF NOT EXISTS idx_docs_party    ON documents(party_id);
@@ -227,5 +245,36 @@ CREATE INDEX IF NOT EXISTS idx_products_biz  ON products(business_id);
 CREATE INDEX IF NOT EXISTS idx_stock_biz     ON stock_moves(business_id);
 CREATE INDEX IF NOT EXISTS idx_biz_owner     ON businesses(owner_id);
 `);
+
+// Migration: Ensure user table has subscription & admin columns
+try {
+  const userCols = db.prepare('PRAGMA table_info(users)').all().map((c) => c.name);
+  if (!userCols.includes('is_superadmin')) {
+    db.exec('ALTER TABLE users ADD COLUMN is_superadmin INTEGER NOT NULL DEFAULT 0');
+  }
+  if (!userCols.includes('status')) {
+    db.exec('ALTER TABLE users ADD COLUMN status TEXT NOT NULL DEFAULT "active"');
+  }
+  if (!userCols.includes('plan')) {
+    db.exec('ALTER TABLE users ADD COLUMN plan TEXT NOT NULL DEFAULT "yearly"');
+  }
+  if (!userCols.includes('expires_at')) {
+    db.exec('ALTER TABLE users ADD COLUMN expires_at TEXT');
+  }
+
+  // Ensure initial admin user has superadmin role & lifetime plan
+  db.prepare("UPDATE users SET is_superadmin = 1, plan = 'lifetime', status = 'active' WHERE email = 'demo@billpro.in' OR id = 1").run();
+
+  // Seed default system settings if missing
+  const insertSetting = db.prepare('INSERT OR IGNORE INTO system_settings (key, value) VALUES (?, ?)');
+  insertSetting.run('sales_whatsapp', '919845012345');
+  insertSetting.run('sales_phone', '+91 98450 12345');
+  insertSetting.run('public_signup_enabled', '0'); // closed by default
+  insertSetting.run('pricing_monthly', '499');
+  insertSetting.run('pricing_yearly', '2999');
+  insertSetting.run('pricing_lifetime', '7999');
+} catch (e) {
+  console.warn('[DB Migration Warning]:', e.message);
+}
 
 module.exports = { db, DB_PATH, DATA_DIR };

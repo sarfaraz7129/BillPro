@@ -12,6 +12,7 @@ import Inventory from '../pages/Inventory.jsx';
 import Reports from '../pages/Reports.jsx';
 import Group from '../pages/Group.jsx';
 import Settings from '../pages/Settings.jsx';
+import SuperAdmin from '../pages/SuperAdmin.jsx';
 
 const NAV = [
   { section: 'Run the business', items: [
@@ -38,7 +39,8 @@ const TITLES = {
   inventory: ['Inventory', 'Products, stock levels and low-stock alerts'],
   reports: ['Reports & GST', 'GSTR-1, GSTR-3B, profit, ageing and day book'],
   group: ['All businesses', 'Consolidated numbers across everything you own'],
-  settings: ['Settings', 'Business profile, GST, banking, staff and account']
+  settings: ['Settings', 'Business profile, GST, banking, staff and account'],
+  admin: ['Super Admin Console', 'Client onboarding, subscription management & WhatsApp leads']
 };
 
 export default function App() {
@@ -162,6 +164,19 @@ export default function App() {
     }
   }, []);
 
+  const effectiveNav = useMemo(() => {
+    const list = [...NAV];
+    if (user?.is_superadmin) {
+      list.push({
+        section: 'Platform Admin',
+        items: [
+          { id: 'admin', label: 'Client Manager', icon: 'shield' }
+        ]
+      });
+    }
+    return list;
+  }, [user?.is_superadmin]);
+
   if (booting) return <div className="empty" style={{ minHeight: '100vh', display: 'grid', placeItems: 'center' }}>Loading BillPro…</div>;
   if (!user) return (
     <>
@@ -189,7 +204,7 @@ export default function App() {
           <div className="brand-name">BillPro<small>Billing · Khata · GST</small></div>
         </div>
         <nav className="nav">
-          {NAV.map((sec) => (
+          {effectiveNav.map((sec) => (
             <div key={sec.section}>
               <div className="nav-label">{sec.section}</div>
               {sec.items.map((it) => {
@@ -232,6 +247,22 @@ export default function App() {
             <div className="topbar-title">{title}</div>
             <div className="topbar-sub">{sub}</div>
           </div>
+          {user?.is_superadmin && (
+            <button
+              className="btn sm"
+              style={{
+                background: page === 'admin' ? '#4f46e5' : 'rgba(79, 70, 229, 0.1)',
+                color: page === 'admin' ? '#fff' : '#4f46e5',
+                border: '1px solid #4f46e5',
+                fontWeight: 600,
+                flexShrink: 0
+              }}
+              onClick={() => goto('admin')}
+              title="Super Admin Client Manager"
+            >
+              <Icon.shield size={14} /> <span className="btn-label">Client Manager</span>
+            </button>
+          )}
           <button className="icon-btn" onClick={() => goto('settings')} title="Settings & Business Profile" style={{ flexShrink: 0 }}>
             <Icon.settings size={16} />
           </button>
@@ -242,7 +273,25 @@ export default function App() {
 
         <div className="content">
           {offline && <div className="banner warn"><Icon.wifiOff size={15} />You are offline. Saved records are still visible; new entries need a connection.</div>}
-          {!active ? (
+          {user?.is_expired && (
+            <div className="banner err" style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Icon.alert size={16} />
+                <span>Your subscription plan expired on <b>{user.expires_at}</b>. Please renew your plan to continue using all billing features without interruption.</span>
+              </div>
+              <button
+                className="btn sm"
+                style={{ background: '#22c55e', color: '#fff', border: 0, fontWeight: 600 }}
+                onClick={() => window.open('https://wa.me/919845012345?text=' + encodeURIComponent('Hi BillPro Team! I would like to renew my expired subscription for ' + (user.email || user.name)), '_blank')}
+              >
+                <Icon.whatsapp size={13} /> Renew on WhatsApp
+              </button>
+            </div>
+          )}
+
+          {page === 'admin' ? (
+            <SuperAdmin user={user} toast={toast} />
+          ) : !active ? (
             <div className="empty" style={{ padding: '70px 20px' }}>
               <Icon.building size={44} />
               <b>Create your first business</b>

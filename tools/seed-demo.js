@@ -31,7 +31,8 @@ function seed() {
   const userId = insert('users', {
     name: 'Demo Owner', email: EMAIL, phone: '9845000000',
     password_hash: bcrypt.hashSync(PASSWORD, 10), role: 'owner',
-    permissions: JSON.stringify(['dashboard', 'billing', 'khata', 'inventory', 'reports', 'settings', 'staff'])
+    permissions: JSON.stringify(['dashboard', 'billing', 'khata', 'inventory', 'reports', 'settings', 'staff']),
+    is_superadmin: 1, status: 'active', plan: 'lifetime'
   });
 
   const bizA = insert('businesses', {

@@ -3,11 +3,67 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const { db } = require('../db');
 const { sign, auth, getUserBusinesses, PERMISSIONS } = require('../middleware');
+const { istToday } = require('../lib/time');
 
 const router = express.Router();
 const ALL_PERMS = Object.keys(PERMISSIONS);
 
+router.get('/sales-info', (req, res) => {
+  const settings = db.prepare('SELECT key, value FROM system_settings').all();
+  const map = {};
+  for (const s of settings) map[s.key] = s.value;
+  res.json({
+    sales_whatsapp: map.sales_whatsapp || '919845012345',
+    sales_phone: map.sales_phone || '+91 98450 12345',
+    public_signup_enabled: map.public_signup_enabled === '1',
+    pricing: {
+      monthly: Number(map.pricing_monthly || 499),
+      yearly: Number(map.pricing_yearly || 2999),
+      lifetime: Number(map.pricing_lifetime || 7999)
+    }
+  });
+});
+
+router.post('/inquire', (req, res) => {
+  const { name, phone, email, shop_name, city, plan, message } = req.body || {};
+  if (!name || !phone) {
+    return res.status(400).json({ error: 'Name and WhatsApp phone number are required' });
+  }
+  const cleanPhone = String(phone).trim();
+  const info = db.prepare(`
+    INSERT INTO inquiries (name, phone, email, shop_name, city, plan, message, status)
+    VALUES (?, ?, ?, ?, ?, ?, ?, 'new')
+  `).run(
+    name.trim(),
+    cleanPhone,
+    (email || '').trim() || null,
+    (shop_name || '').trim() || null,
+    (city || '').trim() || null,
+    plan || 'yearly',
+    (message || '').trim() || null
+  );
+
+  const setting = db.prepare("SELECT value FROM system_settings WHERE key = 'sales_whatsapp'").get();
+  const salesWhatsapp = setting?.value || '919845012345';
+
+  res.json({
+    ok: true,
+    inquiry_id: info.lastInsertRowid,
+    sales_whatsapp: salesWhatsapp,
+    message: 'Your inquiry has been submitted! Our team will activate your account shortly.'
+  });
+});
+
 router.post('/signup', (req, res) => {
+  const setting = db.prepare("SELECT value FROM system_settings WHERE key = 'public_signup_enabled'").get();
+  const allowSignup = setting && setting.value === '1';
+  if (!allowSignup) {
+    return res.status(403).json({
+      error: 'Direct public registration is disabled. Please contact sales or submit an inquiry to activate your business license.',
+      signup_disabled: true
+    });
+  }
+
   const { name, email, password, phone } = req.body || {};
   if (!name || !email || !password) return res.status(400).json({ error: 'Name, email and password are required' });
   if (String(password).length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' });
@@ -39,6 +95,12 @@ router.post('/login', (req, res) => {
   const user = db.prepare('SELECT * FROM users WHERE email = ?').get(String(email || '').toLowerCase());
   if (!user || !bcrypt.compareSync(String(password || ''), user.password_hash)) {
     return res.status(401).json({ error: 'Incorrect email or password' });
+  }
+  if (user.status === 'suspended') {
+    return res.status(403).json({
+      error: 'Your account is suspended by the administrator. Please contact support via WhatsApp.',
+      suspended: true
+    });
   }
   const businesses = getUserBusinesses(user.id, user.email);
   if (!user.active_business_id && businesses.length > 0) {
@@ -79,9 +141,28 @@ router.post('/active-business/:id', auth, (req, res) => {
 });
 
 function publicUser(u) {
+  const isSuperadmin = Boolean(u.is_superadmin);
+  let isExpired = false;
+  if (!isSuperadmin && u.expires_at) {
+    const today = istToday();
+    if (u.expires_at < today) {
+      isExpired = true;
+    }
+  }
   return {
-    id: u.id, name: u.name, email: u.email, phone: u.phone, role: u.role,
-    permissions: JSON.parse(u.permissions || '[]'), activeBusinessId: u.active_business_id, lang: u.lang
+    id: u.id,
+    name: u.name,
+    email: u.email,
+    phone: u.phone,
+    role: u.role,
+    permissions: JSON.parse(u.permissions || '[]'),
+    activeBusinessId: u.active_business_id,
+    lang: u.lang,
+    is_superadmin: isSuperadmin,
+    status: u.status || 'active',
+    plan: u.plan || 'yearly',
+    expires_at: u.expires_at || null,
+    is_expired: isExpired
   };
 }
 

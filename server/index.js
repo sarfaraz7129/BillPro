@@ -12,6 +12,7 @@ const documentRoutes = require('./routes/documents');
 const transactionRoutes = require('./routes/transactions');
 const reportRoutes = require('./routes/reports');
 const pdfRoutes = require('./routes/pdf');
+const adminRoutes = require('./routes/admin');
 
 const app = express();
 app.set('trust proxy', true);
@@ -89,6 +90,7 @@ app.use('/api/documents', documentRoutes.router);
 app.use('/api/transactions', transactionRoutes.router);
 app.use('/api/reports', reportRoutes.router);
 app.use('/api/pdf', pdfRoutes.router);
+app.use('/api/admin', adminRoutes.router);
 
 // Static frontend with strict no-cache headers to ensure immediate live updates
 app.use(express.static(WWW, {

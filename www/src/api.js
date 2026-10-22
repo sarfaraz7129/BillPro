@@ -69,6 +69,12 @@ export const isAdmin = (user) => {
   return !!(u && (u.role === 'admin' || u.role === 'owner'));
 };
 
+/** Checks if a user is the platform Super Admin */
+export const isSuperAdmin = (user) => {
+  const u = user || getUser();
+  return !!(u && (u.is_superadmin || u.isSuperAdmin));
+};
+
 /* ============================================================
  * Standard Indian Time (IST, UTC+05:30) Client Engine
  * Software-level time calculation that does NOT sync from or rely
@@ -306,7 +312,25 @@ export const api = {
   purchasesReport: (p) => request('GET', `/api/reports/purchases${qs(p)}`),
   profit: (p) => request('GET', `/api/reports/profit${qs(p)}`),
   aging: () => request('GET', '/api/reports/aging'),
-  daybook: (date) => request('GET', `/api/reports/daybook${qs({ date })}`)
+  daybook: (date) => request('GET', `/api/reports/daybook${qs({ date })}`),
+
+  // sales & inquiry
+  salesInfo: () => request('GET', '/api/auth/sales-info'),
+  submitInquiry: (b) => request('POST', '/api/auth/inquire', b),
+
+  // super admin
+  adminStats: () => request('GET', '/api/admin/stats'),
+  adminUsers: () => request('GET', '/api/admin/users'),
+  adminCreateUser: (b) => request('POST', '/api/admin/users', b),
+  adminUpdateUser: (id, b) => request('PUT', `/api/admin/users/${id}`, b),
+  adminRenewUser: (id, b) => request('POST', `/api/admin/users/${id}/renew`, b),
+  adminDeleteUser: (id) => request('DELETE', `/api/admin/users/${id}`),
+  adminInquiries: (status) => request('GET', `/api/admin/inquiries${qs({ status })}`),
+  adminUpdateInquiry: (id, b) => request('PUT', `/api/admin/inquiries/${id}`, b),
+  adminConvertInquiry: (id, b) => request('POST', `/api/admin/inquiries/${id}/convert`, b),
+  adminDeleteInquiry: (id) => request('DELETE', `/api/admin/inquiries/${id}`),
+  adminSettings: () => request('GET', '/api/admin/settings'),
+  adminUpdateSettings: (b) => request('PUT', '/api/admin/settings', b)
 };
 
 /** URL for a PDF - opened in a new tab, so the token rides along as a query param. */

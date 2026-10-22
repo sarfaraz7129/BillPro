@@ -41,10 +41,16 @@ function auth(req, res, next) {
 
   try {
     const payload = jwt.verify(token, JWT_SECRET);
-    const user = db.prepare('SELECT id, name, email, phone, role, permissions, active_business_id, lang FROM users WHERE id = ?').get(payload.uid);
+    const user = db.prepare('SELECT id, name, email, phone, role, permissions, active_business_id, lang, is_superadmin, status, plan, expires_at FROM users WHERE id = ?').get(payload.uid);
     if (!user) {
       console.warn('[BillPro Auth] User not found for id', payload.uid);
       return res.status(401).json({ error: 'Account not found' });
+    }
+    if (user.status === 'suspended') {
+      return res.status(403).json({
+        error: 'Your BillPro account has been suspended by the administrator. Please contact support.',
+        suspended: true
+      });
     }
     req.user = user;
     next();

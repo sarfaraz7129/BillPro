@@ -1,0 +1,435 @@
+'use strict';
+const express = require('express');
+const bcrypt = require('bcryptjs');
+const { db } = require('../db');
+const { auth, PERMISSIONS } = require('../middleware');
+const { istToday, istAddDays } = require('../lib/time');
+
+const router = express.Router();
+const ALL_PERMS = Object.keys(PERMISSIONS);
+
+function requireSuperAdmin(req, res, next) {
+  if (!req.user || !req.user.is_superadmin) {
+    return res.status(403).json({ error: 'Access denied: Super Admin privileges required.' });
+  }
+  next();
+}
+
+router.use(auth);
+router.use(requireSuperAdmin);
+
+/**
+ * Super Admin Dashboard Overview Stats
+ */
+router.get('/stats', (req, res) => {
+  const today = istToday();
+  const totalUsers = db.prepare('SELECT COUNT(*) n FROM users').get().n;
+  const activeUsers = db.prepare("SELECT COUNT(*) n FROM users WHERE status = 'active'").get().n;
+  const suspendedUsers = db.prepare("SELECT COUNT(*) n FROM users WHERE status = 'suspended'").get().n;
+  const expiredUsers = db.prepare(`
+    SELECT COUNT(*) n FROM users 
+    WHERE is_superadmin = 0 AND expires_at IS NOT NULL AND expires_at < ?
+  `).get(today).n;
+
+  const totalBusinesses = db.prepare('SELECT COUNT(*) n FROM businesses').get().n;
+  const totalInvoices = db.prepare('SELECT COUNT(*) n FROM documents').get().n;
+
+  const totalInquiries = db.prepare('SELECT COUNT(*) n FROM inquiries').get().n;
+  const newInquiries = db.prepare("SELECT COUNT(*) n FROM inquiries WHERE status = 'new'").get().n;
+
+  const plans = db.prepare('SELECT plan, COUNT(*) count FROM users GROUP BY plan').all();
+  const planMap = { monthly: 0, yearly: 0, lifetime: 0 };
+  for (const p of plans) {
+    if (p.plan) planMap[p.plan] = p.count;
+  }
+
+  res.json({
+    ok: true,
+    users: {
+      total: totalUsers,
+      active: activeUsers,
+      suspended: suspendedUsers,
+      expired: expiredUsers
+    },
+    businesses: totalBusinesses,
+    invoices: totalInvoices,
+    inquiries: {
+      total: totalInquiries,
+      new: newInquiries
+    },
+    plans: planMap,
+    today_ist: today
+  });
+});
+
+/**
+ * List all users / customer accounts
+ */
+router.get('/users', (req, res) => {
+  const today = istToday();
+  const users = db.prepare(`
+    SELECT id, name, email, phone, role, is_superadmin, status, plan, expires_at, created_at, active_business_id
+    FROM users
+    ORDER BY id DESC
+  `).all();
+
+  const userList = users.map((u) => {
+    const isExpired = Boolean(!u.is_superadmin && u.expires_at && u.expires_at < today);
+    const businesses = db.prepare('SELECT id, name, gstin, phone FROM businesses WHERE owner_id = ?').all(u.id);
+    const bizIds = businesses.map((b) => b.id);
+    let invoiceCount = 0;
+    if (bizIds.length > 0) {
+      const placeholders = bizIds.map(() => '?').join(',');
+      invoiceCount = db.prepare(`SELECT COUNT(*) n FROM documents WHERE business_id IN (${placeholders})`).get(...bizIds).n;
+    }
+    return {
+      ...u,
+      is_superadmin: Boolean(u.is_superadmin),
+      is_expired: isExpired,
+      businesses,
+      business_count: businesses.length,
+      invoice_count: invoiceCount
+    };
+  });
+
+  res.json({ ok: true, users: userList });
+});
+
+/**
+ * Helper to compute expiry date based on plan or custom input
+ */
+function computeExpiry(plan, customDays, customDate) {
+  if (customDate) return customDate;
+  if (customDays && Number(customDays) > 0) return istAddDays(Number(customDays));
+  if (plan === 'lifetime') return null;
+  if (plan === 'monthly') return istAddDays(30);
+  // Default to yearly
+  return istAddDays(365);
+}
+
+/**
+ * Provision a new customer / client account
+ */
+router.post('/users', (req, res) => {
+  const { name, email, password, phone, business_name, plan = 'yearly', custom_days, expires_at } = req.body || {};
+  if (!name || !email) {
+    return res.status(400).json({ error: 'Name and email are required.' });
+  }
+  const cleanEmail = String(email).trim().toLowerCase();
+  const exists = db.prepare('SELECT id FROM users WHERE email = ?').get(cleanEmail);
+  if (exists) {
+    return res.status(409).json({ error: 'A user account with this email already exists.' });
+  }
+
+  const rawPassword = password && String(password).length >= 6 ? String(password) : 'BillPro@123';
+  const finalExpiry = computeExpiry(plan, custom_days, expires_at);
+
+  const userInsert = db.prepare(`
+    INSERT INTO users (name, email, phone, password_hash, role, permissions, is_superadmin, status, plan, expires_at)
+    VALUES (?, ?, ?, ?, 'owner', ?, 0, 'active', ?, ?)
+  `).run(
+    name.trim(),
+    cleanEmail,
+    (phone || '').trim() || null,
+    bcrypt.hashSync(rawPassword, 10),
+    JSON.stringify(ALL_PERMS),
+    plan,
+    finalExpiry
+  );
+
+  const newUserId = userInsert.lastInsertRowid;
+
+  // Provision primary business
+  const cleanBizName = (business_name || '').trim() || `${name.trim()}'s Business`;
+  const bizInsert = db.prepare(`
+    INSERT INTO businesses (owner_id, name, legal_name, invoice_prefix, quoter_prefix, default_gst_rate, credit_days, color, phone)
+    VALUES (?, ?, ?, 'INV', 'QT', 18, 30, '#4f46e5', ?)
+  `).run(newUserId, cleanBizName, cleanBizName, (phone || '').trim() || null);
+
+  const newBizId = bizInsert.lastInsertRowid;
+  db.prepare('UPDATE users SET active_business_id = ? WHERE id = ?').run(newBizId, newUserId);
+
+  const origin = req.headers.origin || (req.headers.host ? `${req.protocol}://${req.headers.host}` : 'https://billpro.in');
+  const expiryText = finalExpiry ? `Valid until ${finalExpiry}` : 'Lifetime Access (Never expires)';
+
+  const welcomeWhatsapp = `👋 *Welcome to BillPro Billing Suite!*\n\nYour business billing account is active:\n🌐 *Login:* ${origin}\n📧 *Email:* ${cleanEmail}\n🔑 *Password:* ${rawPassword}\n🏢 *Business:* ${cleanBizName}\n📦 *Plan:* ${plan.toUpperCase()} (${expiryText})\n\n💡 Sign in now to start issuing GST invoices, manage stock, and track Khata ledgers!`;
+
+  res.json({
+    ok: true,
+    user: {
+      id: newUserId,
+      name: name.trim(),
+      email: cleanEmail,
+      phone: (phone || '').trim() || null,
+      plan,
+      expires_at: finalExpiry,
+      status: 'active',
+      raw_password: rawPassword
+    },
+    business: {
+      id: newBizId,
+      name: cleanBizName
+    },
+    welcome_whatsapp: welcomeWhatsapp
+  });
+});
+
+/**
+ * Edit user details / credentials / plan
+ */
+router.put('/users/:id', (req, res) => {
+  const userId = Number(req.params.id);
+  const targetUser = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
+  if (!targetUser) return res.status(404).json({ error: 'User not found' });
+
+  const { name, phone, status, plan, expires_at, new_password, is_superadmin } = req.body || {};
+
+  // Self safety guards
+  if (req.user.id === userId) {
+    if (status === 'suspended') return res.status(400).json({ error: 'You cannot suspend your own Super Admin account.' });
+    if (is_superadmin === false || is_superadmin === 0) return res.status(400).json({ error: 'You cannot remove your own Super Admin privileges.' });
+  }
+
+  const updatedName = name !== undefined ? String(name).trim() : targetUser.name;
+  const updatedPhone = phone !== undefined ? ((phone || '').trim() || null) : targetUser.phone;
+  const updatedStatus = status !== undefined ? status : targetUser.status;
+  const updatedPlan = plan !== undefined ? plan : targetUser.plan;
+  const updatedExpiry = expires_at !== undefined ? (expires_at || null) : targetUser.expires_at;
+  const updatedIsAdmin = is_superadmin !== undefined ? (is_superadmin ? 1 : 0) : targetUser.is_superadmin;
+
+  let pwdHash = targetUser.password_hash;
+  if (new_password && String(new_password).length >= 6) {
+    pwdHash = bcrypt.hashSync(String(new_password), 10);
+  }
+
+  db.prepare(`
+    UPDATE users 
+    SET name = ?, phone = ?, status = ?, plan = ?, expires_at = ?, is_superadmin = ?, password_hash = ?
+    WHERE id = ?
+  `).run(updatedName, updatedPhone, updatedStatus, updatedPlan, updatedExpiry, updatedIsAdmin, pwdHash, userId);
+
+  const updated = db.prepare('SELECT id, name, email, phone, role, is_superadmin, status, plan, expires_at FROM users WHERE id = ?').get(userId);
+  res.json({ ok: true, user: { ...updated, is_superadmin: Boolean(updated.is_superadmin) } });
+});
+
+/**
+ * Renew customer subscription plan
+ */
+router.post('/users/:id/renew', (req, res) => {
+  const userId = Number(req.params.id);
+  const targetUser = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
+  if (!targetUser) return res.status(404).json({ error: 'User not found' });
+
+  const { plan = targetUser.plan || 'yearly', days } = req.body || {};
+  const today = istToday();
+
+  // If current expiry is in the future, extend from that date; otherwise extend from today
+  const baseDate = (targetUser.expires_at && targetUser.expires_at > today) ? targetUser.expires_at : today;
+  let newExpiry = null;
+
+  if (plan === 'lifetime') {
+    newExpiry = null;
+  } else if (days && Number(days) > 0) {
+    newExpiry = istAddDays(Number(days), baseDate);
+  } else if (plan === 'monthly') {
+    newExpiry = istAddDays(30, baseDate);
+  } else {
+    // yearly
+    newExpiry = istAddDays(365, baseDate);
+  }
+
+  db.prepare(`
+    UPDATE users SET plan = ?, expires_at = ?, status = 'active' WHERE id = ?
+  `).run(plan, newExpiry, userId);
+
+  const updated = db.prepare('SELECT id, name, email, phone, role, is_superadmin, status, plan, expires_at FROM users WHERE id = ?').get(userId);
+  res.json({
+    ok: true,
+    user: { ...updated, is_superadmin: Boolean(updated.is_superadmin) },
+    message: `Account renewed successfully under ${plan.toUpperCase()} plan.`
+  });
+});
+
+/**
+ * Delete a customer account and all associated data
+ */
+router.delete('/users/:id', (req, res) => {
+  const userId = Number(req.params.id);
+  if (req.user.id === userId) {
+    return res.status(400).json({ error: 'You cannot delete your own Super Admin account.' });
+  }
+
+  const target = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
+  if (!target) return res.status(404).json({ error: 'User not found.' });
+
+  // Delete owned businesses and data
+  const bizList = db.prepare('SELECT id FROM businesses WHERE owner_id = ?').all(userId);
+  for (const b of bizList) {
+    db.prepare('DELETE FROM documents WHERE business_id = ?').run(b.id);
+    db.prepare('DELETE FROM transactions WHERE business_id = ?').run(b.id);
+    db.prepare('DELETE FROM parties WHERE business_id = ?').run(b.id);
+    db.prepare('DELETE FROM products WHERE business_id = ?').run(b.id);
+    db.prepare('DELETE FROM stock_moves WHERE business_id = ?').run(b.id);
+    db.prepare('DELETE FROM staff WHERE business_id = ?').run(b.id);
+    db.prepare('DELETE FROM businesses WHERE id = ?').run(b.id);
+  }
+  db.prepare('DELETE FROM users WHERE id = ?').run(userId);
+
+  res.json({ ok: true, message: `User ${target.email} and all associated business records have been removed.` });
+});
+
+/**
+ * List all inquiries
+ */
+router.get('/inquiries', (req, res) => {
+  const { status } = req.query;
+  let rows;
+  if (status && status !== 'all') {
+    rows = db.prepare('SELECT * FROM inquiries WHERE status = ? ORDER BY id DESC').all(status);
+  } else {
+    rows = db.prepare('SELECT * FROM inquiries ORDER BY id DESC').all();
+  }
+  res.json({ ok: true, inquiries: rows });
+});
+
+/**
+ * Update inquiry status or notes
+ */
+router.put('/inquiries/:id', (req, res) => {
+  const inqId = Number(req.params.id);
+  const target = db.prepare('SELECT * FROM inquiries WHERE id = ?').get(inqId);
+  if (!target) return res.status(404).json({ error: 'Inquiry not found' });
+
+  const { status, message } = req.body || {};
+  db.prepare('UPDATE inquiries SET status = COALESCE(?, status), message = COALESCE(?, message) WHERE id = ?')
+    .run(status || null, message || null, inqId);
+
+  const updated = db.prepare('SELECT * FROM inquiries WHERE id = ?').get(inqId);
+  res.json({ ok: true, inquiry: updated });
+});
+
+/**
+ * Convert inquiry directly to a provisioned client account
+ */
+router.post('/inquiries/:id/convert', (req, res) => {
+  const inqId = Number(req.params.id);
+  const inquiry = db.prepare('SELECT * FROM inquiries WHERE id = ?').get(inqId);
+  if (!inquiry) return res.status(404).json({ error: 'Inquiry not found' });
+
+  const { password, plan = inquiry.plan || 'yearly', business_name } = req.body || {};
+
+  // Formulate email if inquiry had none
+  const cleanPhone = inquiry.phone.replace(/[^\d]/g, '');
+  const candidateEmail = inquiry.email ? inquiry.email.trim().toLowerCase() : `client${cleanPhone.slice(-6)}@billpro.client`;
+
+  // Check if user already exists
+  const exists = db.prepare('SELECT id FROM users WHERE email = ?').get(candidateEmail);
+  if (exists) {
+    return res.status(409).json({ error: `An account with email '${candidateEmail}' already exists.` });
+  }
+
+  const rawPassword = password && String(password).length >= 6 ? String(password) : 'BillPro@123';
+  const finalExpiry = computeExpiry(plan);
+
+  const userInsert = db.prepare(`
+    INSERT INTO users (name, email, phone, password_hash, role, permissions, is_superadmin, status, plan, expires_at)
+    VALUES (?, ?, ?, ?, 'owner', ?, 0, 'active', ?, ?)
+  `).run(
+    inquiry.name,
+    candidateEmail,
+    inquiry.phone,
+    bcrypt.hashSync(rawPassword, 10),
+    JSON.stringify(ALL_PERMS),
+    plan,
+    finalExpiry
+  );
+
+  const newUserId = userInsert.lastInsertRowid;
+  const cleanBizName = (business_name || inquiry.shop_name || `${inquiry.name}'s Business`).trim();
+
+  const bizInsert = db.prepare(`
+    INSERT INTO businesses (owner_id, name, legal_name, invoice_prefix, quoter_prefix, default_gst_rate, credit_days, color, phone, city)
+    VALUES (?, ?, ?, 'INV', 'QT', 18, 30, '#4f46e5', ?, ?)
+  `).run(newUserId, cleanBizName, cleanBizName, inquiry.phone, inquiry.city || null);
+
+  const newBizId = bizInsert.lastInsertRowid;
+  db.prepare('UPDATE users SET active_business_id = ? WHERE id = ?').run(newBizId, newUserId);
+
+  // Mark inquiry as onboarded
+  db.prepare("UPDATE inquiries SET status = 'onboarded' WHERE id = ?").run(inqId);
+
+  const origin = req.headers.origin || (req.headers.host ? `${req.protocol}://${req.headers.host}` : 'https://billpro.in');
+  const expiryText = finalExpiry ? `Valid until ${finalExpiry}` : 'Lifetime Access (Never expires)';
+
+  const welcomeWhatsapp = `👋 *Welcome to BillPro Billing Suite!*\n\nYour account is now fully active:\n🌐 *Login:* ${origin}\n📧 *Email:* ${candidateEmail}\n🔑 *Password:* ${rawPassword}\n🏢 *Business:* ${cleanBizName}\n📦 *Plan:* ${plan.toUpperCase()} (${expiryText})\n\n💡 Log in today to start creating GST invoices and tracking your inventory!`;
+
+  res.json({
+    ok: true,
+    user: {
+      id: newUserId,
+      name: inquiry.name,
+      email: candidateEmail,
+      phone: inquiry.phone,
+      plan,
+      expires_at: finalExpiry,
+      raw_password: rawPassword
+    },
+    business: {
+      id: newBizId,
+      name: cleanBizName
+    },
+    welcome_whatsapp: welcomeWhatsapp
+  });
+});
+
+/**
+ * Delete an inquiry
+ */
+router.delete('/inquiries/:id', (req, res) => {
+  const inqId = Number(req.params.id);
+  db.prepare('DELETE FROM inquiries WHERE id = ?').run(inqId);
+  res.json({ ok: true, message: 'Inquiry deleted' });
+});
+
+/**
+ * Get system & pricing settings
+ */
+router.get('/settings', (req, res) => {
+  const rows = db.prepare('SELECT key, value FROM system_settings').all();
+  const settings = {};
+  for (const r of rows) settings[r.key] = r.value;
+  res.json({
+    ok: true,
+    settings: {
+      sales_whatsapp: settings.sales_whatsapp || '919845012345',
+      sales_phone: settings.sales_phone || '+91 98450 12345',
+      public_signup_enabled: settings.public_signup_enabled === '1',
+      pricing_monthly: Number(settings.pricing_monthly || 499),
+      pricing_yearly: Number(settings.pricing_yearly || 2999),
+      pricing_lifetime: Number(settings.pricing_lifetime || 7999)
+    }
+  });
+});
+
+/**
+ * Update system & pricing settings
+ */
+router.put('/settings', (req, res) => {
+  const { sales_whatsapp, sales_phone, public_signup_enabled, pricing_monthly, pricing_yearly, pricing_lifetime } = req.body || {};
+
+  const upsert = db.prepare(`
+    INSERT INTO system_settings (key, value) VALUES (?, ?)
+    ON CONFLICT(key) DO UPDATE SET value = excluded.value
+  `);
+
+  if (sales_whatsapp !== undefined) upsert.run('sales_whatsapp', String(sales_whatsapp).trim());
+  if (sales_phone !== undefined) upsert.run('sales_phone', String(sales_phone).trim());
+  if (public_signup_enabled !== undefined) upsert.run('public_signup_enabled', public_signup_enabled ? '1' : '0');
+  if (pricing_monthly !== undefined) upsert.run('pricing_monthly', String(pricing_monthly));
+  if (pricing_yearly !== undefined) upsert.run('pricing_yearly', String(pricing_yearly));
+  if (pricing_lifetime !== undefined) upsert.run('pricing_lifetime', String(pricing_lifetime));
+
+  res.json({ ok: true, message: 'Settings saved successfully' });
+});
+
+module.exports = { router };

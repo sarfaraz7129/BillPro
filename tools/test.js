@@ -273,6 +273,89 @@ async function run() {
   const deletedCatProd = checkDeletedProd.body.products.find((p) => p.name === 'Cold Coffee 200ml');
   ok('product category cleared on delete', deletedCatProd && !deletedCatProd.category, deletedCatProd?.category);
 
+  console.log('\n--- customer onboarding & super admin licensing ---');
+  // 1. Closed public registration test
+  const blockedSignup = await fetch(base + '/api/auth/signup', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: 'Hacker User', email: 'intruder@example.com', password: 'password123' })
+  });
+  const blockedSignupBody = await blockedSignup.json();
+  ok('public signup is disabled by default (403)', blockedSignup.status === 403 && blockedSignupBody.signup_disabled === true, blockedSignup.status);
+
+  // 2. Submit sales / WhatsApp inquiry
+  const submitInquiry = await fetch(base + '/api/auth/inquire', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      name: 'Ramesh Patel',
+      phone: '9876543210',
+      email: 'ramesh@pateltraders.com',
+      shop_name: 'Patel Supermarket',
+      city: 'Ahmedabad',
+      plan: 'yearly',
+      message: 'Need GST billing with thermal printer support'
+    })
+  });
+  const inquiryRes = await submitInquiry.json();
+  ok('submits public inquiry with WhatsApp sales info', submitInquiry.status === 200 && inquiryRes.ok && Boolean(inquiryRes.inquiry_id));
+
+  // 3. Super admin stats
+  const adminStats = await call('GET', '/api/admin/stats');
+  ok('super admin can view overall stats', adminStats.status === 200 && adminStats.body.users.total >= 1 && adminStats.body.inquiries.total >= 1);
+
+  // 4. Convert inquiry to provisioned client
+  const convertInquiry = await call('POST', `/api/admin/inquiries/${inquiryRes.inquiry_id}/convert`, {
+    plan: 'yearly',
+    password: 'Client@Pass123'
+  });
+  ok('converts inquiry to provisioned client with credentials', convertInquiry.status === 200 && convertInquiry.body.user.email === 'ramesh@pateltraders.com');
+
+  // 5. Provisioned customer can sign in
+  const clientLogin = await fetch(base + '/api/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: 'ramesh@pateltraders.com', password: 'Client@Pass123' })
+  });
+  const clientData = await clientLogin.json();
+  ok('provisioned client logs in successfully with primary business', clientLogin.status === 200 && clientData.businesses.length >= 1 && clientData.user.plan === 'yearly');
+
+  // 6. Super Admin direct provisioning of Monthly client
+  const directProvision = await call('POST', '/api/admin/users', {
+    name: 'Priya Sharma',
+    email: 'priya@sharmafashion.in',
+    phone: '9811223344',
+    business_name: 'Sharma Fashion Boutique',
+    plan: 'monthly',
+    password: 'Priya@Secure2026'
+  });
+  ok('super admin directly provisions new customer', directProvision.status === 200 && directProvision.body.user.plan === 'monthly' && Boolean(directProvision.body.user.expires_at));
+
+  // 7. Renew subscription (e.g. upgrade to lifetime)
+  const renewClient = await call('POST', `/api/admin/users/${directProvision.body.user.id}/renew`, {
+    plan: 'lifetime'
+  });
+  ok('renews and updates client subscription plan to lifetime', renewClient.status === 200 && renewClient.body.user.plan === 'lifetime' && renewClient.body.user.expires_at === null);
+
+  // 8. Suspend account and verify access blocked
+  const suspendUser = await call('PUT', `/api/admin/users/${directProvision.body.user.id}`, {
+    status: 'suspended'
+  });
+  ok('super admin can suspend client account', suspendUser.status === 200 && suspendUser.body.user.status === 'suspended');
+
+  const suspendedAttempt = await fetch(base + '/api/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: 'priya@sharmafashion.in', password: 'Priya@Secure2026' })
+  });
+  ok('suspended user is blocked from logging in (403)', suspendedAttempt.status === 403);
+
+  // 9. Non-admin staff cannot access /api/admin
+  const nonAdminCheck = await fetch(base + '/api/admin/stats', {
+    headers: { 'Authorization': 'Bearer ' + staffJwt }
+  });
+  ok('non-superadmin is rejected from admin endpoints (403)', nonAdminCheck.status === 403);
+
   server.close();
   console.log(`\n${passed} passed, ${failed} failed\n`);
   process.exit(failed ? 1 : 0);

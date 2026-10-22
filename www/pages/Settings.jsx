@@ -392,6 +392,56 @@ export default function Settings({ business, user, onBusinessSaved, onAddBusines
           <>
             <div className="card-h"><Icon.lock size={16} /><div><h3>My account</h3><div className="sub">Your login works across every business you own</div></div></div>
             <div className="card-b">
+              {/* Subscription & License Info */}
+              <div style={{
+                background: user.is_expired ? 'rgba(239, 68, 68, 0.05)' : 'var(--bg, #f8fafc)',
+                border: user.is_expired ? '1px solid #fca5a5' : '1px solid var(--border)',
+                borderRadius: 12,
+                padding: '16px 18px',
+                marginBottom: 20
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                      <span style={{
+                        fontSize: 11,
+                        fontWeight: 700,
+                        textTransform: 'uppercase',
+                        padding: '2px 8px',
+                        borderRadius: 6,
+                        background: user.plan === 'lifetime' ? '#fef3c7' : user.plan === 'yearly' ? '#dbeafe' : '#f3e8ff',
+                        color: user.plan === 'lifetime' ? '#92400e' : user.plan === 'yearly' ? '#1e40af' : '#6b21a8'
+                      }}>
+                        {user.plan || 'yearly'} Plan
+                      </span>
+                      <span className={`badge ${user.status === 'suspended' ? 'red' : user.is_expired ? 'amber' : 'green'}`}>
+                        {user.status === 'suspended' ? 'Suspended' : user.is_expired ? 'Expired' : 'Active License'}
+                      </span>
+                      {user.is_superadmin && (
+                        <span style={{ fontSize: 10, background: '#4f46e5', color: '#fff', padding: '2px 6px', borderRadius: 4, fontWeight: 700 }}>
+                          SUPER ADMIN
+                        </span>
+                      )}
+                    </div>
+                    <div style={{ fontSize: 13, color: 'var(--ink-2)' }}>
+                      {user.plan === 'lifetime'
+                        ? 'Unlimited Lifetime Access (No expiry)'
+                        : `Validity: ${user.expires_at ? `Valid till ${user.expires_at}` : 'Active'}`}
+                    </div>
+                  </div>
+                  <button
+                    className="btn sm"
+                    style={{ background: '#22c55e', color: '#fff', border: 0, fontWeight: 600 }}
+                    onClick={() => {
+                      const waText = `Hi BillPro Team! I would like to renew/inquire about my subscription (${user.email}, Plan: ${user.plan || 'yearly'}).`;
+                      window.open('https://wa.me/919845012345?text=' + encodeURIComponent(waText), '_blank', 'noopener,noreferrer');
+                    }}
+                  >
+                    <Icon.whatsapp size={13} /> {user.is_expired ? 'Renew on WhatsApp' : 'Contact Support / Upgrade'}
+                  </button>
+                </div>
+              </div>
+
               <div className="form-grid">
                 <Field label="Name"><input className="input" value={me.name} onChange={(e) => setMe({ ...me, name: e.target.value })} /></Field>
                 <Field label="Mobile"><input className="input" value={me.phone} onChange={(e) => setMe({ ...me, phone: e.target.value })} /></Field>
