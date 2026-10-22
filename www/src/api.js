@@ -272,6 +272,10 @@ export const api = {
   adjustStock: (id, b) => request('POST', `/api/products/${id}/stock`, b),
   productMoves: (id) => request('GET', `/api/products/${id}/moves`),
   bulkImportProducts: (items, opts = {}) => request('POST', '/api/products/bulk', { items, ...opts }),
+  categories: () => request('GET', '/api/products/categories'),
+  createCategory: (name) => request('POST', '/api/products/categories', { name }),
+  renameCategory: (from, to) => request('PUT', '/api/products/categories/rename', { from, to }),
+  deleteCategory: (name) => request('DELETE', `/api/products/categories/${encodeURIComponent(name)}`),
 
   // documents
   documents: (p) => request('GET', `/api/documents${qs(p)}`),

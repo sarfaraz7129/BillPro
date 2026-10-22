@@ -231,6 +231,48 @@ async function run() {
   });
   ok('admin permitted to customize bill date', adminCustom.status === 201 && adminCustom.body.document.date === '2025-05-20', adminCustom.body.document?.date);
 
+  console.log('\n--- category management ---');
+  // Create a new category
+  const createCat = await call('POST', '/api/products/categories', { name: 'Beverages' });
+  ok('creates a new category', createCat.status === 201 && createCat.body.category.name === 'Beverages', createCat.body);
+
+  // List categories
+  const listCats = await call('GET', '/api/products/categories');
+  const bevCat = (listCats.body.categories || []).find((c) => c.name === 'Beverages');
+  ok('category list includes newly created category', !!bevCat, listCats.body.categories);
+
+  // Create product in that category
+  const createProdWithCat = await call('POST', '/api/products', {
+    name: 'Cold Coffee 200ml',
+    category: 'Beverages',
+    sale_price: 60,
+    unit: 'can'
+  });
+  ok('creates product assigned to category', createProdWithCat.status === 201 && createProdWithCat.body.product.category === 'Beverages');
+
+  // Verify category product count
+  const listCatsAfterProd = await call('GET', '/api/products/categories');
+  const bevCatAfter = (listCatsAfterProd.body.categories || []).find((c) => c.name === 'Beverages');
+  ok('category reflects product count', bevCatAfter && bevCatAfter.productCount >= 1, bevCatAfter);
+
+  // Rename category
+  const renameCat = await call('PUT', '/api/products/categories/rename', { from: 'Beverages', to: 'Drinks & Beverages' });
+  ok('renames category', renameCat.status === 200 && renameCat.body.name === 'Drinks & Beverages');
+
+  // Verify product now has renamed category
+  const checkRenamedProd = await call('GET', `/api/products`);
+  const renamedProd = checkRenamedProd.body.products.find((p) => p.name === 'Cold Coffee 200ml');
+  ok('product updated to renamed category', renamedProd && renamedProd.category === 'Drinks & Beverages', renamedProd?.category);
+
+  // Delete category
+  const delCat = await call('DELETE', '/api/products/categories/Drinks%20%26%20Beverages');
+  ok('deletes category', delCat.status === 200);
+
+  // Verify product is now uncategorized
+  const checkDeletedProd = await call('GET', `/api/products`);
+  const deletedCatProd = checkDeletedProd.body.products.find((p) => p.name === 'Cold Coffee 200ml');
+  ok('product category cleared on delete', deletedCatProd && !deletedCatProd.category, deletedCatProd?.category);
+
   server.close();
   console.log(`\n${passed} passed, ${failed} failed\n`);
   process.exit(failed ? 1 : 0);

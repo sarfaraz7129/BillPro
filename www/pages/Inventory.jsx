@@ -19,6 +19,7 @@ export default function Inventory({ business, toast }) {
   const [moves, setMoves] = useState(null);
   const [stock, setStock] = useState(null);
   const [importOpen, setImportOpen] = useState(false);
+  const [catMgrOpen, setCatMgrOpen] = useState(false);
 
   const load = async () => {
     try {
@@ -48,6 +49,9 @@ export default function Inventory({ business, toast }) {
           <option value="">All categories</option>
           {cats.map((c) => <option key={c} value={c}>{c}</option>)}
         </select>
+        <button className="btn" onClick={() => setCatMgrOpen(true)} title="Manage product categories">
+          <Icon.tag size={15} /> Categories
+        </button>
         <label className="checkbox"><input type="checkbox" checked={low} onChange={(e) => setLow(e.target.checked)} /> Low stock only</label>
         <button className="btn" onClick={() => setImportOpen(true)} title="Bulk upload products from Excel/CSV">
           <Icon.upload size={15} /> Import Excel
@@ -119,8 +123,9 @@ export default function Inventory({ business, toast }) {
         </div>
       </div>
 
-      {editor && <ProductEditor business={business} product={editor.id ? editor : null} toast={toast}
-        onClose={() => setEditor(null)} onSaved={() => { setEditor(null); load(); }} />}
+      {editor && <ProductEditor business={business} product={editor.id ? editor : null} categories={cats} toast={toast}
+        onClose={() => setEditor(null)} onSaved={() => { setEditor(null); load(); }} onCategoriesChanged={() => load()} />}
+      {catMgrOpen && <CategoryManagerModal business={business} onClose={() => setCatMgrOpen(false)} onCategoriesChanged={() => load()} toast={toast} />}
       {stock && <StockModal product={stock} onClose={() => setStock(null)} onSaved={() => { setStock(null); load(); }} toast={toast} />}
       {moves && (
         <Modal title={`Stock history · ${moves.product.name}`} onClose={() => setMoves(null)} size="wide">
@@ -162,14 +167,44 @@ function Mini({ label, value, foot, tone }) {
   return <div className="stat"><div className="lbl">{label}</div><div className={`val ${tone || ''}`} style={{ fontSize: 20 }}>{value}</div><div className="foot">{foot}</div></div>;
 }
 
-function ProductEditor({ business, product, onClose, onSaved, toast }) {
+function ProductEditor({ business, product, categories = [], onClose, onSaved, onCategoriesChanged, toast }) {
   const [form, setForm] = useState(product ? { ...product } : {
     name: '', sku: '', barcode: '', category: '', unit: 'pcs', hsn: '', gst_rate: business.default_gst_rate,
     purchase_price: 0, sale_price: 0, stock: 0, low_stock_at: 0, tax_inclusive: 0
   });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
+  const [showCatMgr, setShowCatMgr] = useState(false);
+  const [isAddingNewCat, setIsAddingNewCat] = useState(false);
+  const [newCatInput, setNewCatInput] = useState('');
+  const [localCats, setLocalCats] = useState(categories);
+
+  useEffect(() => {
+    setLocalCats(categories);
+  }, [categories]);
+
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+
+  const handleCreateInlineCat = async () => {
+    const val = newCatInput.trim();
+    if (!val) {
+      setIsAddingNewCat(false);
+      return;
+    }
+    try {
+      await api.createCategory(val);
+      if (!localCats.includes(val)) {
+        setLocalCats((prev) => [...prev, val].sort((a, b) => a.localeCompare(b)));
+      }
+      set('category', val);
+      setNewCatInput('');
+      setIsAddingNewCat(false);
+      toast(`Category "${val}" created and selected`, 'ok');
+      if (onCategoriesChanged) onCategoriesChanged();
+    } catch (e) {
+      toast(e.message, 'err');
+    }
+  };
 
   const save = async () => {
     setErr(''); setBusy(true);
@@ -184,35 +219,368 @@ function ProductEditor({ business, product, onClose, onSaved, toast }) {
   const margin = form.sale_price ? (((form.sale_price - form.purchase_price) / form.sale_price) * 100).toFixed(1) : '0';
 
   return (
-    <Modal title={product ? `Edit ${product.name}` : 'Add product'} onClose={onClose}
-      footer={<>
-        <button className="btn" onClick={onClose}>Cancel</button>
-        <button className="btn primary" onClick={save} disabled={busy}>{busy ? 'Saving…' : 'Save product'}</button>
-      </>}>
-      {err && <div className="banner err"><Icon.alert size={15} />{err}</div>}
-      <div className="form-grid">
-        <Field label="Product / service name" req full><input className="input" value={form.name} onChange={(e) => set('name', e.target.value)} autoFocus /></Field>
-        <Field label="SKU code"><input className="input" value={form.sku || ''} onChange={(e) => set('sku', e.target.value)} /></Field>
-        <Field label="Barcode"><input className="input" value={form.barcode || ''} onChange={(e) => set('barcode', e.target.value)} /></Field>
-        <Field label="Category"><input className="input" value={form.category || ''} onChange={(e) => set('category', e.target.value)} placeholder="e.g. Grains" /></Field>
-        <Field label="Unit">
-          <select className="input" value={form.unit} onChange={(e) => set('unit', e.target.value)}>
-            {UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
-          </select>
-        </Field>
-        <Field label="HSN / SAC" hint="Starts with 99 for services"><input className="input" value={form.hsn || ''} onChange={(e) => set('hsn', e.target.value)} /></Field>
-        <Field label="GST rate" hint="Standard slab or custom percentage">
-          <GstRateInput value={form.gst_rate} onChange={(r) => set('gst_rate', r)} />
-        </Field>
-        <Field label="Purchase price"><input className="input" type="number" value={form.purchase_price} onChange={(e) => set('purchase_price', Number(e.target.value))} /></Field>
-        <Field label="Sale price"><input className="input" type="number" value={form.sale_price} onChange={(e) => set('sale_price', Number(e.target.value))} /></Field>
-        {!product && <Field label="Opening stock"><input className="input" type="number" value={form.stock} onChange={(e) => set('stock', Number(e.target.value))} /></Field>}
-        <Field label="Low stock alert at"><input className="input" type="number" value={form.low_stock_at} onChange={(e) => set('low_stock_at', Number(e.target.value))} /></Field>
-        <div className="full">
-          <label className="checkbox"><input type="checkbox" checked={!!form.tax_inclusive} onChange={(e) => set('tax_inclusive', e.target.checked ? 1 : 0)} /> Sale price already includes GST</label>
+    <>
+      <Modal title={product ? `Edit ${product.name}` : 'Add product'} onClose={onClose}
+        footer={<>
+          <button className="btn" onClick={onClose}>Cancel</button>
+          <button className="btn primary" onClick={save} disabled={busy}>{busy ? 'Saving…' : 'Save product'}</button>
+        </>}>
+        {err && <div className="banner err"><Icon.alert size={15} />{err}</div>}
+        <div className="form-grid">
+          <Field label="Product / service name" req full><input className="input" value={form.name} onChange={(e) => set('name', e.target.value)} autoFocus /></Field>
+          <Field label="SKU code"><input className="input" value={form.sku || ''} onChange={(e) => set('sku', e.target.value)} /></Field>
+          <Field label="Barcode"><input className="input" value={form.barcode || ''} onChange={(e) => set('barcode', e.target.value)} /></Field>
+
+          {/* Category Selector with On-the-Fly Creation & Management */}
+          <div className="field">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+              <label style={{ fontSize: 12.5, fontWeight: 650, color: 'var(--ink)' }}>Category</label>
+              <button
+                type="button"
+                className="link"
+                onClick={() => setShowCatMgr(true)}
+                style={{ fontSize: 11.5, background: 'none', border: 'none', padding: 0, display: 'inline-flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}
+              >
+                <Icon.tag size={12} /> Manage categories
+              </button>
+            </div>
+
+            {isAddingNewCat ? (
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                <input
+                  className="input"
+                  style={{ flex: 1 }}
+                  autoFocus
+                  placeholder="Type new category name…"
+                  value={newCatInput}
+                  onChange={(e) => setNewCatInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') { e.preventDefault(); handleCreateInlineCat(); }
+                    if (e.key === 'Escape') { setIsAddingNewCat(false); }
+                  }}
+                />
+                <button
+                  type="button"
+                  className="btn primary"
+                  style={{ padding: '0 12px', height: 36 }}
+                  onClick={handleCreateInlineCat}
+                >
+                  Add
+                </button>
+                <button
+                  type="button"
+                  className="btn"
+                  style={{ padding: '0 10px', height: 36 }}
+                  onClick={() => setIsAddingNewCat(false)}
+                >
+                  ✕
+                </button>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                <select
+                  className="input"
+                  style={{ flex: 1 }}
+                  value={form.category || ''}
+                  onChange={(e) => {
+                    if (e.target.value === '__NEW__') {
+                      setIsAddingNewCat(true);
+                    } else {
+                      set('category', e.target.value);
+                    }
+                  }}
+                >
+                  <option value="">-- No Category (General) --</option>
+                  {localCats.map((c) => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                  <option value="__NEW__">+ Add new category…</option>
+                </select>
+                <button
+                  type="button"
+                  className="btn"
+                  title="Add new category"
+                  style={{ padding: '0 11px', height: 36, whiteSpace: 'nowrap' }}
+                  onClick={() => setIsAddingNewCat(true)}
+                >
+                  <Icon.plus size={14} /> New
+                </button>
+              </div>
+            )}
+
+            {/* Quick Pick Chips */}
+            {localCats.length > 0 && (
+              <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginTop: 6, alignItems: 'center' }}>
+                <span style={{ fontSize: 11, color: 'var(--muted)', marginRight: 2 }}>Quick pick:</span>
+                {localCats.slice(0, 6).map((c) => {
+                  const isSelected = form.category === c;
+                  return (
+                    <button
+                      key={c}
+                      type="button"
+                      className={`pill sm ${isSelected ? 'primary' : 'grey'}`}
+                      style={{
+                        cursor: 'pointer',
+                        padding: '2px 8px',
+                        fontSize: 11,
+                        background: isSelected ? 'var(--brand)' : 'var(--surface-2)',
+                        color: isSelected ? '#fff' : 'var(--ink)',
+                        borderColor: isSelected ? 'var(--brand)' : 'var(--line)'
+                      }}
+                      onClick={() => set('category', isSelected ? '' : c)}
+                    >
+                      {isSelected ? `✓ ${c}` : c}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          <Field label="Unit">
+            <select className="input" value={form.unit} onChange={(e) => set('unit', e.target.value)}>
+              {UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
+            </select>
+          </Field>
+          <Field label="HSN / SAC" hint="Starts with 99 for services"><input className="input" value={form.hsn || ''} onChange={(e) => set('hsn', e.target.value)} /></Field>
+          <Field label="GST rate" hint="Standard slab or custom percentage">
+            <GstRateInput value={form.gst_rate} onChange={(r) => set('gst_rate', r)} />
+          </Field>
+          <Field label="Purchase price"><input className="input" type="number" value={form.purchase_price} onChange={(e) => set('purchase_price', Number(e.target.value))} /></Field>
+          <Field label="Sale price"><input className="input" type="number" value={form.sale_price} onChange={(e) => set('sale_price', Number(e.target.value))} /></Field>
+          {!product && <Field label="Opening stock"><input className="input" type="number" value={form.stock} onChange={(e) => set('stock', Number(e.target.value))} /></Field>}
+          <Field label="Low stock alert at"><input className="input" type="number" value={form.low_stock_at} onChange={(e) => set('low_stock_at', Number(e.target.value))} /></Field>
+          <div className="full">
+            <label className="checkbox"><input type="checkbox" checked={!!form.tax_inclusive} onChange={(e) => set('tax_inclusive', e.target.checked ? 1 : 0)} /> Sale price already includes GST</label>
+          </div>
+          {product && (
+            <div className="full banner info"><Icon.box size={15} />Current stock: <b>{product.stock} {product.unit}</b> · margin {margin}% · use “Adjust stock” to change quantity.</div>
+          )}
         </div>
-        {product && (
-          <div className="full banner info"><Icon.box size={15} />Current stock: <b>{product.stock} {product.unit}</b> · margin {margin}% · use “Adjust stock” to change quantity.</div>
+      </Modal>
+
+      {showCatMgr && (
+        <CategoryManagerModal
+          business={business}
+          onClose={() => setShowCatMgr(false)}
+          onCategoriesChanged={async () => {
+            const r = await api.categories();
+            const names = (r.categories || []).map(x => x.name);
+            setLocalCats(names);
+            if (onCategoriesChanged) onCategoriesChanged();
+          }}
+          toast={toast}
+        />
+      )}
+    </>
+  );
+}
+
+export function CategoryManagerModal({ business, onClose, onCategoriesChanged, toast }) {
+  const [list, setList] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [newCat, setNewCat] = useState('');
+  const [editing, setEditing] = useState(null); // { from, to }
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+
+  const loadCats = async () => {
+    setLoading(true);
+    try {
+      const r = await api.categories();
+      setList(r.categories || []);
+    } catch (e) {
+      toast(e.message, 'err');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadCats();
+  }, [business.id]);
+
+  const handleAdd = async (e) => {
+    e && e.preventDefault();
+    const name = newCat.trim();
+    if (!name) return;
+    setBusy(true);
+    setErr('');
+    try {
+      await api.createCategory(name);
+      setNewCat('');
+      toast(`Category "${name}" created`, 'ok');
+      await loadCats();
+      if (onCategoriesChanged) onCategoriesChanged();
+    } catch (err) {
+      setErr(err.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleRename = async (from, to) => {
+    const toTrim = to.trim();
+    if (!toTrim || toTrim === from) {
+      setEditing(null);
+      return;
+    }
+    setBusy(true);
+    try {
+      await api.renameCategory(from, toTrim);
+      toast(`Category renamed to "${toTrim}"`, 'ok');
+      setEditing(null);
+      await loadCats();
+      if (onCategoriesChanged) onCategoriesChanged();
+    } catch (err) {
+      toast(err.message, 'err');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleDelete = async (cat) => {
+    const msg = cat.productCount > 0
+      ? `Delete category "${cat.name}"? ${cat.productCount} products in this category will be set to uncategorized.`
+      : `Delete category "${cat.name}"?`;
+    if (!window.confirm(msg)) return;
+    setBusy(true);
+    try {
+      await api.deleteCategory(cat.name);
+      toast(`Category "${cat.name}" deleted`, 'ok');
+      await loadCats();
+      if (onCategoriesChanged) onCategoriesChanged();
+    } catch (err) {
+      toast(err.message, 'err');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Modal
+      title="Manage Categories"
+      sub="Organize products into categories for easy filtering, stock management, and 1-tap billing"
+      onClose={onClose}
+      footer={<button className="btn" onClick={onClose}>Done</button>}
+    >
+      {err && <div className="banner err"><Icon.alert size={15} />{err}</div>}
+
+      {/* Add Category Form */}
+      <form onSubmit={handleAdd} style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+        <input
+          className="input"
+          placeholder="New category name (e.g. Organic Spices, Beverages)"
+          value={newCat}
+          onChange={(e) => setNewCat(e.target.value)}
+          style={{ flex: 1 }}
+          autoFocus
+        />
+        <button type="submit" className="btn primary" disabled={busy || !newCat.trim()}>
+          <Icon.plus size={14} /> Add Category
+        </button>
+      </form>
+
+      {/* Categories List */}
+      <div style={{ border: '1px solid var(--line)', borderRadius: 10, overflow: 'hidden', background: 'var(--surface)' }}>
+        {loading ? (
+          <div style={{ padding: 24, textAlign: 'center', color: 'var(--muted)' }}>Loading categories…</div>
+        ) : list.length === 0 ? (
+          <div style={{ padding: '30px 16px', textAlign: 'center', color: 'var(--muted)', fontSize: 13 }}>
+            No categories defined yet. Type a category name above to create your first category.
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            {list.map((c) => {
+              const isEditing = editing && editing.from === c.name;
+              return (
+                <div
+                  key={c.name}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '10px 14px',
+                    borderBottom: '1px solid var(--line-soft)',
+                    gap: 10
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 }}>
+                    <div style={{
+                      width: 32, height: 32, borderRadius: 8,
+                      background: 'var(--surface-2)', color: 'var(--brand)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      flexShrink: 0
+                    }}>
+                      <Icon.tag size={16} />
+                    </div>
+
+                    {isEditing ? (
+                      <div style={{ display: 'flex', gap: 6, flex: 1 }}>
+                        <input
+                          className="input sm"
+                          value={editing.to}
+                          onChange={(e) => setEditing({ ...editing, to: e.target.value })}
+                          autoFocus
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') handleRename(editing.from, editing.to);
+                            if (e.key === 'Escape') setEditing(null);
+                          }}
+                          style={{ height: 30, fontSize: 13, flex: 1 }}
+                        />
+                        <button
+                          type="button"
+                          className="btn primary sm"
+                          onClick={() => handleRename(editing.from, editing.to)}
+                          style={{ padding: '0 8px', height: 30 }}
+                        >
+                          Save
+                        </button>
+                        <button
+                          type="button"
+                          className="btn sm"
+                          onClick={() => setEditing(null)}
+                          style={{ padding: '0 8px', height: 30 }}
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ) : (
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontSize: 13.5, fontWeight: 650, color: 'var(--ink)' }}>
+                          {c.name}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {!isEditing && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                      <span className={`pill sm ${c.productCount > 0 ? 'grey' : 'amber'}`} style={{ fontSize: 11 }}>
+                        {c.productCount} {c.productCount === 1 ? 'product' : 'products'}
+                      </span>
+                      <button
+                        type="button"
+                        className="icon-btn"
+                        title="Rename category"
+                        onClick={() => setEditing({ from: c.name, to: c.name })}
+                      >
+                        <Icon.edit size={14} />
+                      </button>
+                      <button
+                        type="button"
+                        className="icon-btn danger"
+                        title="Delete category"
+                        onClick={() => handleDelete(c)}
+                      >
+                        <Icon.trash size={14} />
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         )}
       </div>
     </Modal>

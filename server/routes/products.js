@@ -25,7 +25,13 @@ router.get('/', (req, res) => {
     low: p.low_stock_at > 0 && p.stock <= p.low_stock_at,
     out: p.stock <= 0
   }));
-  const categories = [...new Set(db.prepare('SELECT DISTINCT category FROM products WHERE business_id = ? AND category IS NOT NULL ORDER BY category').all(req.business.id).map((r) => r.category))];
+  const catRows = db.prepare(`
+    SELECT DISTINCT category as c FROM products WHERE business_id = ? AND inactive = 0 AND category IS NOT NULL AND TRIM(category) != ''
+    UNION
+    SELECT name as c FROM product_categories WHERE business_id = ?
+    ORDER BY c COLLATE NOCASE
+  `).all(req.business.id, req.business.id);
+  const categories = catRows.map((r) => r.c);
   const summary = {
     count: enriched.length,
     stockValue: round2(enriched.reduce((s, p) => s + p.stockValue, 0)),
@@ -34,6 +40,77 @@ router.get('/', (req, res) => {
     outCount: enriched.filter((p) => p.out).length
   };
   res.json({ products: enriched, categories, summary });
+});
+
+/** Manage product categories (list, create, rename, delete) */
+router.get('/categories', (req, res) => {
+  const explicit = db.prepare('SELECT id, name FROM product_categories WHERE business_id = ? ORDER BY name COLLATE NOCASE').all(req.business.id);
+  const fromProducts = db.prepare(`
+    SELECT category as name, count(*) as count
+    FROM products
+    WHERE business_id = ? AND inactive = 0 AND category IS NOT NULL AND TRIM(category) != ''
+    GROUP BY category
+  `).all(req.business.id);
+
+  const map = new Map();
+  fromProducts.forEach((r) => {
+    const nm = r.name.trim();
+    map.set(nm.toLowerCase(), { id: null, name: nm, productCount: r.count });
+  });
+
+  explicit.forEach((r) => {
+    const nm = r.name.trim();
+    const key = nm.toLowerCase();
+    const existing = map.get(key);
+    if (existing) {
+      existing.id = r.id;
+    } else {
+      map.set(key, { id: r.id, name: nm, productCount: 0 });
+    }
+  });
+
+  const sorted = Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
+  res.json({ categories: sorted });
+});
+
+router.post('/categories', (req, res) => {
+  const name = String(req.body?.name || '').trim();
+  if (!name) return res.status(400).json({ error: 'Category name is required' });
+  const existing = db.prepare('SELECT * FROM product_categories WHERE business_id = ? AND LOWER(name) = LOWER(?)').get(req.business.id, name);
+  if (existing) {
+    return res.json({ category: existing });
+  }
+  const info = db.prepare('INSERT INTO product_categories (business_id, name) VALUES (?, ?)').run(req.business.id, name);
+  const created = db.prepare('SELECT * FROM product_categories WHERE id = ?').get(info.lastInsertRowid);
+  res.status(201).json({ category: created });
+});
+
+router.put('/categories/rename', (req, res) => {
+  const from = String(req.body?.from || '').trim();
+  const to = String(req.body?.to || '').trim();
+  if (!from || !to) return res.status(400).json({ error: 'Both current and new category names are required' });
+  const tx = db.transaction(() => {
+    db.prepare('UPDATE products SET category = ? WHERE business_id = ? AND category = ?').run(to, req.business.id, from);
+    const catRow = db.prepare('SELECT * FROM product_categories WHERE business_id = ? AND LOWER(name) = LOWER(?)').get(req.business.id, from);
+    if (catRow) {
+      db.prepare('UPDATE product_categories SET name = ? WHERE id = ?').run(to, catRow.id);
+    } else {
+      db.prepare('INSERT OR IGNORE INTO product_categories (business_id, name) VALUES (?, ?)').run(req.business.id, to);
+    }
+  });
+  tx();
+  res.json({ ok: true, name: to });
+});
+
+router.delete('/categories/:name', (req, res) => {
+  const name = String(req.params.name || '').trim();
+  if (!name) return res.status(400).json({ error: 'Category name is required' });
+  const tx = db.transaction(() => {
+    db.prepare('UPDATE products SET category = NULL WHERE business_id = ? AND category = ?').run(req.business.id, name);
+    db.prepare('DELETE FROM product_categories WHERE business_id = ? AND LOWER(name) = LOWER(?)').run(req.business.id, name);
+  });
+  tx();
+  res.json({ ok: true });
 });
 
 /** Barcode lookup used by the POS scanner field. */
@@ -70,6 +147,11 @@ router.post('/', (req, res) => {
     db.prepare('INSERT INTO stock_moves (business_id, product_id, qty, date, reason, rate, notes) VALUES (?,?,?,?,?,?,?)')
       .run(req.business.id, product.id, Number(b.stock), istToday(), 'opening', product.purchase_price, 'Opening stock');
   }
+  if (b.category && typeof b.category === 'string' && b.category.trim()) {
+    try {
+      db.prepare('INSERT OR IGNORE INTO product_categories (business_id, name) VALUES (?, ?)').run(req.business.id, b.category.trim());
+    } catch (_) {}
+  }
   logActivity(req.business.id, req.user.id, 'product.created', b.name);
   res.status(201).json({ product });
 });
@@ -78,6 +160,11 @@ router.put('/:id', (req, res) => {
   const p = db.prepare('SELECT * FROM products WHERE id = ? AND business_id = ?').get(req.params.id, req.business.id);
   if (!p) return res.status(404).json({ error: 'Product not found' });
   const b = req.body || {};
+  if (b.category && typeof b.category === 'string' && b.category.trim()) {
+    try {
+      db.prepare('INSERT OR IGNORE INTO product_categories (business_id, name) VALUES (?, ?)').run(req.business.id, b.category.trim());
+    } catch (_) {}
+  }
   db.prepare(`UPDATE products SET sku=@sku, barcode=@barcode, name=@name, category=@category, unit=@unit, hsn=@hsn,
     gst_rate=@gst_rate, purchase_price=@purchase_price, sale_price=@sale_price, low_stock_at=@low_stock_at,
     tax_inclusive=@tax_inclusive, inactive=@inactive WHERE id=@id`)

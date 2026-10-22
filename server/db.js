@@ -113,6 +113,14 @@ CREATE TABLE IF NOT EXISTS products (
   created_at    TEXT NOT NULL DEFAULT (datetime('now', '+330 minutes'))
 );
 
+CREATE TABLE IF NOT EXISTS product_categories (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  business_id INTEGER NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+  name        TEXT NOT NULL,
+  created_at  TEXT NOT NULL DEFAULT (datetime('now', '+330 minutes')),
+  UNIQUE(business_id, name)
+);
+
 CREATE TABLE IF NOT EXISTS documents (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
   business_id   INTEGER NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
