@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, useLayoutEffect } from 'react';
+import React, { useEffect, useState, useRef, useLayoutEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon, initials, colorFor } from './ui.jsx';
 import { money } from './api.js';
@@ -377,6 +377,7 @@ export function Picker({ items = [], value, onChange, placeholder, onAddNew, ren
           onKeyDown={onKeyDown}
           style={{
             cursor: isMobile ? 'pointer' : 'text',
+            paddingLeft: 30,
             ...(value && !open ? { paddingRight: 28 } : {})
           }}
         />
