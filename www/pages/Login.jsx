@@ -13,10 +13,10 @@ const FEATURES = [
 export default function Login({ onAuthed }) {
   const [mode, setMode] = useState('login'); // 'login' | 'inquiry' | 'signup'
   const [salesInfo, setSalesInfo] = useState({
-    sales_whatsapp: '919845012345',
-    sales_phone: '+91 98450 12345',
+    sales_whatsapp: '919880735072',
+    sales_phone: '+91 9880735072',
     public_signup_enabled: false,
-    pricing: { monthly: 499, yearly: 2999, lifetime: 7999 }
+    pricing: { monthly: 300, yearly: 3000, lifetime: 20000 }
   });
 
   // Login form

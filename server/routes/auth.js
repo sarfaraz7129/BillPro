@@ -7,19 +7,18 @@ const { istToday } = require('../lib/time');
 
 const router = express.Router();
 const ALL_PERMS = Object.keys(PERMISSIONS);
+const { getSystemSettings } = require('../lib/settings');
 
 router.get('/sales-info', (req, res) => {
-  const settings = db.prepare('SELECT key, value FROM system_settings').all();
-  const map = {};
-  for (const s of settings) map[s.key] = s.value;
+  const current = getSystemSettings(db);
   res.json({
-    sales_whatsapp: map.sales_whatsapp || '919845012345',
-    sales_phone: map.sales_phone || '+91 98450 12345',
-    public_signup_enabled: map.public_signup_enabled === '1',
+    sales_whatsapp: current.sales_whatsapp,
+    sales_phone: current.sales_phone,
+    public_signup_enabled: current.public_signup_enabled,
     pricing: {
-      monthly: Number(map.pricing_monthly || 499),
-      yearly: Number(map.pricing_yearly || 2999),
-      lifetime: Number(map.pricing_lifetime || 7999)
+      monthly: current.pricing_monthly,
+      yearly: current.pricing_yearly,
+      lifetime: current.pricing_lifetime
     }
   });
 });

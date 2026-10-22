@@ -4,6 +4,7 @@ const bcrypt = require('bcryptjs');
 const { db } = require('../db');
 const { auth, PERMISSIONS } = require('../middleware');
 const { istToday, istAddDays } = require('../lib/time');
+const { getSystemSettings, updateSystemSettings } = require('../lib/settings');
 
 const router = express.Router();
 const ALL_PERMS = Object.keys(PERMISSIONS);
@@ -395,19 +396,9 @@ router.delete('/inquiries/:id', (req, res) => {
  * Get system & pricing settings
  */
 router.get('/settings', (req, res) => {
-  const rows = db.prepare('SELECT key, value FROM system_settings').all();
-  const settings = {};
-  for (const r of rows) settings[r.key] = r.value;
   res.json({
     ok: true,
-    settings: {
-      sales_whatsapp: settings.sales_whatsapp || '919845012345',
-      sales_phone: settings.sales_phone || '+91 98450 12345',
-      public_signup_enabled: settings.public_signup_enabled === '1',
-      pricing_monthly: Number(settings.pricing_monthly || 499),
-      pricing_yearly: Number(settings.pricing_yearly || 2999),
-      pricing_lifetime: Number(settings.pricing_lifetime || 7999)
-    }
+    settings: getSystemSettings(db)
   });
 });
 
@@ -415,20 +406,7 @@ router.get('/settings', (req, res) => {
  * Update system & pricing settings
  */
 router.put('/settings', (req, res) => {
-  const { sales_whatsapp, sales_phone, public_signup_enabled, pricing_monthly, pricing_yearly, pricing_lifetime } = req.body || {};
-
-  const upsert = db.prepare(`
-    INSERT INTO system_settings (key, value) VALUES (?, ?)
-    ON CONFLICT(key) DO UPDATE SET value = excluded.value
-  `);
-
-  if (sales_whatsapp !== undefined) upsert.run('sales_whatsapp', String(sales_whatsapp).trim());
-  if (sales_phone !== undefined) upsert.run('sales_phone', String(sales_phone).trim());
-  if (public_signup_enabled !== undefined) upsert.run('public_signup_enabled', public_signup_enabled ? '1' : '0');
-  if (pricing_monthly !== undefined) upsert.run('pricing_monthly', String(pricing_monthly));
-  if (pricing_yearly !== undefined) upsert.run('pricing_yearly', String(pricing_yearly));
-  if (pricing_lifetime !== undefined) upsert.run('pricing_lifetime', String(pricing_lifetime));
-
+  updateSystemSettings(db, req.body);
   res.json({ ok: true, message: 'Settings saved successfully' });
 });
 

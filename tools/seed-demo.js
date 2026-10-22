@@ -66,11 +66,30 @@ function seed() {
     default_gst_rate: 5, credit_days: 15, color: '#047857', invoice_theme: 'emerald'
   });
 
+  const bizBharat = insert('businesses', {
+    owner_id: demoUserId, name: 'Bharat Retail Mart', legal_name: 'Bharat Retail Mart Pvt Ltd',
+    gstin: '29AABCB1234F1Z9', pan: 'AABCB1234F', address: 'Shop #14, Main Market Road, Malleshwaram',
+    city: 'Bengaluru', state: 'Karnataka', state_code: '29', pincode: '560003',
+    phone: '9880735072', email: 'orders@bharatretail.in',
+    bank_name: 'State Bank of India', bank_account_no: '38920194821', bank_ifsc: 'SBIN0001234',
+    bank_branch: 'Malleshwaram', upi_id: 'bharatretail@sbi',
+    invoice_prefix: 'BRM', quoter_prefix: 'BRQ', default_gst_rate: 5, credit_days: 30,
+    color: '#4f46e5'
+  });
+
   db.prepare('UPDATE users SET active_business_id = ? WHERE id = ?').run(bizA, userId);
-  db.prepare('UPDATE users SET active_business_id = ? WHERE id = ?').run(bizA, demoUserId);
+  db.prepare('UPDATE users SET active_business_id = ? WHERE id = ?').run(bizBharat, demoUserId);
 
   insert('staff', { business_id: bizA, name: 'Demo Merchant', email: 'demo.user@billpro.in', phone: '9845011223', role: 'admin', permissions: JSON.stringify(['dashboard', 'billing', 'khata', 'inventory', 'reports', 'settings']) });
   insert('staff', { business_id: bizB, name: 'Demo Merchant', email: 'demo.user@billpro.in', phone: '9845011223', role: 'admin', permissions: JSON.stringify(['dashboard', 'billing', 'khata', 'inventory', 'reports', 'settings']) });
+
+  // Seed rich dataset for Bharat Retail Mart
+  const { seedBharatRetail } = require('../server/lib/seed-bharat');
+  seedBharatRetail(db, bizBharat, demoUserId);
+
+  // Sync system settings
+  const { initSystemSettings } = require('../server/lib/settings');
+  initSystemSettings(db);
 
   // ---------- products ----------
   const prodA = [

@@ -330,14 +330,23 @@ try {
   ensureBiz('admin@billpro.in', 'BillPro Enterprise');
   ensureBiz('demo.user@billpro.in', 'Bharat Retail Mart');
 
-  // Seed default system settings if missing
-  const insertSetting = db.prepare('INSERT OR IGNORE INTO system_settings (key, value) VALUES (?, ?)');
-  insertSetting.run('sales_whatsapp', '919845012345');
-  insertSetting.run('sales_phone', '+91 98450 12345');
-  insertSetting.run('public_signup_enabled', '0'); // closed by default
-  insertSetting.run('pricing_monthly', '499');
-  insertSetting.run('pricing_yearly', '2999');
-  insertSetting.run('pricing_lifetime', '7999');
+  // Seed rich demo data for Bharat Retail Mart (demo.user@billpro.in) if empty
+  try {
+    const demoU = db.prepare("SELECT id, active_business_id FROM users WHERE lower(email) = 'demo.user@billpro.in'").get();
+    if (demoU && demoU.active_business_id) {
+      const prodCount = db.prepare("SELECT COUNT(*) AS c FROM products WHERE business_id = ?").get(demoU.active_business_id).c;
+      if (prodCount === 0) {
+        const { seedBharatRetail } = require('./lib/seed-bharat');
+        seedBharatRetail(db, demoU.active_business_id, demoU.id);
+      }
+    }
+  } catch (err) {
+    console.warn('[Seed Bharat Retail Warning]:', err.message);
+  }
+
+  // Seed & synchronize persistent system settings
+  const { initSystemSettings } = require('./lib/settings');
+  initSystemSettings(db);
 } catch (e) {
   console.warn('[DB Migration Warning]:', e.message);
 }

@@ -9,12 +9,12 @@ export default function SuperAdmin({ user, toast }) {
   const [users, setUsers] = useState([]);
   const [inquiries, setInquiries] = useState([]);
   const [settings, setSettings] = useState({
-    sales_whatsapp: '919845012345',
-    sales_phone: '+91 98450 12345',
+    sales_whatsapp: '919880735072',
+    sales_phone: '+91 9880735072',
     public_signup_enabled: false,
-    pricing_monthly: 499,
-    pricing_yearly: 2999,
-    pricing_lifetime: 7999
+    pricing_monthly: 300,
+    pricing_yearly: 3000,
+    pricing_lifetime: 20000
   });
   const [loading, setLoading] = useState(true);
 
