@@ -23,6 +23,7 @@ export const Icon = {
   search: (p = {}) => <S {...p}><circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" /></S>,
   plus: (p = {}) => <S {...p}><path d="M12 5v14M5 12h14" /></S>,
   close: (p = {}) => <S {...p}><path d="M18 6 6 18M6 6l12 12" /></S>,
+  x: (p = {}) => <S {...p}><path d="M18 6 6 18M6 6l12 12" /></S>,
   check: (p = {}) => <S {...p}><path d="M20 6 9 17l-5-5" /></S>,
   chevDown: (p = {}) => <S {...p}><path d="m6 9 6 6 6-6" /></S>,
   chevRight: (p = {}) => <S {...p}><path d="m9 18 6-6-6-6" /></S>,

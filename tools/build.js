@@ -25,7 +25,7 @@ const opts = {
   minify: !watch,
   sourcemap: watch ? 'inline' : false,
   format: 'iife',
-  target: ['chrome90', 'safari14', 'firefox90'],
+  target: ['es2020', 'chrome90', 'safari15', 'firefox90'],
   jsx: 'transform',
   define: { 'process.env.NODE_ENV': '"production"' },
   logLevel: 'info'

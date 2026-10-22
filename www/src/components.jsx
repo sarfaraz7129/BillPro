@@ -185,34 +185,94 @@ export function DateRange({ from, to, onChange, presets = true }) {
   );
 }
 
-/* ---------------- party / product autocomplete with React Portal ---------------- */
-export function Picker({ items, value, onChange, placeholder, onAddNew, render, emptyText = 'Nothing found' }) {
+/* ---------------- party / product autocomplete with React Portal & Mobile Sheet ---------------- */
+export function Picker({ items = [], value, onChange, placeholder, onAddNew, render, emptyText = 'Nothing found' }) {
   const [q, setQ] = useState('');
   const [open, setOpen] = useState(false);
   const [highlightIndex, setHighlightIndex] = useState(0);
   const [coords, setCoords] = useState({ top: 0, left: 0, width: 420, maxHeight: 320, showAbove: false });
+  const [selectedCat, setSelectedCat] = useState('All');
+  const [isMobile, setIsMobile] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return window.innerWidth <= 680 || ('ontouchstart' in window && window.innerWidth <= 820);
+  });
+
   const box = useRef(null);
   const popoverRef = useRef(null);
+  const inputRef = useRef(null);
+  const mobileSearchRef = useRef(null);
+
+  // Extract categories for 1-tap mobile filtering
+  const categories = useMemo(() => {
+    const set = new Set();
+    (items || []).forEach((it) => {
+      if (it && it.category && typeof it.category === 'string' && it.category.trim()) {
+        set.add(it.category.trim());
+      }
+    });
+    return Array.from(set);
+  }, [items]);
 
   const needle = q.toLowerCase();
-  const filtered = items.filter((it) =>
-    !needle ||
-    String(it.name || '').toLowerCase().includes(needle) ||
-    String(it.sku || it.barcode || it.phone || it.category || '').toLowerCase().includes(needle)
-  ).slice(0, 50);
+  const filtered = (items || []).filter((it) => {
+    if (selectedCat && selectedCat !== 'All' && it.category !== selectedCat) return false;
+    if (!needle) return true;
+    return (
+      String(it.name || '').toLowerCase().includes(needle) ||
+      String(it.sku || it.barcode || it.phone || it.category || it.hsn || '').toLowerCase().includes(needle)
+    );
+  }).slice(0, 60);
+
+  const dismissKeyboard = () => {
+    try {
+      if (mobileSearchRef.current) mobileSearchRef.current.blur();
+      if (inputRef.current) inputRef.current.blur();
+      if (typeof document !== 'undefined' && document.activeElement && typeof document.activeElement.blur === 'function') {
+        document.activeElement.blur();
+      }
+    } catch (_) {}
+  };
+
+  const selectItem = (it) => {
+    onChange(it);
+    setOpen(false);
+    setQ('');
+    setSelectedCat('All');
+    dismissKeyboard();
+  };
+
+  const handleAddNew = (name) => {
+    if (onAddNew) onAddNew(name);
+    setOpen(false);
+    setQ('');
+    setSelectedCat('All');
+    dismissKeyboard();
+  };
+
+  const closePicker = () => {
+    setOpen(false);
+    setQ('');
+    setSelectedCat('All');
+    dismissKeyboard();
+  };
 
   const updateCoords = () => {
     if (!box.current) return;
     const rect = box.current.getBoundingClientRect();
-    const spaceBelow = window.innerHeight - rect.bottom;
-    const spaceAbove = rect.top;
+    const vv = typeof window !== 'undefined' && window.visualViewport ? window.visualViewport : null;
+    const vHeight = vv ? vv.height : window.innerHeight;
+    const vWidth = vv ? vv.width : window.innerWidth;
+    const vTop = vv ? vv.offsetTop : 0;
+
+    const spaceBelow = vHeight - (rect.bottom - vTop);
+    const spaceAbove = rect.top - vTop;
     const showAbove = spaceBelow < 260 && spaceAbove > spaceBelow;
-    const width = Math.max(380, Math.min(rect.width, 560));
+    const width = Math.max(340, Math.min(rect.width, 560, vWidth - 24));
     let left = rect.left;
-    if (left + width > window.innerWidth - 12) {
-      left = Math.max(8, window.innerWidth - width - 12);
+    if (left + width > vWidth - 12) {
+      left = Math.max(8, vWidth - width - 12);
     }
-    const maxHeight = showAbove ? Math.min(300, spaceAbove - 20) : Math.min(320, spaceBelow - 20);
+    const maxHeight = showAbove ? Math.min(300, Math.max(120, spaceAbove - 20)) : Math.min(320, Math.max(120, spaceBelow - 20));
     setCoords({
       top: showAbove ? Math.max(8, rect.top - maxHeight - 6) : rect.bottom + 6,
       left,
@@ -224,19 +284,29 @@ export function Picker({ items, value, onChange, placeholder, onAddNew, render, 
 
   useEffect(() => {
     setHighlightIndex(0);
-  }, [needle]);
+  }, [needle, selectedCat]);
 
   useLayoutEffect(() => {
-    if (open) updateCoords();
-  }, [open, q]);
+    if (open && !isMobile) updateCoords();
+  }, [open, q, isMobile]);
 
   useEffect(() => {
-    if (!open) return;
+    const onResize = () => {
+      const mob = window.innerWidth <= 680 || ('ontouchstart' in window && window.innerWidth <= 820);
+      setIsMobile(mob);
+      if (open && !mob) updateCoords();
+    };
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, [open]);
+
+  useEffect(() => {
+    if (!open || isMobile) return;
     updateCoords();
     const onDown = (e) => {
       if (box.current && box.current.contains(e.target)) return;
       if (popoverRef.current && popoverRef.current.contains(e.target)) return;
-      setOpen(false);
+      closePicker();
     };
     const onScrollOrResize = () => updateCoords();
     window.addEventListener('mousedown', onDown);
@@ -247,14 +317,14 @@ export function Picker({ items, value, onChange, placeholder, onAddNew, render, 
       window.removeEventListener('scroll', onScrollOrResize, true);
       window.removeEventListener('resize', onScrollOrResize);
     };
-  }, [open]);
+  }, [open, isMobile]);
 
   const onKeyDown = (e) => {
     if (!open) {
       if (e.key === 'ArrowDown' || e.key === 'Enter') {
         e.preventDefault();
         setOpen(true);
-        updateCoords();
+        if (!isMobile) updateCoords();
       }
       return;
     }
@@ -268,15 +338,12 @@ export function Picker({ items, value, onChange, placeholder, onAddNew, render, 
     } else if (e.key === 'Enter') {
       e.preventDefault();
       if (filtered[highlightIndex]) {
-        onChange(filtered[highlightIndex]);
-        setOpen(false);
-        setQ('');
+        selectItem(filtered[highlightIndex]);
       } else if (onAddNew && q) {
-        onAddNew(q);
-        setOpen(false);
+        handleAddNew(q);
       }
     } else if (e.key === 'Escape') {
-      setOpen(false);
+      closePicker();
     }
   };
 
@@ -285,18 +352,43 @@ export function Picker({ items, value, onChange, placeholder, onAddNew, render, 
       <div className="search" style={{ position: 'relative' }}>
         <Icon.search size={15} />
         <input
+          ref={inputRef}
           className="input"
           placeholder={placeholder}
-          value={open ? q : (value ? (value.name || '') : '')}
-          onChange={(e) => { setQ(e.target.value); setOpen(true); updateCoords(); if (value) onChange(null); }}
-          onFocus={() => { setOpen(true); setQ(''); updateCoords(); }}
+          readOnly={isMobile}
+          value={open && !isMobile ? q : (value ? (value.name || '') : '')}
+          onClick={() => {
+            setOpen(true);
+            if (!isMobile) updateCoords();
+          }}
+          onChange={(e) => {
+            setQ(e.target.value);
+            setOpen(true);
+            if (!isMobile) updateCoords();
+            if (value) onChange(null);
+          }}
+          onFocus={() => {
+            setOpen(true);
+            if (!isMobile) {
+              setQ('');
+              updateCoords();
+            }
+          }}
           onKeyDown={onKeyDown}
-          style={value && !open ? { paddingRight: 28 } : {}}
+          style={{
+            cursor: isMobile ? 'pointer' : 'text',
+            ...(value && !open ? { paddingRight: 28 } : {})
+          }}
         />
         {value && !open && (
           <button
             type="button"
-            onClick={(e) => { e.stopPropagation(); onChange(null); setQ(''); }}
+            onClick={(e) => {
+              e.stopPropagation();
+              onChange(null);
+              setQ('');
+              dismissKeyboard();
+            }}
             style={{
               position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)',
               background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)',
@@ -309,7 +401,8 @@ export function Picker({ items, value, onChange, placeholder, onAddNew, render, 
         )}
       </div>
 
-      {open && typeof document !== 'undefined' && createPortal(
+      {/* Desktop Floating Portal Dropdown */}
+      {open && !isMobile && typeof document !== 'undefined' && createPortal(
         <div
           ref={popoverRef}
           className="picker-dropdown-portal"
@@ -352,7 +445,7 @@ export function Picker({ items, value, onChange, placeholder, onAddNew, render, 
                   key={it.id || idx}
                   className={`picker-row ${isHighlighted ? 'active' : ''}`}
                   onMouseEnter={() => setHighlightIndex(idx)}
-                  onMouseDown={(e) => { e.preventDefault(); onChange(it); setOpen(false); setQ(''); }}
+                  onMouseDown={(e) => { e.preventDefault(); selectItem(it); }}
                   style={{
                     padding: '8px 10px',
                     borderRadius: 8,
@@ -376,10 +469,10 @@ export function Picker({ items, value, onChange, placeholder, onAddNew, render, 
 
               return (
                 <div
-                  key={it.id}
+                  key={it.id || idx}
                   className={`picker-row ${isHighlighted ? 'active' : ''}`}
                   onMouseEnter={() => setHighlightIndex(idx)}
-                  onMouseDown={(e) => { e.preventDefault(); onChange(it); setOpen(false); setQ(''); }}
+                  onMouseDown={(e) => { e.preventDefault(); selectItem(it); }}
                   style={{
                     display: 'flex',
                     justifyContent: 'space-between',
@@ -440,10 +533,10 @@ export function Picker({ items, value, onChange, placeholder, onAddNew, render, 
               const bal = Number(it.balance || it.opening_balance) || 0;
               return (
                 <div
-                  key={it.id}
+                  key={it.id || idx}
                   className={`picker-row ${isHighlighted ? 'active' : ''}`}
                   onMouseEnter={() => setHighlightIndex(idx)}
-                  onMouseDown={(e) => { e.preventDefault(); onChange(it); setOpen(false); setQ(''); }}
+                  onMouseDown={(e) => { e.preventDefault(); selectItem(it); }}
                   style={{
                     display: 'flex',
                     justifyContent: 'space-between',
@@ -482,10 +575,10 @@ export function Picker({ items, value, onChange, placeholder, onAddNew, render, 
             // Default fallback
             return (
               <div
-                key={it.id}
+                key={it.id || idx}
                 className={`picker-row ${isHighlighted ? 'active' : ''}`}
                 onMouseEnter={() => setHighlightIndex(idx)}
-                onMouseDown={(e) => { e.preventDefault(); onChange(it); setOpen(false); setQ(''); }}
+                onMouseDown={(e) => { e.preventDefault(); selectItem(it); }}
                 style={{
                   display: 'flex', gap: 9, alignItems: 'center', padding: '8px 9px', borderRadius: 8,
                   cursor: 'pointer', background: isHighlighted ? 'var(--brand-soft)' : 'transparent'
@@ -505,7 +598,7 @@ export function Picker({ items, value, onChange, placeholder, onAddNew, render, 
             <div
               className={`picker-row ${highlightIndex === filtered.length ? 'active' : ''}`}
               onMouseEnter={() => setHighlightIndex(filtered.length)}
-              onMouseDown={(e) => { e.preventDefault(); onAddNew(q); setOpen(false); }}
+              onMouseDown={(e) => { e.preventDefault(); handleAddNew(q); }}
               style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -525,6 +618,268 @@ export function Picker({ items, value, onChange, placeholder, onAddNew, render, 
               <span>Add “<b>{q}</b>” to catalog & bill</span>
             </div>
           )}
+        </div>,
+        document.body
+      )}
+
+      {/* Mobile Dedicated Search Bottom Sheet */}
+      {open && isMobile && typeof document !== 'undefined' && createPortal(
+        <div className="picker-mobile-overlay" onClick={closePicker}>
+          <div className="picker-mobile-sheet" onClick={(e) => e.stopPropagation()}>
+            <div className="picker-mobile-handle" />
+
+            <div className="picker-mobile-header">
+              <div>
+                <div className="picker-mobile-title">
+                  {onAddNew ? 'Select Item / Service' : 'Select Option'}
+                </div>
+                <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 1 }}>
+                  {filtered.length} {filtered.length === 1 ? 'item' : 'items'} available
+                </div>
+              </div>
+              <button
+                type="button"
+                className="icon-btn"
+                onClick={closePicker}
+                style={{ width: 34, height: 34, borderRadius: 10, background: 'var(--surface-2)' }}
+                title="Close"
+              >
+                <Icon.x size={18} />
+              </button>
+            </div>
+
+            <div className="picker-mobile-searchbar">
+              <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                <div style={{ position: 'absolute', left: 12, color: 'var(--muted)', display: 'flex', pointerEvents: 'none' }}>
+                  <Icon.search size={16} />
+                </div>
+                <input
+                  ref={mobileSearchRef}
+                  className="input"
+                  type="search"
+                  placeholder={placeholder || 'Search item name, barcode, category…'}
+                  value={q}
+                  onChange={(e) => setQ(e.target.value)}
+                  style={{
+                    paddingLeft: 38,
+                    paddingRight: q ? 36 : 12,
+                    height: 42,
+                    fontSize: 14.5,
+                    borderRadius: 10,
+                    background: 'var(--surface)'
+                  }}
+                />
+                {q && (
+                  <button
+                    type="button"
+                    onClick={() => { setQ(''); if (mobileSearchRef.current) mobileSearchRef.current.focus(); }}
+                    style={{
+                      position: 'absolute', right: 10, background: 'none', border: 'none',
+                      color: 'var(--muted)', padding: 6, cursor: 'pointer', fontSize: 14
+                    }}
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {categories.length > 1 && (
+              <div className="picker-mobile-categories">
+                {['All', ...categories].map((cat) => (
+                  <button
+                    key={cat}
+                    type="button"
+                    className={`picker-cat-chip ${selectedCat === cat ? 'active' : ''}`}
+                    onClick={() => setSelectedCat(cat)}
+                  >
+                    {cat}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <div className="picker-mobile-list">
+              {filtered.length === 0 && !onAddNew && (
+                <div style={{ padding: '30px 16px', textAlign: 'center', color: 'var(--muted)', fontSize: 13.5 }}>
+                  {emptyText}
+                </div>
+              )}
+
+              {filtered.length === 0 && onAddNew && !q && (
+                <div style={{ padding: '30px 16px', textAlign: 'center', color: 'var(--muted)', fontSize: 13.5 }}>
+                  Type an item name or barcode to search catalog…
+                </div>
+              )}
+
+              {filtered.map((it, idx) => {
+                if (render) {
+                  return (
+                    <div
+                      key={it.id || idx}
+                      className="picker-mobile-card"
+                      onClick={() => selectItem(it)}
+                      onTouchEnd={(e) => { e.preventDefault(); selectItem(it); }}
+                      style={{ display: 'flex', alignItems: 'center', gap: 10 }}
+                    >
+                      {render(it)}
+                    </div>
+                  );
+                }
+
+                const isProduct = it.sale_price !== undefined || it.stock !== undefined || it.unit !== undefined;
+                if (isProduct) {
+                  const stockVal = Number(it.stock) || 0;
+                  const lowStock = Number(it.low_stock_at) || 0;
+                  const isLow = lowStock > 0 && stockVal <= lowStock && stockVal > 0;
+                  const isOut = stockVal <= 0;
+                  const price = Number(it.sale_price) || Number(it.rate) || Number(it.purchase_price) || 0;
+
+                  return (
+                    <div
+                      key={it.id || idx}
+                      className="picker-mobile-card"
+                      onClick={() => selectItem(it)}
+                      onTouchEnd={(e) => { e.preventDefault(); selectItem(it); }}
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        gap: 12
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0, flex: 1 }}>
+                        <div style={{
+                          width: 38, height: 38, borderRadius: 10,
+                          background: 'var(--brand-soft)',
+                          color: 'var(--brand)',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          flexShrink: 0
+                        }}>
+                          <Icon.box size={18} />
+                        </div>
+                        <div style={{ minWidth: 0, flex: 1 }}>
+                          <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)', lineHeight: 1.25 }}>
+                            {it.name}
+                          </div>
+                          <div style={{ fontSize: 11.5, color: 'var(--muted)', display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 3 }}>
+                            {it.category && <span className="pill grey sm" style={{ padding: '0 6px', fontSize: 10 }}>{it.category}</span>}
+                            {it.hsn && <span>HSN: <b>{it.hsn}</b></span>}
+                            {it.barcode && <span>Code: {it.barcode}</span>}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                        <div style={{ fontSize: 14.5, fontWeight: 750, color: 'var(--ink)' }}>
+                          {money(price)} <span style={{ fontSize: 11, fontWeight: 500, color: 'var(--muted)' }}>/{it.unit || 'pcs'}</span>
+                        </div>
+                        <div style={{ marginTop: 3, display: 'flex', gap: 5, justifyContent: 'flex-end', alignItems: 'center' }}>
+                          <span
+                            className={`pill sm ${isOut ? 'red' : isLow ? 'amber' : 'green'}`}
+                            style={{ padding: '1px 6px', fontSize: 10.5, fontWeight: 600 }}
+                          >
+                            {isOut ? '✕ 0 in stock' : isLow ? `⚠️ ${stockVal} ${it.unit || 'pcs'}` : `✓ ${stockVal} ${it.unit || 'pcs'}`}
+                          </span>
+                          {it.gst_rate !== undefined && (
+                            <span className="pill sm grey" style={{ padding: '1px 5px', fontSize: 10.5 }}>
+                              {it.gst_rate}%
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                }
+
+                const isParty = it.type || it.phone !== undefined || it.gstin !== undefined;
+                if (isParty) {
+                  const bal = Number(it.balance || it.opening_balance) || 0;
+                  return (
+                    <div
+                      key={it.id || idx}
+                      className="picker-mobile-card"
+                      onClick={() => selectItem(it)}
+                      onTouchEnd={(e) => { e.preventDefault(); selectItem(it); }}
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        gap: 12
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0, flex: 1 }}>
+                        <Avatar name={it.name} size={36} />
+                        <div style={{ minWidth: 0, flex: 1 }}>
+                          <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)' }}>{it.name}</div>
+                          <div style={{ fontSize: 11.5, color: 'var(--muted)', display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 2 }}>
+                            {it.phone && <span>📞 {it.phone}</span>}
+                            {it.gstin && <span>GSTIN: <b>{it.gstin}</b></span>}
+                            {it.city && <span>{it.city}</span>}
+                          </div>
+                        </div>
+                      </div>
+                      <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                        <span
+                          className={`pill sm ${bal > 0 ? 'red' : bal < 0 ? 'green' : 'grey'}`}
+                          style={{ fontWeight: 650, fontSize: 11.5 }}
+                        >
+                          {bal > 0 ? `${money(bal)} Due` : bal < 0 ? `${money(Math.abs(bal))} Adv` : 'Settled'}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div
+                    key={it.id || idx}
+                    className="picker-mobile-card"
+                    onClick={() => selectItem(it)}
+                    onTouchEnd={(e) => { e.preventDefault(); selectItem(it); }}
+                    style={{ display: 'flex', gap: 10, alignItems: 'center' }}
+                  >
+                    <Avatar name={it.name} size={30} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13.5, fontWeight: 650 }}>{it.name}</div>
+                      {it.sub && <div style={{ fontSize: 11, color: 'var(--muted)' }}>{it.sub}</div>}
+                    </div>
+                    {it.right && <div style={{ fontSize: 12, fontWeight: 650 }}>{it.right}</div>}
+                  </div>
+                );
+              })}
+
+              {onAddNew && q && (
+                <div
+                  className="picker-mobile-card"
+                  onClick={() => handleAddNew(q)}
+                  onTouchEnd={(e) => { e.preventDefault(); handleAddNew(q); }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 12,
+                    padding: '12px 14px',
+                    borderRadius: 12,
+                    background: 'rgba(79, 70, 229, 0.06)',
+                    color: 'var(--brand)',
+                    fontWeight: 700,
+                    fontSize: 13.5,
+                    marginTop: 4,
+                    border: '1.5px dashed var(--brand)'
+                  }}
+                >
+                  <div style={{
+                    width: 34, height: 34, borderRadius: 8,
+                    background: 'var(--brand)', color: '#fff',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center'
+                  }}>
+                    <Icon.plus size={18} />
+                  </div>
+                  <span>Add “<b>{q}</b>” to catalog & bill</span>
+                </div>
+              )}
+            </div>
+          </div>
         </div>,
         document.body
       )}
