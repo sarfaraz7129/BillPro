@@ -98,69 +98,127 @@ export default function Billing({ business, user, initialType, initialDocId, got
               action={<button className="btn primary sm" onClick={() => setEditor({ type })}><Icon.plus size={14} /> New {TYPE_LABEL[type].toLowerCase()}</button>}
             />
           ) : (
-            <table className="tbl">
-              <thead>
-                <tr>
-                  <th>Number</th><th>Party</th><th>Date</th>{type !== 'expense' && <th>Due date</th>}
-                  <th className="num">Taxable</th><th className="num">Tax</th><th className="num">Total</th>
-                  <th>Status</th><th />
-                </tr>
-              </thead>
-              <tbody>
+            <>
+              {/* Mobile App Document Cards List */}
+              <div className="mobile-only mobile-cards-list">
                 {rows.map((r) => (
-                  <tr key={r.id} className="clickable" onClick={() => api.document(r.id).then(setView)}>
-                    <td>
-                      <div className="strong">{r.number}</div>
-                      {r.ewaybill_no && <span className="pill blue" style={{ marginTop: 3 }}>EWB {r.ewaybill_no}</span>}
-                      {r.irn && <span className="pill brand" style={{ marginTop: 3, marginLeft: 4 }}>e-Invoice</span>}
-                      {r.status === 'cancelled' && <span className="pill red" style={{ marginTop: 3, marginLeft: 4 }}>Cancelled</span>}
-                    </td>
-                    <td>
-                      <div>{r.party_display || r.party_name}</div>
-                      <div className="muted">{r.party_gstin || (r.supply_type === 'inter' ? 'Inter-state' : 'Intra-state')}</div>
-                    </td>
-                    <td className="muted">{fmtDate(r.date)}</td>
-                    {type !== 'expense' && <td className="muted">{r.due_date ? fmtDate(r.due_date) : '—'}</td>}
-                    <td className="num">{money(r.taxable_value)}</td>
-                    <td className="num muted">{money(r.cgst + r.sgst + r.igst + r.cess)}</td>
-                    <td className="num strong">{money(r.total)}</td>
-                    <td>{r.status === 'cancelled' ? <span className="pill grey">Cancelled</span> : type === 'expense' ? <span className="pill grey">—</span> : <PayPill status={r.payment_status} />}</td>
-                    <td onClick={(e) => e.stopPropagation()}>
-                      <div className="row-actions">
-                        <button
-                          className="icon-btn"
-                          style={{ color: '#059669' }}
-                          title="Send to WhatsApp"
-                          onClick={() => api.document(r.id).then((d) => setWhatsAppModal({ doc: d.document, party: d.party }))}
-                        >
-                          <Icon.whatsapp size={14} />
-                        </button>
-                        <button
-                          className="icon-btn"
-                          title="Print Thermal Receipt (58mm/80mm)"
-                          onClick={() => api.document(r.id).then((d) => setThermalDoc(d.document))}
-                        >
-                          <Icon.file size={14} />
-                        </button>
-                        <a className="icon-btn" title="Download PDF" href={pdfUrl(`invoice/${r.id}`, true)} download={`${r.number}.pdf`}><Icon.download size={14} /></a>
-                        <button className="icon-btn" title="Open A4 PDF" onClick={() => window.open(pdfUrl(`invoice/${r.id}`), '_blank')}><Icon.print size={14} /></button>
-                        <button className="icon-btn" title="Edit" onClick={() => api.document(r.id).then((d) => setEditor({ type: d.document.type, doc: d.document }))}><Icon.edit size={14} /></button>
-                        <button className="icon-btn danger" title={r.type === 'sale' ? 'Cancel' : 'Delete'} onClick={() => setConfirm(r)}><Icon.trash size={14} /></button>
+                  <div key={r.id} className="mobile-invoice-card" onClick={() => api.document(r.id).then(setView)}>
+                    <div className="mic-header">
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                        <span className="mic-number">{r.number}</span>
+                        {r.status === 'cancelled' ? (
+                          <span className="pill sm red">Cancelled</span>
+                        ) : type === 'expense' ? (
+                          <span className="pill sm grey">—</span>
+                        ) : (
+                          <PayPill status={r.payment_status} />
+                        )}
                       </div>
-                    </td>
-                  </tr>
+                      <b className="mic-total">{money(r.total)}</b>
+                    </div>
+                    <div className="mic-body">
+                      <div className="mic-party">{r.party_display || r.party_name || 'Walk-in Customer'}</div>
+                      <div className="mic-date">{fmtDate(r.date)}{r.due_date ? ` · Due ${fmtDate(r.due_date)}` : ''}</div>
+                    </div>
+                    {(r.ewaybill_no || r.irn) && (
+                      <div className="mic-badges" style={{ marginTop: 6, display: 'flex', gap: 5 }}>
+                        {r.ewaybill_no && <span className="pill sm blue">EWB {r.ewaybill_no}</span>}
+                        {r.irn && <span className="pill sm brand">e-Invoice</span>}
+                      </div>
+                    )}
+                    <div className="mic-actions" onClick={(e) => e.stopPropagation()}>
+                      <button
+                        type="button"
+                        className="btn xs"
+                        style={{ color: '#059669', borderColor: '#a7f3d0', background: '#ecfdf5' }}
+                        onClick={() => api.document(r.id).then((d) => setWhatsAppModal({ doc: d.document, party: d.party }))}
+                      >
+                        <Icon.whatsapp size={13} /> WhatsApp
+                      </button>
+                      <a
+                        className="btn xs"
+                        href={pdfUrl(`invoice/${r.id}`, true)}
+                        download={`${r.number}.pdf`}
+                      >
+                        <Icon.download size={13} /> PDF
+                      </a>
+                      <button
+                        type="button"
+                        className="btn xs"
+                        onClick={() => api.document(r.id).then((d) => setThermalDoc(d.document))}
+                      >
+                        <Icon.file size={13} /> Thermal
+                      </button>
+                    </div>
+                  </div>
                 ))}
-              </tbody>
-              <tfoot>
-                <tr>
-                  <td colSpan={type !== 'expense' ? 4 : 3}>Total</td>
-                  <td className="num">{money(rows.reduce((s, r) => s + r.taxable_value, 0))}</td>
-                  <td className="num">{money(rows.reduce((s, r) => s + r.cgst + r.sgst + r.igst + r.cess, 0))}</td>
-                  <td className="num">{money(rows.reduce((s, r) => s + r.total, 0))}</td>
-                  <td colSpan="2" />
-                </tr>
-              </tfoot>
-            </table>
+              </div>
+
+              {/* Desktop Table */}
+              <table className="tbl desktop-only">
+                <thead>
+                  <tr>
+                    <th>Number</th><th>Party</th><th>Date</th>{type !== 'expense' && <th>Due date</th>}
+                    <th className="num">Taxable</th><th className="num">Tax</th><th className="num">Total</th>
+                    <th>Status</th><th />
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((r) => (
+                    <tr key={r.id} className="clickable" onClick={() => api.document(r.id).then(setView)}>
+                      <td>
+                        <div className="strong">{r.number}</div>
+                        {r.ewaybill_no && <span className="pill blue" style={{ marginTop: 3 }}>EWB {r.ewaybill_no}</span>}
+                        {r.irn && <span className="pill brand" style={{ marginTop: 3, marginLeft: 4 }}>e-Invoice</span>}
+                        {r.status === 'cancelled' && <span className="pill red" style={{ marginTop: 3, marginLeft: 4 }}>Cancelled</span>}
+                      </td>
+                      <td>
+                        <div>{r.party_display || r.party_name}</div>
+                        <div className="muted">{r.party_gstin || (r.supply_type === 'inter' ? 'Inter-state' : 'Intra-state')}</div>
+                      </td>
+                      <td className="muted">{fmtDate(r.date)}</td>
+                      {type !== 'expense' && <td className="muted">{r.due_date ? fmtDate(r.due_date) : '—'}</td>}
+                      <td className="num">{money(r.taxable_value)}</td>
+                      <td className="num muted">{money(r.cgst + r.sgst + r.igst + r.cess)}</td>
+                      <td className="num strong">{money(r.total)}</td>
+                      <td>{r.status === 'cancelled' ? <span className="pill grey">Cancelled</span> : type === 'expense' ? <span className="pill grey">—</span> : <PayPill status={r.payment_status} />}</td>
+                      <td onClick={(e) => e.stopPropagation()}>
+                        <div className="row-actions">
+                          <button
+                            className="icon-btn"
+                            style={{ color: '#059669' }}
+                            title="Send to WhatsApp"
+                            onClick={() => api.document(r.id).then((d) => setWhatsAppModal({ doc: d.document, party: d.party }))}
+                          >
+                            <Icon.whatsapp size={14} />
+                          </button>
+                          <button
+                            className="icon-btn"
+                            title="Print Thermal Receipt (58mm/80mm)"
+                            onClick={() => api.document(r.id).then((d) => setThermalDoc(d.document))}
+                          >
+                            <Icon.file size={14} />
+                          </button>
+                          <a className="icon-btn" title="Download PDF" href={pdfUrl(`invoice/${r.id}`, true)} download={`${r.number}.pdf`}><Icon.download size={14} /></a>
+                          <button className="icon-btn" title="Open A4 PDF" onClick={() => window.open(pdfUrl(`invoice/${r.id}`), '_blank')}><Icon.print size={14} /></button>
+                          <button className="icon-btn" title="Edit" onClick={() => api.document(r.id).then((d) => setEditor({ type: d.document.type, doc: d.document }))}><Icon.edit size={14} /></button>
+                          <button className="icon-btn danger" title={r.type === 'sale' ? 'Cancel' : 'Delete'} onClick={() => setConfirm(r)}><Icon.trash size={14} /></button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr>
+                    <td colSpan={type !== 'expense' ? 4 : 3}>Total</td>
+                    <td className="num">{money(rows.reduce((s, r) => s + r.taxable_value, 0))}</td>
+                    <td className="num">{money(rows.reduce((s, r) => s + r.cgst + r.sgst + r.igst + r.cess, 0))}</td>
+                    <td className="num">{money(rows.reduce((s, r) => s + r.total, 0))}</td>
+                    <td colSpan="2" />
+                  </tr>
+                </tfoot>
+              </table>
+            </>
           )}
         </div>
       </div>

@@ -75,50 +75,87 @@ export default function Inventory({ business, toast }) {
                 </div>
               } />
           ) : (
-            <table className="tbl">
-              <thead>
-                <tr><th>Product</th><th>SKU / Barcode</th><th>HSN</th><th className="num">Stock</th>
-                  <th className="num">Purchase</th><th className="num">Sale</th><th className="num">Margin</th>
-                  <th className="num">Stock value</th><th /></tr>
-              </thead>
-              <tbody>
+            <>
+              {/* Mobile App Product Cards List */}
+              <div className="mobile-only mobile-cards-list">
                 {rows.map((p) => (
-                  <tr key={p.id}>
-                    <td>
-                      <div className="strong">{p.name}</div>
-                      <div className="muted">{[p.category, `GST ${p.gst_rate}%`, p.tax_inclusive ? 'tax-inclusive' : ''].filter(Boolean).join(' · ')}</div>
-                    </td>
-                    <td className="muted mono">{p.sku || '—'}{p.barcode && <div>{p.barcode}</div>}</td>
-                    <td className="muted mono">{p.hsn || '—'}</td>
-                    <td className="num">
-                      <b className={p.out ? 'neg' : p.low ? 'neg' : ''}>{p.stock} {p.unit}</b>
-                      {p.out ? <div><span className="pill red">Out</span></div> : p.low ? <div><span className="pill amber">Low</span></div> : null}
-                    </td>
-                    <td className="num muted">{money(p.purchase_price)}</td>
-                    <td className="num">{money(p.sale_price)}</td>
-                    <td className="num"><span className={`pill ${p.margin >= 20 ? 'green' : p.margin > 0 ? 'grey' : 'red'}`}>{p.margin}%</span></td>
-                    <td className="num strong">{money(p.stockValue)}</td>
-                    <td>
-                      <div className="row-actions">
-                        <button className="icon-btn" title="Stock history" onClick={() => api.productMoves(p.id).then(setMoves)}><Icon.clock size={14} /></button>
-                        <button className="icon-btn" title="Adjust stock" onClick={() => setStock(p)}><Icon.swap size={14} /></button>
-                        <button className="icon-btn" title="Edit" onClick={() => setEditor(p)}><Icon.edit size={14} /></button>
-                        <button className="icon-btn danger" title="Remove" onClick={() => setConfirm(p)}><Icon.trash size={14} /></button>
+                  <div key={p.id} className="mobile-product-card" onClick={() => setEditor(p)}>
+                    <div className="mpc-top">
+                      <div>
+                        <div className="mpc-name">{p.name}</div>
+                        <div className="mpc-sub">{[p.category, `GST ${p.gst_rate}%`, p.hsn ? `HSN ${p.hsn}` : null].filter(Boolean).join(' · ')}</div>
                       </div>
-                    </td>
-                  </tr>
+                      <b className="mpc-price">{money(p.sale_price)}</b>
+                    </div>
+                    <div className="mpc-mid">
+                      <div className="mpc-stock-info">
+                        <span className="mpc-label">Stock: </span>
+                        <b className={p.out ? 'neg' : p.low ? 'neg' : 'pos'}>{p.stock} {p.unit}</b>
+                        {p.out ? <span className="pill sm red" style={{ marginLeft: 6 }}>Out of stock</span> : p.low ? <span className="pill sm amber" style={{ marginLeft: 6 }}>Low stock</span> : null}
+                      </div>
+                      <div className="mpc-value">Value: {money(p.stockValue)}</div>
+                    </div>
+                    <div className="mpc-actions" onClick={(e) => e.stopPropagation()}>
+                      <button type="button" className="btn xs" onClick={() => setStock(p)}>
+                        <Icon.swap size={13} /> Adjust stock
+                      </button>
+                      <button type="button" className="btn xs" onClick={() => api.productMoves(p.id).then(setMoves)}>
+                        <Icon.clock size={13} /> History
+                      </button>
+                      <button type="button" className="btn xs" onClick={() => setEditor(p)}>
+                        <Icon.edit size={13} /> Edit
+                      </button>
+                    </div>
+                  </div>
                 ))}
-              </tbody>
-              <tfoot>
-                <tr>
-                  <td colSpan="3">Totals ({rows.length} items)</td>
-                  <td className="num">{rows.reduce((s, p) => s + Number(p.stock), 0)} units</td>
-                  <td colSpan="3" />
-                  <td className="num">{money(rows.reduce((s, p) => s + p.stockValue, 0))}</td>
-                  <td />
-                </tr>
-              </tfoot>
-            </table>
+              </div>
+
+              {/* Desktop Table View */}
+              <table className="tbl desktop-only">
+                <thead>
+                  <tr><th>Product</th><th>SKU / Barcode</th><th>HSN</th><th className="num">Stock</th>
+                    <th className="num">Purchase</th><th className="num">Sale</th><th className="num">Margin</th>
+                    <th className="num">Stock value</th><th /></tr>
+                </thead>
+                <tbody>
+                  {rows.map((p) => (
+                    <tr key={p.id}>
+                      <td>
+                        <div className="strong">{p.name}</div>
+                        <div className="muted">{[p.category, `GST ${p.gst_rate}%`, p.tax_inclusive ? 'tax-inclusive' : ''].filter(Boolean).join(' · ')}</div>
+                      </td>
+                      <td className="muted mono">{p.sku || '—'}{p.barcode && <div>{p.barcode}</div>}</td>
+                      <td className="muted mono">{p.hsn || '—'}</td>
+                      <td className="num">
+                        <b className={p.out ? 'neg' : p.low ? 'neg' : ''}>{p.stock} {p.unit}</b>
+                        {p.out ? <div><span className="pill red">Out</span></div> : p.low ? <div><span className="pill amber">Low</span></div> : null}
+                      </td>
+                      <td className="num muted">{money(p.purchase_price)}</td>
+                      <td className="num">{money(p.sale_price)}</td>
+                      <td className="num"><span className={`pill ${p.margin >= 20 ? 'green' : p.margin > 0 ? 'grey' : 'red'}`}>{p.margin}%</span></td>
+                      <td className="num strong">{money(p.stockValue)}</td>
+                      <td>
+                        <div className="row-actions">
+                          <button className="icon-btn" title="Stock history" onClick={() => api.productMoves(p.id).then(setMoves)}><Icon.clock size={14} /></button>
+                          <button className="icon-btn" title="Adjust stock" onClick={() => setStock(p)}><Icon.swap size={14} /></button>
+                          <button className="icon-btn" title="Edit" onClick={() => setEditor(p)}><Icon.edit size={14} /></button>
+                          <button className="icon-btn danger" title="Remove" onClick={() => setConfirm(p)}><Icon.trash size={14} /></button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr>
+                    <td colSpan="3">Totals ({rows.length} items)</td>
+                    <td className="num">{rows.reduce((s, p) => s + Number(p.stock), 0)} units</td>
+                    <td colSpan="3" />
+                    <td className="num">{money(rows.reduce((s, p) => s + p.stockValue, 0))}</td>
+                    <td />
+                  </tr>
+                </tfoot>
+              </table>
+            </>
           )}
         </div>
       </div>

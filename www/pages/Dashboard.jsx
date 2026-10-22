@@ -30,7 +30,56 @@ export default function Dashboard({ business, goto, toast }) {
 
   return (
     <>
-      <div className="grid g5" style={{ marginBottom: 14 }}>
+      {/* Mobile-only Unified App Overview Card */}
+      <div className="mobile-only mobile-overview-card">
+        {/* Top Split: To Collect vs To Pay */}
+        <div className="moc-top">
+          <div className="moc-col" onClick={() => goto('khata')}>
+            <div className="moc-label">
+              <span className="moc-dot" style={{ background: '#dc2626' }} />
+              <span>TO COLLECT</span>
+            </div>
+            <div className="moc-val" style={{ color: d.receivable > 0 ? '#dc2626' : 'var(--ink)' }}>
+              {money(d.receivable)}
+            </div>
+            <div className="moc-sub">
+              {d.overdueCount > 0 ? `${d.overdueCount} overdue (${moneyShort(d.overdueAmount)})` : 'All accounts regular'}
+            </div>
+          </div>
+
+          <div className="moc-divider" />
+
+          <div className="moc-col" onClick={() => goto('billing', { type: 'purchase' })}>
+            <div className="moc-label">
+              <span className="moc-dot" style={{ background: '#d97706' }} />
+              <span>TO PAY</span>
+            </div>
+            <div className="moc-val" style={{ color: d.payable > 0 ? '#d97706' : 'var(--ink)' }}>
+              {money(d.payable)}
+            </div>
+            <div className="moc-sub">Supplier bills pending</div>
+          </div>
+        </div>
+
+        {/* Bottom Strip: Sales & GST Summary */}
+        <div className="moc-bottom">
+          <div className="moc-stat" onClick={() => goto('billing')}>
+            <span className="moc-stat-k">Today's Sales</span>
+            <b className="moc-stat-v">{money(d.todaySales)}</b>
+          </div>
+          <div className="moc-stat" onClick={() => goto('billing')}>
+            <span className="moc-stat-k">This Month</span>
+            <b className="moc-stat-v">{money(d.monthSales)}</b>
+          </div>
+          <div className="moc-stat" onClick={() => goto('reports')}>
+            <span className="moc-stat-k">Net GST</span>
+            <b className="moc-stat-v">{money(d.netTax)}</b>
+          </div>
+        </div>
+      </div>
+
+      {/* Desktop 5-Grid Stats */}
+      <div className="grid g5 desktop-only" style={{ marginBottom: 14 }}>
         <Stat label="Today's sales" value={money(d.todaySales)} foot={`${d.invoiceCount} invoices total`} icon={Icon.rupee} color="#4f46e5" soft="var(--brand-soft)" onClick={() => goto('billing')} />
         <Stat label="This month" value={money(d.monthSales)} foot="Sales billed" icon={Icon.chart} color="#0891b2" soft="var(--blue-soft)" onClick={() => goto('billing')} />
         <Stat label="To collect" value={money(d.receivable)} foot={`${d.overdueCount} overdue (${moneyShort(d.overdueAmount)})`} icon={Icon.wallet} color="#dc2626" soft="var(--red-soft)" onClick={() => goto('khata')} warn={d.overdueCount > 0} />
@@ -102,7 +151,43 @@ export default function Dashboard({ business, goto, toast }) {
         <div className="card">
           <div className="card-h"><Icon.invoice size={16} /><div><h3>Recent documents</h3><div className="sub">Latest activity in this business</div></div>
             <div className="spacer" /><button className="btn sm" onClick={() => goto('billing')}>View all</button></div>
-          <div className="card-b tight tbl-wrap">
+          
+          {/* Mobile App Transaction Cards */}
+          <div className="mobile-only mobile-trans-list">
+            {d.recentDocs.length === 0 ? (
+              <div className="empty-compact">
+                <Icon.invoice size={26} style={{ color: 'var(--muted)', marginBottom: 6 }} />
+                <div style={{ fontWeight: 650, fontSize: 13, color: 'var(--ink)' }}>Nothing billed yet</div>
+                <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 8 }}>Create your first invoice to see it here</div>
+                <button className="btn primary sm" onClick={() => goto('billing', { type: 'sale', docId: 'new' })}>
+                  <Icon.plus size={14} /> + New invoice
+                </button>
+              </div>
+            ) : (
+              d.recentDocs.map((r) => (
+                <div key={r.id} className="mobile-trans-item" onClick={() => goto('billing', { type: r.type, docId: r.id })}>
+                  <div className="mti-left">
+                    <div className="mti-avatar" style={{ background: r.type === 'purchase' ? '#eff6ff' : '#eef2ff', color: r.type === 'purchase' ? '#2563eb' : '#4f46e5' }}>
+                      <Icon.invoice size={17} />
+                    </div>
+                    <div className="mti-meta">
+                      <b className="mti-party">{r.party_name || 'Walk-in Customer'}</b>
+                      <div className="mti-sub">{r.number} · {fmtDate(r.date)}</div>
+                    </div>
+                  </div>
+                  <div className="mti-right">
+                    <div className="mti-amount">{money(r.total)}</div>
+                    <div className="mti-pill">
+                      {r.type === 'expense' ? <span className="pill sm grey">—</span> : <PayPill status={r.payment_status} />}
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+
+          {/* Desktop Table View */}
+          <div className="card-b tight tbl-wrap desktop-only">
             <table className="tbl">
               <thead><tr><th>Document</th><th>Party</th><th>Date</th><th className="num">Amount</th><th>Status</th></tr></thead>
               <tbody>

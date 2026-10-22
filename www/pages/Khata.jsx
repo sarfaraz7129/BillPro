@@ -81,43 +81,75 @@ export default function Khata({ business, initialType, initialPartyId, toast }) 
                 </div>
               } />
           ) : (
-            <table className="tbl">
-              <thead>
-                <tr><th>{type === 'customer' ? 'Customer' : 'Supplier'}</th><th>Contact</th><th>GSTIN</th>
-                  <th className="num">Credit limit</th><th className="num">Balance</th><th>Last activity</th><th /></tr>
-              </thead>
-              <tbody>
+            <>
+              {/* Mobile App Khata Party List */}
+              <div className="mobile-only mobile-cards-list">
                 {rows.map((p) => (
-                  <tr key={p.id} className="clickable" onClick={() => setOpen({ party: p })}>
-                    <td>
-                      <div style={{ display: 'flex', gap: 9, alignItems: 'center' }}>
-                        <Avatar name={p.name} size={30} color={p.tag ? colorFor(p.tag) : undefined} />
-                        <div>
-                          <div className="strong">{p.name}</div>
-                          <div className="muted">{[p.city, p.tag].filter(Boolean).join(' · ') || '—'}</div>
-                        </div>
+                  <div key={p.id} className="mobile-trans-item" onClick={() => setOpen({ party: p })}>
+                    <div className="mti-left">
+                      <Avatar name={p.name} size={38} color={p.tag ? colorFor(p.tag) : undefined} />
+                      <div className="mti-meta">
+                        <b className="mti-party">{p.name}</b>
+                        <div className="mti-sub">{p.phone || p.city || 'No contact'} · {p.lastTransaction ? fmtDate(p.lastTransaction) : 'No txn'}</div>
                       </div>
-                    </td>
-                    <td className="muted">{[p.contact_name, p.phone].filter(Boolean).join(' · ') || '—'}</td>
-                    <td className="muted mono">{p.gstin || '—'}</td>
-                    <td className="num muted">{p.credit_limit ? money(p.credit_limit) : '—'}</td>
-                    <td className="num">
-                      <b className={p.balance > 0 ? 'neg' : p.balance < 0 ? 'pos' : ''}>{money(Math.abs(p.balance))}</b>
-                      <div>{p.balance > 0 ? <span className="pill red">You'll get</span> : p.balance < 0 ? <span className="pill green">You'll give</span> : <span className="pill grey">Settled</span>}</div>
-                      {p.overLimit && <span className="pill amber" style={{ marginTop: 3 }}>Over limit</span>}
-                    </td>
-                    <td className="muted">{p.lastTransaction || '—'}</td>
-                    <td onClick={(e) => e.stopPropagation()}>
-                      <div className="row-actions">
-                        <button className="icon-btn" title="Statement PDF" onClick={() => window.open(pdfUrl(`statement/${p.id}`), '_blank')}><Icon.print size={14} /></button>
-                        <button className="icon-btn" title="Edit" onClick={() => setEditor({ type, party: p })}><Icon.edit size={14} /></button>
-                        <button className="icon-btn danger" title="Delete" onClick={() => setConfirm(p)}><Icon.trash size={14} /></button>
+                    </div>
+                    <div className="mti-right">
+                      <div className={`mti-amount ${p.balance > 0 ? 'neg' : p.balance < 0 ? 'pos' : ''}`}>
+                        {money(Math.abs(p.balance))}
                       </div>
-                    </td>
-                  </tr>
+                      <div className="mti-pill">
+                        {p.balance > 0 ? (
+                          <span className="pill sm red">You'll get</span>
+                        ) : p.balance < 0 ? (
+                          <span className="pill sm green">You'll give</span>
+                        ) : (
+                          <span className="pill sm grey">Settled</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
                 ))}
-              </tbody>
-            </table>
+              </div>
+
+              {/* Desktop Table View */}
+              <table className="tbl desktop-only">
+                <thead>
+                  <tr><th>{type === 'customer' ? 'Customer' : 'Supplier'}</th><th>Contact</th><th>GSTIN</th>
+                    <th className="num">Credit limit</th><th className="num">Balance</th><th>Last activity</th><th /></tr>
+                </thead>
+                <tbody>
+                  {rows.map((p) => (
+                    <tr key={p.id} className="clickable" onClick={() => setOpen({ party: p })}>
+                      <td>
+                        <div style={{ display: 'flex', gap: 9, alignItems: 'center' }}>
+                          <Avatar name={p.name} size={30} color={p.tag ? colorFor(p.tag) : undefined} />
+                          <div>
+                            <div className="strong">{p.name}</div>
+                            <div className="muted">{[p.city, p.tag].filter(Boolean).join(' · ') || '—'}</div>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="muted">{[p.contact_name, p.phone].filter(Boolean).join(' · ') || '—'}</td>
+                      <td className="muted mono">{p.gstin || '—'}</td>
+                      <td className="num muted">{p.credit_limit ? money(p.credit_limit) : '—'}</td>
+                      <td className="num">
+                        <b className={p.balance > 0 ? 'neg' : p.balance < 0 ? 'pos' : ''}>{money(Math.abs(p.balance))}</b>
+                        <div>{p.balance > 0 ? <span className="pill red">You'll get</span> : p.balance < 0 ? <span className="pill green">You'll give</span> : <span className="pill grey">Settled</span>}</div>
+                        {p.overLimit && <span className="pill amber" style={{ marginTop: 3 }}>Over limit</span>}
+                      </td>
+                      <td className="muted">{p.lastTransaction || '—'}</td>
+                      <td onClick={(e) => e.stopPropagation()}>
+                        <div className="row-actions">
+                          <button className="icon-btn" title="Statement PDF" onClick={() => window.open(pdfUrl(`statement/${p.id}`), '_blank')}><Icon.print size={14} /></button>
+                          <button className="icon-btn" title="Edit" onClick={() => setEditor({ type, party: p })}><Icon.edit size={14} /></button>
+                          <button className="icon-btn danger" title="Delete" onClick={() => setConfirm(p)}><Icon.trash size={14} /></button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
           )}
         </div>
       </div>
