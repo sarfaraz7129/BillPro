@@ -57,6 +57,7 @@ export default function App() {
   const [bizModal, setBizModal] = useState(false);
   const [needBusiness, setNeedBusiness] = useState(false);
   const [offline, setOffline] = useState(!navigator.onLine);
+  const [quickActionSheet, setQuickActionSheet] = useState(false);
 
   const toast = useCallback((msg, kind) => {
     const id = Math.random().toString(36).slice(2);
@@ -225,7 +226,42 @@ export default function App() {
   return (
     <div className="app">
       <aside className={`sidebar ${drawer ? 'open' : ''}`}>
-        <div className="brand">
+        {/* Mobile-only app drawer profile header */}
+        <div className="mobile-drawer-header mobile-only">
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, flex: 1, paddingRight: 8 }}>
+              <div className="mobile-drawer-avatar">
+                {initials(user.name || 'User')}
+              </div>
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <b style={{ color: '#fff', fontSize: 13.5, display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {user.name}
+                </b>
+                <div style={{ fontSize: 11, color: '#94a3b8', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {user.email}
+                </div>
+              </div>
+            </div>
+            <button
+              type="button"
+              className="icon-btn"
+              style={{ color: '#cbd5e1', background: 'rgba(255,255,255,0.08)', flexShrink: 0, width: 32, height: 32, borderRadius: 8 }}
+              onClick={() => setDrawer(false)}
+              aria-label="Close menu"
+            >
+              <Icon.x size={16} />
+            </button>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '7px 10px', background: 'rgba(255,255,255,0.05)', borderRadius: 10, border: '1px solid rgba(255,255,255,0.06)' }}>
+            <span style={{ fontSize: 11, color: '#94a3b8' }}>Active store</span>
+            <span style={{ fontSize: 11.5, color: '#38bdf8', fontWeight: 600, maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {active?.name || 'Workspace'}
+            </span>
+          </div>
+        </div>
+
+        {/* Desktop brand header */}
+        <div className="brand desktop-only">
           <div className="brand-mark">B</div>
           <div className="brand-name">BillPro<small>Billing · Khata · GST</small></div>
         </div>
@@ -243,7 +279,9 @@ export default function App() {
                     onClick={() => goto(it.id)}
                     title={it.label}
                   >
-                    <I size={16} /> <span>{it.label}</span>
+                    <I size={16} />
+                    <span>{it.label}</span>
+                    <Icon.chevRight size={13} className="mobile-only" style={{ marginLeft: 'auto', opacity: 0.4 }} />
                   </a>
                 );
               })}
@@ -278,13 +316,13 @@ export default function App() {
           <BusinessSwitcher businesses={businesses} active={active} group={group}
             onSwitch={switchBusiness} onAdd={() => setBizModal(true)} onGroup={() => goto('group')} onSettings={() => goto('settings')} />
           <div className="spacer" />
-          <div className="topbar-titles">
+          <div className="topbar-titles desktop-only">
             <div className="topbar-title">{title}</div>
             <div className="topbar-sub">{sub}</div>
           </div>
           {user?.is_superadmin && (
             <button
-              className="btn sm"
+              className="btn sm desktop-only"
               style={{
                 background: page === 'admin' ? '#4f46e5' : 'rgba(79, 70, 229, 0.1)',
                 color: page === 'admin' ? '#fff' : '#4f46e5',
@@ -296,6 +334,20 @@ export default function App() {
               title="Super Admin Client Manager"
             >
               <Icon.shield size={14} /> <span className="btn-label">Client Manager</span>
+            </button>
+          )}
+          {user?.is_superadmin && (
+            <button
+              className="icon-btn mobile-only"
+              style={{
+                color: page === 'admin' ? '#4f46e5' : 'var(--brand)',
+                background: page === 'admin' ? 'rgba(79, 70, 229, 0.12)' : 'transparent',
+                flexShrink: 0
+              }}
+              onClick={() => goto('admin')}
+              title="Super Admin Client Manager"
+            >
+              <Icon.shield size={17} />
             </button>
           )}
           <button className="icon-btn" onClick={() => goto('settings')} title="Settings & Business Profile" style={{ flexShrink: 0 }}>
@@ -310,7 +362,7 @@ export default function App() {
           >
             <Icon.logout size={16} />
           </button>
-          <button className="btn primary topbar-action-btn" onClick={() => goto('billing', { type: 'sale', docId: 'new' })} title="New invoice">
+          <button className="btn primary topbar-action-btn desktop-only" onClick={() => goto('billing', { type: 'sale', docId: 'new' })} title="New invoice">
             <Icon.plus size={15} /> <span className="btn-label">New invoice</span>
           </button>
         </header>
@@ -370,6 +422,176 @@ export default function App() {
           )}
         </div>
       </div>
+
+      {/* Mobile App Bottom Navigation Bar */}
+      <nav className="mobile-bottom-nav mobile-only" aria-label="Mobile Navigation">
+        <button
+          type="button"
+          className={`mobile-tab ${page === 'dashboard' ? 'active' : ''}`}
+          onClick={() => goto('dashboard')}
+        >
+          <div className="tab-icon-wrap">
+            <Icon.dashboard size={20} />
+          </div>
+          <span>Home</span>
+        </button>
+
+        <button
+          type="button"
+          className={`mobile-tab ${page === 'billing' ? 'active' : ''}`}
+          onClick={() => goto('billing')}
+        >
+          <div className="tab-icon-wrap">
+            <Icon.invoice size={20} />
+          </div>
+          <span>Invoices</span>
+        </button>
+
+        {/* Central Floating Action Button */}
+        <div className="mobile-fab-wrap">
+          <button
+            type="button"
+            className="mobile-fab"
+            onClick={() => setQuickActionSheet(true)}
+            title="Create new bill or transaction"
+            aria-label="Create new transaction"
+          >
+            <Icon.plus size={23} />
+          </button>
+          <span className="mobile-fab-label">Create</span>
+        </div>
+
+        <button
+          type="button"
+          className={`mobile-tab ${page === 'khata' ? 'active' : ''}`}
+          onClick={() => goto('khata')}
+        >
+          <div className="tab-icon-wrap">
+            <Icon.khata size={20} />
+          </div>
+          <span>Khata</span>
+        </button>
+
+        <button
+          type="button"
+          className={`mobile-tab ${['inventory', 'reports', 'group', 'settings', 'admin', 'pos'].includes(page) ? 'active' : ''}`}
+          onClick={() => setDrawer(true)}
+        >
+          <div className="tab-icon-wrap">
+            <Icon.menu size={20} />
+          </div>
+          <span>Menu</span>
+        </button>
+      </nav>
+
+      {/* Mobile Bottom Action Sheet for FAB */}
+      {quickActionSheet && (
+        <div className="mobile-sheet-scrim mobile-only" onClick={() => setQuickActionSheet(false)}>
+          <div className="mobile-action-sheet" onClick={(e) => e.stopPropagation()}>
+            <div className="mobile-sheet-drag-handle" />
+            <div className="mobile-sheet-title">Create New Record</div>
+            <div className="mobile-sheet-grid">
+              <button
+                type="button"
+                className="mobile-sheet-btn"
+                onClick={() => {
+                  setQuickActionSheet(false);
+                  goto('billing', { type: 'sale', docId: 'new' });
+                }}
+              >
+                <div className="ms-icon" style={{ background: '#eef2ff', color: '#4f46e5' }}>
+                  <Icon.plus size={20} />
+                </div>
+                <div className="ms-text">
+                  <b>New Sale Invoice</b>
+                  <small>GST tax invoice with UPI QR & PDF</small>
+                </div>
+                <Icon.chevRight size={15} style={{ color: '#94a3b8' }} />
+              </button>
+
+              <button
+                type="button"
+                className="mobile-sheet-btn"
+                onClick={() => {
+                  setQuickActionSheet(false);
+                  goto('pos');
+                }}
+              >
+                <div className="ms-icon" style={{ background: '#fffbeb', color: '#d97706' }}>
+                  <Icon.pos size={20} />
+                </div>
+                <div className="ms-text">
+                  <b>Counter POS Billing</b>
+                  <small>Instant receipt & automatic stock reduction</small>
+                </div>
+                <Icon.chevRight size={15} style={{ color: '#94a3b8' }} />
+              </button>
+
+              <button
+                type="button"
+                className="mobile-sheet-btn"
+                onClick={() => {
+                  setQuickActionSheet(false);
+                  goto('billing', { type: 'purchase', docId: 'new' });
+                }}
+              >
+                <div className="ms-icon" style={{ background: '#eff6ff', color: '#2563eb' }}>
+                  <Icon.invoice size={20} />
+                </div>
+                <div className="ms-text">
+                  <b>Purchase Bill</b>
+                  <small>Record incoming inventory from supplier</small>
+                </div>
+                <Icon.chevRight size={15} style={{ color: '#94a3b8' }} />
+              </button>
+
+              <button
+                type="button"
+                className="mobile-sheet-btn"
+                onClick={() => {
+                  setQuickActionSheet(false);
+                  goto('khata', { partyId: 'new' });
+                }}
+              >
+                <div className="ms-icon" style={{ background: '#f0fdf4', color: '#16a34a' }}>
+                  <Icon.khata size={20} />
+                </div>
+                <div className="ms-text">
+                  <b>Add Customer / Vendor</b>
+                  <small>Create Khata ledger & track balances</small>
+                </div>
+                <Icon.chevRight size={15} style={{ color: '#94a3b8' }} />
+              </button>
+
+              <button
+                type="button"
+                className="mobile-sheet-btn"
+                onClick={() => {
+                  setQuickActionSheet(false);
+                  goto('inventory');
+                }}
+              >
+                <div className="ms-icon" style={{ background: '#fdf4ff', color: '#c026d3' }}>
+                  <Icon.box size={20} />
+                </div>
+                <div className="ms-text">
+                  <b>Inventory Stock</b>
+                  <small>View items & low stock alerts</small>
+                </div>
+                <Icon.chevRight size={15} style={{ color: '#94a3b8' }} />
+              </button>
+            </div>
+            <button
+              type="button"
+              className="btn block"
+              style={{ marginTop: 12, borderRadius: 12, padding: 10, background: 'var(--surface-2)', border: '1px solid var(--line)', fontWeight: 600, color: 'var(--ink)' }}
+              onClick={() => setQuickActionSheet(false)}
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
 
       {bizModal && <NewBusiness businesses={businesses} onClose={() => setBizModal(false)} toast={toast}
         onCreated={async (b) => {

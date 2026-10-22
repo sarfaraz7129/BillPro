@@ -38,6 +38,41 @@ export default function Dashboard({ business, goto, toast }) {
         <Stat label="Net GST payable" value={money(d.netTax)} foot="Output tax less ITC" icon={Icon.shield} color="#059669" soft="var(--green-soft)" onClick={() => goto('reports')} />
       </div>
 
+      {/* Mobile App Quick Actions */}
+      <div className="mobile-quick-actions">
+        <button type="button" className="quick-action-tile" onClick={() => goto('billing', { type: 'sale', docId: 'new' })}>
+          <div className="qa-icon" style={{ background: '#eef2ff', color: '#4f46e5' }}>
+            <Icon.plus size={19} />
+          </div>
+          <span className="qa-title">+ Sale Bill</span>
+          <span className="qa-sub">Invoice</span>
+        </button>
+
+        <button type="button" className="quick-action-tile" onClick={() => goto('pos')}>
+          <div className="qa-icon" style={{ background: '#fffbeb', color: '#d97706' }}>
+            <Icon.pos size={19} />
+          </div>
+          <span className="qa-title">POS Bill</span>
+          <span className="qa-sub">Counter</span>
+        </button>
+
+        <button type="button" className="quick-action-tile" onClick={() => goto('khata')}>
+          <div className="qa-icon" style={{ background: '#f0fdf4', color: '#16a34a' }}>
+            <Icon.khata size={19} />
+          </div>
+          <span className="qa-title">Khata</span>
+          <span className="qa-sub">Ledgers</span>
+        </button>
+
+        <button type="button" className="quick-action-tile" onClick={() => goto('inventory')}>
+          <div className="qa-icon" style={{ background: '#eff6ff', color: '#0284c7' }}>
+            <Icon.box size={19} />
+          </div>
+          <span className="qa-title">Stock</span>
+          <span className="qa-sub">Items</span>
+        </button>
+      </div>
+
       {d.lowStock && d.lowStock.length > 0 && (
         <div className="banner warn">
           <Icon.alert size={16} />
