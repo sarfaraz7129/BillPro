@@ -195,11 +195,7 @@ export default function App() {
         items: [
           { id: 'admin', label: 'Client Manager', icon: 'shield' }
         ]
-      }] : []),
-      { section: 'Setup', items: [
-        { id: 'settings', label: 'Settings', icon: 'settings' },
-        { id: 'signout', label: 'Sign out', icon: 'logout' }
-      ]}
+      }] : [])
     ];
     return list;
   }, [user?.is_superadmin]);
