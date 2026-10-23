@@ -487,17 +487,26 @@ function DocViewer({ doc, party, payments, business, onClose, onEdit, onShare, o
             <table className="tbl">
               <thead><tr><th>#</th><th>Item</th><th className="num">Qty</th><th className="num">Rate</th><th className="num">Taxable</th><th className="num">GST</th><th className="num">Amount</th></tr></thead>
               <tbody>
-                {doc.items.map((l, i) => (
-                  <tr key={i}>
-                    <td className="muted">{i + 1}</td>
-                    <td><div className="strong">{l.name}</div><div className="muted">HSN {l.hsn || '-'}</div></td>
-                    <td className="num">{l.qty} {l.unit}</td>
-                    <td className="num">{money(l.rate)}</td>
-                    <td className="num">{money(l.taxable)}</td>
-                    <td className="num muted">{l.gstRate}% · {money(l.cgst + l.sgst + l.igst)}</td>
-                    <td className="num strong">{money(l.total)}</td>
-                  </tr>
-                ))}
+                {doc.items.map((l, i) => {
+                  const isRet = !!(l.isReturn || l.is_return || (Number(l.qty) < 0));
+                  return (
+                    <tr key={i} style={isRet ? { backgroundColor: 'rgba(239, 68, 68, 0.05)' } : {}}>
+                      <td className="muted">{i + 1}</td>
+                      <td>
+                        <div className="strong" style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                          {isRet && <span className="badge sm danger" style={{ fontSize: 10, padding: '1px 5px' }}>↩ RETURN / LESS</span>}
+                          {l.name}
+                        </div>
+                        <div className="muted">HSN {l.hsn || '-'}</div>
+                      </td>
+                      <td className="num" style={isRet ? { color: '#dc2626' } : {}}>{isRet ? '-' : ''}{Math.abs(l.qty)} {l.unit}</td>
+                      <td className="num">{money(l.rate)}</td>
+                      <td className="num" style={isRet ? { color: '#dc2626' } : {}}>{money(l.taxable)}</td>
+                      <td className="num muted">{l.gstRate}% · {money(l.cgst + l.sgst + l.igst)}</td>
+                      <td className="num strong" style={isRet ? { color: '#dc2626' } : {}}>{isRet && Number(l.total) > 0 ? '-' : ''}{money(l.total)}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -516,7 +525,7 @@ function DocViewer({ doc, party, payments, business, onClose, onEdit, onShare, o
               </>}
             {Number(doc.transportation) > 0 && <div className="kv"><span className="k">Transportation</span><span className="v">{money(doc.transportation)}</span></div>}
             {Number(doc.loading_charges) > 0 && <div className="kv"><span className="k">Loading charges</span><span className="v">{money(doc.loading_charges)}</span></div>}
-            {Number(doc.extra_charges) > 0 && <div className="kv"><span className="k">Extra charges</span><span className="v">{money(doc.extra_charges)}</span></div>}
+            {Number(doc.bag_charges) > 0 && <div className="kv"><span className="k">Bag charges</span><span className="v">{money(doc.bag_charges)}</span></div>}
             <div className="grand"><span style={{ fontWeight: 700 }}>Current Bill Total</span><span className="v">{money(doc.total)}</span></div>
             <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 6 }}>{doc.amount_in_words}</div>
 

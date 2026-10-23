@@ -91,12 +91,14 @@ export default function ThermalReceiptModal({ doc, party, business, initialWidth
           row('Item Description', 'HSN   Qty  Rate  GST%    Total'),
           line,
           ...doc.items.map((it) => {
-            const name = it.name.length > 20 ? it.name.slice(0, 20) : it.name.padEnd(20, ' ');
+            const isRet = !!(it.isReturn || it.is_return || (Number(it.qty) < 0));
+            const baseName = (isRet ? '[RET] ' : '') + it.name;
+            const name = baseName.length > 20 ? baseName.slice(0, 20) : baseName.padEnd(20, ' ');
             const hsn = (it.hsn || '-').slice(0, 5).padEnd(5, ' ');
-            const qty = `${it.qty} ${it.unit || ''}`.slice(0, 5).padStart(5, ' ');
+            const qty = `${isRet ? '-' : ''}${Math.abs(it.qty)} ${it.unit || ''}`.slice(0, 5).padStart(5, ' ');
             const rate = `${it.rate}`.slice(0, 6).padStart(6, ' ');
             const gst = `${it.gstRate}%`.slice(0, 4).padStart(4, ' ');
-            const tot = `${it.total}`.slice(0, 8).padStart(8, ' ');
+            const tot = `${isRet && Number(it.total) > 0 ? '-' : ''}${it.total}`.slice(0, 8).padStart(8, ' ');
             return `${name} ${hsn} ${qty} ${rate} ${gst} ${tot}`;
           })
         ]
@@ -105,8 +107,10 @@ export default function ThermalReceiptModal({ doc, party, business, initialWidth
           row('Item', 'Qty x Rate   Total'),
           line,
           ...doc.items.map((it) => {
-            const itemLine = it.name.length > cols - 16 ? it.name.slice(0, cols - 16) : it.name;
-            const calc = `${it.qty} ${it.unit || ''} x ${it.rate} = ${it.total}`;
+            const isRet = !!(it.isReturn || it.is_return || (Number(it.qty) < 0));
+            const baseName = (isRet ? '[RET] ' : '') + it.name;
+            const itemLine = baseName.length > cols - 16 ? baseName.slice(0, cols - 16) : baseName;
+            const calc = `${isRet ? '-' : ''}${Math.abs(it.qty)} ${it.unit || ''} x ${it.rate} = ${isRet && Number(it.total) > 0 ? '-' : ''}${it.total}`;
             return `${itemLine}\n` + row(`  GST ${it.gstRate}%`, calc);
           })
         ];
@@ -124,7 +128,6 @@ export default function ThermalReceiptModal({ doc, party, business, initialWidth
       row('Standard Time (IST):', fmtDateTime(doc.created_at || doc.date)),
       row(`Customer: ${doc.party_name || 'Walk-in'}`, doc.payment_mode ? `Mode: ${doc.payment_mode.toUpperCase()}` : ''),
       ...(doc.party_gstin ? [row(`Party GSTIN: ${doc.party_gstin}`, '')] : []),
-      ...(doc.bags_count ? [row(`Bags / Pkgs:`, doc.bags_count)] : []),
       ...itemLines,
       line,
       row('Subtotal:', money(doc.subtotal)),
@@ -135,7 +138,7 @@ export default function ThermalReceiptModal({ doc, party, business, initialWidth
         : [row('CGST:', money(doc.cgst)), row('SGST:', money(doc.sgst))].join('\n'),
       Number(doc.transportation) > 0 ? row('Transportation:', money(doc.transportation)) : '',
       Number(doc.loading_charges) > 0 ? row('Loading Charges:', money(doc.loading_charges)) : '',
-      Number(doc.extra_charges) > 0 ? row('Extra Charges:', money(doc.extra_charges)) : '',
+      Number(doc.bag_charges) > 0 ? row('Bag Charges:', money(doc.bag_charges)) : '',
       doc.round_off ? row('Round Off:', money(doc.round_off)) : '',
       double,
       row('CURRENT BILL TOTAL:', money(doc.total)),
@@ -297,23 +300,33 @@ export default function ThermalReceiptModal({ doc, party, business, initialWidth
               </tr>
             </thead>
             <tbody>
-              {doc.items.map((it, idx) => (
-                <tr key={idx}>
-                  <td style={{ verticalAlign: 'top' }}>
-                    <div><b>{it.name}</b></div>
-                    {!isLq50 && (
-                      <div style={{ fontSize: '0.85em', color: '#555' }}>
-                        HSN:{it.hsn || '-'} · GST {it.gstRate}%
+              {doc.items.map((it, idx) => {
+                const isRet = !!(it.isReturn || it.is_return || (Number(it.qty) < 0));
+                return (
+                  <tr key={idx}>
+                    <td style={{ verticalAlign: 'top' }}>
+                      <div>
+                        {isRet && <span style={{ color: '#dc2626', fontWeight: 700, fontSize: '0.85em', marginRight: 4 }}>[RET]</span>}
+                        <b>{it.name}</b>
                       </div>
-                    )}
-                  </td>
-                  <td style={{ textAlign: 'center', verticalAlign: 'top' }}>{it.hsn || '-'}</td>
-                  <td className="num" style={{ verticalAlign: 'top' }}>{it.qty} {it.unit || ''}</td>
-                  <td className="num" style={{ verticalAlign: 'top' }}>{it.rate}</td>
-                  {isLq50 && <td className="num" style={{ verticalAlign: 'top' }}>{it.gstRate}%</td>}
-                  <td className="num" style={{ verticalAlign: 'top' }}><b>{it.total}</b></td>
-                </tr>
-              ))}
+                      {!isLq50 && (
+                        <div style={{ fontSize: '0.85em', color: '#555' }}>
+                          HSN:{it.hsn || '-'} · GST {it.gstRate}%
+                        </div>
+                      )}
+                    </td>
+                    <td style={{ textAlign: 'center', verticalAlign: 'top' }}>{it.hsn || '-'}</td>
+                    <td className="num" style={{ verticalAlign: 'top', color: isRet ? '#dc2626' : 'inherit' }}>
+                      {isRet ? '-' : ''}{Math.abs(it.qty)} {it.unit || ''}
+                    </td>
+                    <td className="num" style={{ verticalAlign: 'top' }}>{it.rate}</td>
+                    {isLq50 && <td className="num" style={{ verticalAlign: 'top' }}>{it.gstRate}%</td>}
+                    <td className="num" style={{ verticalAlign: 'top', color: isRet ? '#dc2626' : 'inherit' }}>
+                      <b>{isRet && Number(it.total) > 0 ? '-' : ''}{it.total}</b>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
 
@@ -372,10 +385,10 @@ export default function ThermalReceiptModal({ doc, party, business, initialWidth
               <span>{money(doc.loading_charges)}</span>
             </div>
           )}
-          {Number(doc.extra_charges) > 0 && (
+          {Number(doc.bag_charges) > 0 && (
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span>Extra Charges:</span>
-              <span>{money(doc.extra_charges)}</span>
+              <span>Bag Charges:</span>
+              <span>{money(doc.bag_charges)}</span>
             </div>
           )}
 

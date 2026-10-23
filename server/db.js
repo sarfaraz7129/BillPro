@@ -156,6 +156,7 @@ CREATE TABLE IF NOT EXISTS documents (
   notes         TEXT,
   transportation REAL NOT NULL DEFAULT 0,
   loading_charges REAL NOT NULL DEFAULT 0,
+  bag_charges   REAL NOT NULL DEFAULT 0,
   bags_count    TEXT,
   extra_charges REAL NOT NULL DEFAULT 0,
   transport_doc_no TEXT,
@@ -266,13 +267,16 @@ try {
     db.exec('ALTER TABLE users ADD COLUMN expires_at TEXT');
   }
 
-  // Migration: Ensure documents table has transportation, loading_charges, bags_count, extra_charges
+  // Migration: Ensure documents table has transportation, loading_charges, bag_charges, bags_count, extra_charges
   const docCols = db.prepare('PRAGMA table_info(documents)').all().map((c) => c.name);
   if (!docCols.includes('transportation')) {
     db.exec('ALTER TABLE documents ADD COLUMN transportation REAL NOT NULL DEFAULT 0');
   }
   if (!docCols.includes('loading_charges')) {
     db.exec('ALTER TABLE documents ADD COLUMN loading_charges REAL NOT NULL DEFAULT 0');
+  }
+  if (!docCols.includes('bag_charges')) {
+    db.exec('ALTER TABLE documents ADD COLUMN bag_charges REAL NOT NULL DEFAULT 0');
   }
   if (!docCols.includes('bags_count')) {
     db.exec('ALTER TABLE documents ADD COLUMN bags_count TEXT');

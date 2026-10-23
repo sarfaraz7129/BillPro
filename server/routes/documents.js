@@ -127,7 +127,7 @@ router.post('/', (req, res) => {
   const tx = db.transaction(() => {
     const info = db.prepare(`INSERT INTO documents (${DOC_COLS}) VALUES (${DOC_PLACEHOLDERS})`).run(...docValues(doc));
     doc.id = info.lastInsertRowid;
-    if (type === 'sale' || type === 'purchase') postStock(req.business.id, doc, type === 'sale' ? -1 : 1);
+    if (type === 'sale' || type === 'purchase' || type === 'sale_return') postStock(req.business.id, doc, (type === 'purchase' || type === 'sale_return') ? 1 : -1);
     // a payment captured on the invoice itself becomes a khata entry automatically
     if (doc.paid_amount > 0 && doc.party_id) {
       db.prepare(`INSERT INTO transactions (business_id, party_id, type, amount, date, mode, document_id, notes)
@@ -165,7 +165,7 @@ router.put('/:id', (req, res) => {
     db.prepare(`UPDATE documents SET ${DOC_COLS.split(',').map((c) => `${c.trim()} = ?`).join(', ')} WHERE id = ?`)
       .run(...docValues(doc), existing.id);
     doc.id = existing.id;
-    if (existing.type === 'sale' || existing.type === 'purchase') postStock(req.business.id, doc, existing.type === 'sale' ? -1 : 1);
+    if (existing.type === 'sale' || existing.type === 'purchase' || existing.type === 'sale_return') postStock(req.business.id, doc, (existing.type === 'purchase' || existing.type === 'sale_return') ? 1 : -1);
     if (doc.paid_amount > 0 && doc.party_id) {
       db.prepare(`INSERT INTO transactions (business_id, party_id, type, amount, date, mode, document_id, notes)
         VALUES (?,?,?,?,?,?,?,?)`)

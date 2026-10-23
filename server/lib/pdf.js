@@ -175,7 +175,8 @@ function render(doc, business, party, accent) {
     let rowY = tableTop + 20;
     pdf.font('Helvetica').fontSize(8);
     lines.forEach((l, i) => {
-      const rawName = String(l.name || '');
+      const isRet = !!(l.isReturn || l.is_return);
+      const rawName = String((isRet ? '[RETURN / LESS] ' : '') + (l.name || ''));
       const itemName = rawName.length > 80 ? rawName.slice(0, 78) + '\u2026' : rawName;
       const nameH = pdf.heightOfString(itemName, { width: cols[1].w });
       const cellH = Math.max(16, Math.min(36, Math.ceil(nameH) + 4));
@@ -191,10 +192,10 @@ function render(doc, business, party, accent) {
       }
 
       pdf.fillColor(MUTED).text(String(i + 1), cols[0].x, rowY, { width: cols[0].w });
-      pdf.fillColor(INK).font('Helvetica-Bold').text(itemName, cols[1].x, rowY, { width: cols[1].w });
+      pdf.fillColor(isRet ? '#dc2626' : INK).font('Helvetica-Bold').text(itemName, cols[1].x, rowY, { width: cols[1].w });
       pdf.font('Helvetica');
       pdf.text(l.hsn || '-', cols[2].x, rowY, { width: cols[2].w });
-      pdf.text(`${l.qty} ${l.unit || ''}`.trim(), cols[3].x, rowY, { width: cols[3].w, align: 'right' });
+      pdf.text(`${isRet ? '-' : ''}${l.qty} ${l.unit || ''}`.trim(), cols[3].x, rowY, { width: cols[3].w, align: 'right' });
       pdf.text(fmt(l.rate), cols[4].x, rowY, { width: cols[4].w, align: 'right' });
       pdf.text(l.discount ? '-' + fmt(l.discount) : '-', cols[5].x, rowY, { width: cols[5].w, align: 'right' });
       pdf.text(fmt(l.taxable), cols[6].x, rowY, { width: cols[6].w, align: 'right' });
@@ -232,7 +233,7 @@ function render(doc, business, party, accent) {
     if (doc.cess) row('Cess', doc.cess);
     if (Number(doc.transportation) > 0) row('Transportation', doc.transportation);
     if (Number(doc.loading_charges) > 0) row('Loading charges', doc.loading_charges);
-    if (Number(doc.extra_charges) > 0) row('Extra charges', doc.extra_charges);
+    if (Number(doc.bag_charges) > 0) row('Bag charges', doc.bag_charges);
     if (doc.round_off) row('Round off', doc.round_off);
     pdf.moveTo(totalsX, totalsY - 2).lineTo(576, totalsY - 2).strokeColor(accent).lineWidth(1).stroke();
     row('CURRENT BILL TOTAL', doc.total, true);

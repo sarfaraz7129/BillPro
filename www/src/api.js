@@ -331,7 +331,9 @@ export const api = {
   adminConvertInquiry: (id, b) => request('POST', `/api/admin/inquiries/${id}/convert`, b),
   adminDeleteInquiry: (id) => request('DELETE', `/api/admin/inquiries/${id}`),
   adminSettings: () => request('GET', '/api/admin/settings'),
-  adminUpdateSettings: (b) => request('PUT', '/api/admin/settings', b)
+  adminUpdateSettings: (b) => request('PUT', '/api/admin/settings', b),
+  adminPersistenceStatus: () => request('GET', '/api/admin/persistence-status'),
+  adminRestoreData: (b) => request('POST', '/api/admin/restore', b)
 };
 
 /** URL for a PDF - opened in a new tab, so the token rides along as a query param. */

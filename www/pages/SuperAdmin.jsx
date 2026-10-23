@@ -17,6 +17,8 @@ export default function SuperAdmin({ user, toast }) {
     pricing_lifetime: 20000
   });
   const [loading, setLoading] = useState(true);
+  const [persistenceInfo, setPersistenceInfo] = useState(null);
+  const [restoreBusy, setRestoreBusy] = useState(false);
 
   // Search & filters
   const [search, setSearch] = useState('');
@@ -63,22 +65,45 @@ export default function SuperAdmin({ user, toast }) {
 
   const loadAll = async () => {
     try {
-      const [st, uList, inq, setts] = await Promise.all([
+      const [st, uList, inq, setts, pStat] = await Promise.all([
         api.adminStats().catch(() => null),
         api.adminUsers().catch(() => ({ users: [] })),
         api.adminInquiries().catch(() => ({ inquiries: [] })),
-        api.adminSettings().catch(() => null)
+        api.adminSettings().catch(() => null),
+        api.adminPersistenceStatus().catch(() => null)
       ]);
       if (st) setStats(st);
       if (uList && uList.users) setUsers(uList.users);
       if (inq && inq.inquiries) setInquiries(inq.inquiries);
       if (setts && setts.settings) setSettings(setts.settings);
+      if (pStat && pStat.storage) setPersistenceInfo(pStat.storage);
     } catch (err) {
       console.error('SuperAdmin load failed:', err);
       toast('Failed to load super admin data: ' + err.message, 'err');
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleRestoreFile = (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    if (!confirm('Restoring will import businesses and parties from this backup file. Continue?')) return;
+    const reader = new FileReader();
+    reader.onload = async (evt) => {
+      try {
+        setRestoreBusy(true);
+        const json = JSON.parse(evt.target.result);
+        await api.adminRestoreData(json);
+        toast('Database restored successfully!', 'ok');
+        loadAll();
+      } catch (err) {
+        toast('Failed to restore: ' + err.message, 'err');
+      } finally {
+        setRestoreBusy(false);
+      }
+    };
+    reader.readAsText(file);
   };
 
   useEffect(() => {
@@ -413,6 +438,14 @@ export default function SuperAdmin({ user, toast }) {
           onClick={() => setTab('settings')}
         >
           <Icon.settings size={15} /> Sales WhatsApp & Pricing Settings
+        </button>
+        <button
+          type="button"
+          style={{ whiteSpace: 'nowrap', flexShrink: 0 }}
+          className={tab === 'persistence' ? 'on' : ''}
+          onClick={() => setTab('persistence')}
+        >
+          <Icon.download size={15} /> Database & Backups
         </button>
       </div>
 
@@ -1021,6 +1054,110 @@ export default function SuperAdmin({ user, toast }) {
               </button>
             </div>
           </form>
+        </div>
+      )}
+
+      {/* Tab 4: Database & Backups */}
+      {tab === 'persistence' && (
+        <div className="card">
+          <div className="card-h">
+            <div>
+              <h3 style={{ margin: 0 }}>Data Persistence, Disaster Recovery & Backups</h3>
+              <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--ink-2)' }}>
+                Protect and back up your client businesses, customer khata ledgers, and invoice records against cloud server redeploys.
+              </p>
+            </div>
+          </div>
+
+          <div style={{ padding: 20 }}>
+            {/* Storage Mode Status */}
+            <div style={{
+              padding: '16px 18px',
+              borderRadius: 12,
+              marginBottom: 20,
+              background: persistenceInfo?.isPersistent ? '#f0fdf4' : '#fffbeb',
+              border: `1.5px solid ${persistenceInfo?.isPersistent ? '#86efac' : '#fde047'}`
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+                <span style={{ fontSize: 18 }}>{persistenceInfo?.isPersistent ? '✅' : '⚠️'}</span>
+                <span style={{ fontWeight: 700, fontSize: 15, color: persistenceInfo?.isPersistent ? '#166534' : '#854d0e' }}>
+                  {persistenceInfo?.isPersistent
+                    ? 'Persistent Storage Active (/var/data)'
+                    : 'Ephemeral Container Storage Mode (Render Default / Free)'}
+                </span>
+              </div>
+              <p style={{ margin: 0, fontSize: 13, color: persistenceInfo?.isPersistent ? '#14532d' : '#713f12', lineHeight: 1.5 }}>
+                {persistenceInfo?.isPersistent
+                  ? 'Your database is mounted on a persistent disk. All businesses, invoices, and parties are safely retained across every code deployment and restart.'
+                  : 'Root Cause: Render cloud containers use temporary (ephemeral) disks by default. Every time code is deployed or the server sleeps, Render destroys the old container. To fix this permanently, attach a Render Persistent Disk (/var/data) or download regular backups below.'}
+              </p>
+            </div>
+
+            {/* 1-Click Backups & Restore */}
+            <div className="grid g2" style={{ gap: 16, marginBottom: 24 }}>
+              <div style={{ padding: 16, borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg-subtle, #f8fafc)' }}>
+                <h4 style={{ margin: '0 0 8px 0', display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <Icon.download size={16} /> 1-Click Instant Data Backup
+                </h4>
+                <p style={{ fontSize: 12.5, color: 'var(--ink-2)', marginBottom: 14 }}>
+                  Export all client profiles, registered businesses, customer lists, and documents into an offline file anytime.
+                </p>
+                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                  <a
+                    href="/api/admin/backup?format=json"
+                    download
+                    className="btn primary"
+                    style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                  >
+                    <Icon.download size={14} /> Download JSON Backup
+                  </a>
+                  <a
+                    href="/api/admin/backup?format=db"
+                    download
+                    className="btn"
+                    style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                  >
+                    💾 Download Raw SQLite (.db)
+                  </a>
+                </div>
+              </div>
+
+              <div style={{ padding: 16, borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg-subtle, #f8fafc)' }}>
+                <h4 style={{ margin: '0 0 8px 0', display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <Icon.upload size={16} /> Restore Database from Backup
+                </h4>
+                <p style={{ fontSize: 12.5, color: 'var(--ink-2)', marginBottom: 14 }}>
+                  If a server reset ever occurs or a customer reports missing data, restore your JSON snapshot in seconds.
+                </p>
+                <label className="btn" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                  <Icon.upload size={14} /> {restoreBusy ? 'Restoring Data…' : 'Select Backup File (.json)'}
+                  <input
+                    type="file"
+                    accept=".json"
+                    onChange={handleRestoreFile}
+                    disabled={restoreBusy}
+                    style={{ display: 'none' }}
+                  />
+                </label>
+              </div>
+            </div>
+
+            {/* Permanent Resolution Guide */}
+            <div style={{ padding: 18, borderRadius: 10, border: '1px solid var(--line)', background: 'var(--surface-2)' }}>
+              <h4 style={{ margin: '0 0 8px 0', color: 'var(--ink)' }}>
+                🛡️ Permanent Solution on Render: How to Enable Persistent Disk
+              </h4>
+              <ol style={{ margin: '0 0 10px 0', paddingLeft: 20, fontSize: 13, color: 'var(--ink-2)', lineHeight: 1.6 }}>
+                <li>Log in to your <b>Render.com Dashboard</b> and open your <b>billpro</b> Web Service.</li>
+                <li>Go to <b>Disks</b> in the left menu and click <b>Add Disk</b> (requires Starter plan, disk is ~$0.25/month for 1 GB).</li>
+                <li>Set <b>Name</b>: <code>billpro-data</code>, <b>Mount Path</b>: <code>/var/data</code>, <b>Size</b>: <code>1 GB</code>.</li>
+                <li>Go to <b>Environment</b> and add: <code>BILLPRO_DATA_DIR=/var/data</code>.</li>
+              </ol>
+              <div style={{ fontSize: 12.5, color: 'var(--brand)', fontWeight: 650 }}>
+                💡 Once attached, your SQLite database file resides permanently on that dedicated disk and is never deleted during code pushes or server sleep cycles!
+              </div>
+            </div>
+          </div>
         </div>
       )}
 

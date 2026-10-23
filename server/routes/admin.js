@@ -571,4 +571,135 @@ router.put('/settings', (req, res) => {
   res.json({ ok: true, message: 'Settings saved successfully' });
 });
 
+/**
+ * Persistence & Storage Status
+ */
+router.get('/persistence-status', (req, res) => {
+  const dataDir = process.env.BILLPRO_DATA_DIR || path.join(__dirname, '..', '..', 'data');
+  const isRenderDisk = Boolean(process.env.BILLPRO_DATA_DIR && process.env.BILLPRO_DATA_DIR.startsWith('/var/data'));
+  const isCustomPersistent = Boolean(process.env.BILLPRO_DATA_DIR);
+  const dbPath = process.env.BILLPRO_DB || path.join(dataDir, 'billpro.db');
+  const dbExists = fs.existsSync(dbPath);
+  const dbStats = dbExists ? fs.statSync(dbPath) : null;
+
+  res.json({
+    ok: true,
+    storage: {
+      isPersistent: isRenderDisk || isCustomPersistent,
+      isRenderDisk,
+      dataDir,
+      dbPath,
+      dbSizeBytes: dbStats ? dbStats.size : 0,
+      mode: (isRenderDisk || isCustomPersistent) ? 'persistent' : 'ephemeral',
+      message: (isRenderDisk || isCustomPersistent)
+        ? 'Persistent storage active (/var/data). Database is preserved across deployments.'
+        : 'Running on ephemeral container disk. Attach a Render Persistent Disk (/var/data) or download backups periodically to preserve data permanently.'
+    }
+  });
+});
+
+/**
+ * Download Database Backup (.json full snapshot or raw .db)
+ */
+router.get('/backup', (req, res) => {
+  try {
+    const format = req.query.format || 'json';
+    const dataDir = process.env.BILLPRO_DATA_DIR || path.join(__dirname, '..', '..', 'data');
+    const dbPath = process.env.BILLPRO_DB || path.join(dataDir, 'billpro.db');
+
+    if (format === 'db') {
+      if (!fs.existsSync(dbPath)) return res.status(404).json({ error: 'Database file not found' });
+      res.setHeader('Content-Type', 'application/x-sqlite3');
+      res.setHeader('Content-Disposition', `attachment; filename="billpro-backup-${new Date().toISOString().slice(0, 10)}.db"`);
+      return res.sendFile(dbPath);
+    }
+
+    // JSON Snapshot of everything
+    const snapshot = {
+      version: 1,
+      exported_at: new Date().toISOString(),
+      users: db.prepare('SELECT id, name, email, phone, role, permissions, status, plan, expires_at FROM users').all(),
+      businesses: db.prepare('SELECT * FROM businesses').all(),
+      parties: db.prepare('SELECT * FROM parties').all(),
+      products: db.prepare('SELECT * FROM products').all(),
+      documents: db.prepare('SELECT * FROM documents').all(),
+      transactions: db.prepare('SELECT * FROM transactions').all()
+    };
+
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Content-Disposition', `attachment; filename="billpro-data-snapshot-${new Date().toISOString().slice(0, 10)}.json"`);
+    res.json(snapshot);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to generate backup: ' + err.message });
+  }
+});
+
+/**
+ * Restore from JSON Snapshot
+ */
+router.post('/restore', (req, res) => {
+  try {
+    const data = req.body;
+    if (!data || (!data.businesses && !data.users)) {
+      return res.status(400).json({ error: 'Invalid backup format. Expected users or businesses data.' });
+    }
+
+    const tx = db.transaction(() => {
+      // Restore businesses
+      if (Array.isArray(data.businesses)) {
+        for (const b of data.businesses) {
+          const exists = db.prepare('SELECT id FROM businesses WHERE id = ?').get(b.id);
+          if (!exists) {
+            db.prepare(`
+              INSERT INTO businesses (id, owner_id, name, legal_name, gstin, pan, address, city, state, state_code, pincode, phone, email, upi_id, invoice_prefix, default_gst_rate, credit_days, color)
+              VALUES (@id, @owner_id, @name, @legal_name, @gstin, @pan, @address, @city, @state, @state_code, @pincode, @phone, @email, @upi_id, @invoice_prefix, @default_gst_rate, @credit_days, @color)
+            `).run({
+              id: b.id,
+              owner_id: b.owner_id || 1,
+              name: b.name,
+              legal_name: b.legal_name || b.name,
+              gstin: b.gstin || null,
+              pan: b.pan || null,
+              address: b.address || null,
+              city: b.city || null,
+              state: b.state || null,
+              state_code: b.state_code || null,
+              pincode: b.pincode || null,
+              phone: b.phone || null,
+              email: b.email || null,
+              upi_id: b.upi_id || null,
+              invoice_prefix: b.invoice_prefix || 'INV',
+              default_gst_rate: b.default_gst_rate || 18,
+              credit_days: b.credit_days || 30,
+              color: b.color || '#4f46e5'
+            });
+          }
+        }
+      }
+
+      // Restore parties
+      if (Array.isArray(data.parties)) {
+        for (const p of data.parties) {
+          const exists = db.prepare('SELECT id FROM parties WHERE business_id = ? AND lower(name) = ?').get(p.business_id, p.name.toLowerCase());
+          if (!exists) {
+            db.prepare(`
+              INSERT INTO parties (business_id, type, name, contact_name, phone, email, city, state, state_code, opening_balance, balance_type, credit_limit, credit_days)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `).run(
+              p.business_id, p.type || 'customer', p.name, p.contact_name || p.name, p.phone || null, p.email || null,
+              p.city || null, p.state || null, p.state_code || '29', p.opening_balance || 0, p.balance_type || 'DR',
+              p.credit_limit || 0, p.credit_days || 30
+            );
+          }
+        }
+      }
+    });
+    tx();
+
+    res.json({ ok: true, message: 'Data restored successfully!' });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to restore data: ' + err.message });
+  }
+});
+
 module.exports = { router };

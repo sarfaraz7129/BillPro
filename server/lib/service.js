@@ -23,9 +23,10 @@ function partyBalance(businessId, partyId) {
   const sign = party.balance_type === 'CR' ? -1 : 1;
   let bal = round2(sign * party.opening_balance);
   const sales = db.prepare("SELECT COALESCE(SUM(total - paid_amount),0) s FROM documents WHERE party_id = ? AND type = 'sale' AND status = 'active'").get(partyId);
+  const salesReturns = db.prepare("SELECT COALESCE(SUM(total - paid_amount),0) s FROM documents WHERE party_id = ? AND type = 'sale_return' AND status = 'active'").get(partyId);
   const purchases = db.prepare("SELECT COALESCE(SUM(total - paid_amount),0) s FROM documents WHERE party_id = ? AND type = 'purchase' AND status = 'active'").get(partyId);
   const txns = db.prepare("SELECT COALESCE(SUM(CASE WHEN type='you_gave' THEN amount WHEN type='you_got' THEN -amount ELSE 0 END),0) s FROM transactions WHERE party_id = ? AND document_id IS NULL").get(partyId);
-  bal = round2(bal + sales.s + txns.s - purchases.s);
+  bal = round2(bal + sales.s - salesReturns.s + txns.s - purchases.s);
   return {
     party,
     balance: bal,
@@ -53,19 +54,23 @@ function refreshPaymentStatus(docId, paidOverride) {
 /** Reserve the next number for a document type, incrementing the business counter. */
 function takeNumber(businessId, type) {
   const biz = db.prepare('SELECT * FROM businesses WHERE id = ?').get(businessId);
+  const fy = istFinancialYear();
   if (type === 'quotation') {
-    const fy = istFinancialYear();
     const n = biz.quoter_counter + 1;
     db.prepare('UPDATE businesses SET quoter_counter = ? WHERE id = ?').run(n, businessId);
     return `${biz.quoter_prefix}-${fy}-${n}`;
   }
-  const fy = istFinancialYear();
+  if (type === 'sale_return') {
+    const n = biz.invoice_counter + 1;
+    db.prepare('UPDATE businesses SET invoice_counter = ? WHERE id = ?').run(n, businessId);
+    return `SR-${fy}-${n}`;
+  }
   const n = biz.invoice_counter + 1;
   db.prepare('UPDATE businesses SET invoice_counter = ? WHERE id = ?').run(n, businessId);
   return `${biz.invoice_prefix}-${fy}-${n}`;
 }
 
-/** Apply stock movement for every line of a document (sale = out, purchase = in). */
+/** Apply stock movement for every line of a document (sale = out, purchase = in, returns reversed). */
 function postStock(businessId, doc, direction) {
   const items = Array.isArray(doc.items) ? doc.items : JSON.parse(doc.items || '[]');
   const insert = db.prepare(`INSERT INTO stock_moves (business_id, product_id, qty, date, reason, document_id, rate, notes)
@@ -73,10 +78,15 @@ function postStock(businessId, doc, direction) {
   const move = db.prepare('UPDATE products SET stock = stock + ? WHERE id = ? AND business_id = ?');
   items.forEach((line) => {
     if (!line.product_id) return;
-    const qty = (Number(line.qty) || 0) * direction;
-    if (!qty) return;
-    insert.run(businessId, line.product_id, qty, doc.date, direction < 0 ? 'sale' : 'purchase', doc.id, line.rate || 0, doc.number);
-    move.run(qty, line.product_id, businessId);
+    const isReturn = !!(line.isReturn || line.is_return || (Number(line.qty) < 0));
+    const rawQty = Math.abs(Number(line.qty) || 0);
+    if (!rawQty) return;
+    // For sale: normal item direction is -1 (deducts stock). But a returned item increases stock (+1)!
+    // For purchase: normal item direction is +1 (adds stock). But a returned item reduces stock (-1)!
+    const effQty = isReturn ? (direction < 0 ? rawQty : -rawQty) : (rawQty * direction);
+    const reason = isReturn ? (direction < 0 ? 'sale_return' : 'purchase_return') : (direction < 0 ? 'sale' : 'purchase');
+    insert.run(businessId, line.product_id, effQty, doc.date, reason, doc.id, line.rate || 0, doc.number);
+    move.run(effQty, line.product_id, businessId);
   });
 }
 
@@ -93,6 +103,7 @@ function buildDocument(business, body, type, existing = null) {
 
   const transportation = Number(body.transportation !== undefined ? body.transportation : (existing ? existing.transportation : 0)) || 0;
   const loadingCharges = Number(body.loadingCharges !== undefined ? body.loadingCharges : (body.loading_charges !== undefined ? body.loading_charges : (existing ? existing.loading_charges : 0))) || 0;
+  const bagCharges = Number(body.bagCharges !== undefined ? body.bagCharges : (body.bag_charges !== undefined ? body.bag_charges : (body.bags_charges !== undefined ? body.bags_charges : (existing ? existing.bag_charges : 0)))) || 0;
   const extraCharges = Number(body.extraCharges !== undefined ? body.extraCharges : (body.extra_charges !== undefined ? body.extra_charges : (body.extra !== undefined ? body.extra : (existing ? existing.extra_charges : 0)))) || 0;
   const bagsCount = body.bagsCount !== undefined ? String(body.bagsCount).trim() : (body.bags_count !== undefined ? String(body.bags_count).trim() : (body.bags !== undefined ? String(body.bags).trim() : (existing ? existing.bags_count : null)));
 
@@ -103,6 +114,7 @@ function buildDocument(business, body, type, existing = null) {
     cessRate: Number(body.cessRate !== undefined ? body.cessRate : (existing ? existing.cess : 0)),
     transportation,
     loadingCharges,
+    bagCharges,
     extraCharges,
     bagsCount,
     supplyType
@@ -134,6 +146,7 @@ function buildDocument(business, body, type, existing = null) {
     cess: totals.cess,
     transportation,
     loading_charges: loadingCharges,
+    bag_charges: bagCharges,
     bags_count: bagsCount || null,
     extra_charges: extraCharges,
     round_off: totals.roundOff,
@@ -167,7 +180,7 @@ function inferSupply(business, body) {
 
 const DOC_COLS = `business_id, type, number, party_id, party_name, party_gstin, party_state_code, date, due_date,
   place_of_supply, supply_type, currency, items, subtotal, discount_type, discount_value, discount_amount,
-  taxable_value, cgst, sgst, igst, cess, transportation, loading_charges, bags_count, extra_charges, round_off, total, amount_in_words, paid_amount, due_amount,
+  taxable_value, cgst, sgst, igst, cess, transportation, loading_charges, bag_charges, bags_count, extra_charges, round_off, total, amount_in_words, paid_amount, due_amount,
   payment_status, payment_mode, status, notes, transport_doc_no, vehicle_no, ewaybill_no, ewaybill_date,
   ewaybill_valid_upto, irn, ack_no, ack_date, signed_by, created_by`;
 
@@ -177,7 +190,7 @@ function docValues(d) {
   return [
     d.business_id ?? null, d.type ?? null, d.number ?? null, d.party_id ?? null, d.party_name ?? null, d.party_gstin ?? null, d.party_state_code ?? null, d.date ?? null, d.due_date ?? null,
     d.place_of_supply ?? null, d.supply_type ?? null, d.currency ?? 'INR', d.items ?? '[]', d.subtotal ?? 0, d.discount_type ?? 'flat', d.discount_value ?? 0, d.discount_amount ?? 0,
-    d.taxable_value ?? 0, d.cgst ?? 0, d.sgst ?? 0, d.igst ?? 0, d.cess ?? 0, d.transportation ?? 0, d.loading_charges ?? 0, d.bags_count ?? null, d.extra_charges ?? 0, d.round_off ?? 0, d.total ?? 0, d.amount_in_words ?? '', d.paid_amount ?? 0, d.due_amount ?? 0,
+    d.taxable_value ?? 0, d.cgst ?? 0, d.sgst ?? 0, d.igst ?? 0, d.cess ?? 0, d.transportation ?? 0, d.loading_charges ?? 0, d.bag_charges ?? 0, d.bags_count ?? null, d.extra_charges ?? 0, d.round_off ?? 0, d.total ?? 0, d.amount_in_words ?? '', d.paid_amount ?? 0, d.due_amount ?? 0,
     d.payment_status ?? 'unpaid', d.payment_mode ?? null, d.status ?? 'active', d.notes ?? '', d.transport_doc_no ?? null, d.vehicle_no ?? null, d.ewaybill_no ?? null, d.ewaybill_date ?? null,
     d.ewaybill_valid_upto ?? null, d.irn ?? null, d.ack_no ?? null, d.ack_date ?? null, d.signed_by ?? null, d.created_by ?? null
   ];

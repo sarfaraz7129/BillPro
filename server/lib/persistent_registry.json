@@ -20,6 +20,51 @@
       "invoice_prefix": "INV",
       "default_gst_rate": 18,
       "credit_days": 30
-    }
+    },
+    "parties": [
+      {
+        "name": "City Walk",
+        "contact_name": "City Walk Customer",
+        "phone": "9845099887",
+        "email": "citywalk@example.com",
+        "type": "customer",
+        "city": "Udupi",
+        "state": "Karnataka"
+      }
+    ]
+  },
+  {
+    "name": "Kags Enterprises",
+    "email": "kags@billpro.in",
+    "phone": "9845012398",
+    "password": "demo1234",
+    "plan": "yearly",
+    "expires_at": "2028-12-31",
+    "status": "active",
+    "business": {
+      "name": "Kags Enterprises",
+      "legal_name": "Kags Enterprises",
+      "gstin": "29KAGSE1234F1Z5",
+      "pan": "KAGSE1234F",
+      "phone": "9845012398",
+      "city": "Udupi",
+      "state": "Karnataka",
+      "state_code": "29",
+      "pincode": "576101",
+      "invoice_prefix": "INV",
+      "default_gst_rate": 18,
+      "credit_days": 30
+    },
+    "parties": [
+      {
+        "name": "City Walk",
+        "contact_name": "City Walk Customer",
+        "phone": "9845099887",
+        "email": "citywalk@example.com",
+        "type": "customer",
+        "city": "Udupi",
+        "state": "Karnataka"
+      }
+    ]
   }
 ]

@@ -75,24 +75,35 @@ function computeTotals(items, opts = {}) {
     cessRate = 0,
   } = opts;
 
+  let returnTotal = 0;
   const lines = (items || []).filter((i) => i && i.name).map((raw) => {
-    const qty = Number(raw.qty) || 0;
+    const isReturn = !!(raw.isReturn || raw.is_return || (Number(raw.qty) < 0));
+    const rawQty = Number(raw.qty) || 0;
+    const qty = isReturn ? Math.abs(rawQty) : rawQty;
     const grossRate = Number(raw.rate) || 0;
     const gstRate = Number(raw.gstRate || 0);
     const taxInclusive = !!raw.taxInclusive;
     // strip tax out of an inclusive rate so the taxable value is correct
     const rate = taxInclusive ? grossRate / (1 + gstRate / 100) : grossRate;
-    const gross = round2(qty * rate);
-    const lineDiscFlat = round2(Number(raw.discountFlat) || 0);
-    const lineDiscPct = Number(raw.discountPct) || 0;
-    const disc = round2(lineDiscFlat + (gross * lineDiscPct) / 100);
-    const taxable = round2(Math.max(0, gross - disc));
+    const lineSign = isReturn ? -1 : 1;
+    const absGross = round2(qty * rate);
+    const gross = round2(lineSign * absGross);
+    const lineDiscFlat = isReturn ? 0 : round2(Number(raw.discountFlat) || 0);
+    const lineDiscPct = isReturn ? 0 : Number(raw.discountPct) || 0;
+    const disc = isReturn ? 0 : round2(lineDiscFlat + (absGross * lineDiscPct) / 100);
+    const taxable = round2(isReturn ? -absGross : Math.max(0, gross - disc));
     const isInter = opts.supplyType === 'inter';
     const half = round2((taxable * gstRate) / 200);
+    const igstVal = isInter ? round2((taxable * gstRate) / 100) : 0;
+    const lineTotal = round2(taxable + (isInter ? igstVal : 2 * half));
+    if (isReturn) {
+      returnTotal = round2(returnTotal + Math.abs(lineTotal));
+    }
     return {
       // carried through so invoice lines stay linked to their stock item
       product_id: raw.product_id || null,
       taxInclusive,
+      isReturn,
       name: raw.name,
       hsn: raw.hsn || '',
       unit: raw.unit || '',
@@ -106,37 +117,42 @@ function computeTotals(items, opts = {}) {
       gstRate,
       cgst: isInter ? 0 : half,
       sgst: isInter ? 0 : half,
-      igst: isInter ? round2((taxable * gstRate) / 100) : 0,
+      igst: igstVal,
       cess: round2((taxable * cessRate) / 100),
-      total: round2(taxable + (isInter ? (taxable * gstRate) / 100 : 2 * half) + (taxable * cessRate) / 100),
+      total: lineTotal,
     };
   });
 
-  const subtotal = round2(lines.reduce((s, l) => s + l.gross, 0));
-  const lineDiscount = round2(lines.reduce((s, l) => s + l.discount, 0));
-  const afterLine = round2(subtotal - lineDiscount);
-  // whole-invoice discount is spread proportionally over lines for GSTR-1 accuracy
+  const posLines = lines.filter((l) => !l.isReturn);
+  const posSubtotal = round2(posLines.reduce((s, l) => s + l.gross, 0));
+  const lineDiscount = round2(posLines.reduce((s, l) => s + l.discount, 0));
+  const afterLine = round2(posSubtotal - lineDiscount);
+
+  // whole-invoice discount is spread proportionally over positive lines
   let docDiscount = 0;
-  if (discountValue) {
+  if (discountValue && afterLine > 0) {
     docDiscount = round2(discountType === 'pct' ? (afterLine * discountValue) / 100 : discountValue);
     docDiscount = Math.min(docDiscount, afterLine);
   }
-  const taxableValue = round2(Math.max(0, afterLine - docDiscount));
-  const ratio = afterLine > 0 ? taxableValue / afterLine : 0;
+  const ratio = afterLine > 0 ? (afterLine - docDiscount) / afterLine : 1;
   lines.forEach((l) => {
-    const t = round2(l.taxable * ratio);
-    const d = round2(l.taxable - t);
-    l.docDiscount = d;
-    l.taxable = t;
-    const isInter = opts.supplyType === 'inter';
-    const half = round2((t * l.gstRate) / 200);
-    l.cgst = isInter ? 0 : half;
-    l.sgst = isInter ? 0 : half;
-    l.igst = isInter ? round2((t * l.gstRate) / 100) : 0;
-    l.cess = round2((t * cessRate) / 100);
-    l.total = round2(t + l.cgst + l.sgst + l.igst + l.cess);
+    if (!l.isReturn) {
+      const t = round2(l.taxable * ratio);
+      const d = round2(l.taxable - t);
+      l.docDiscount = d;
+      l.taxable = t;
+      const isInter = opts.supplyType === 'inter';
+      const half = round2((t * l.gstRate) / 200);
+      l.cgst = isInter ? 0 : half;
+      l.sgst = isInter ? 0 : half;
+      l.igst = isInter ? round2((t * l.gstRate) / 100) : 0;
+      l.cess = round2((t * cessRate) / 100);
+      l.total = round2(t + l.cgst + l.sgst + l.igst + l.cess);
+    }
   });
 
+  const subtotal = round2(lines.reduce((s, l) => s + l.gross, 0));
+  const taxableValue = round2(lines.reduce((s, l) => s + l.taxable, 0));
   const cgst = round2(lines.reduce((s, l) => s + l.cgst, 0));
   const sgst = round2(lines.reduce((s, l) => s + l.sgst, 0));
   const igst = round2(lines.reduce((s, l) => s + l.igst, 0));
@@ -144,10 +160,11 @@ function computeTotals(items, opts = {}) {
 
   const transportation = round2(Number(opts.transportation) || 0);
   const loadingCharges = round2(Number(opts.loadingCharges || opts.loading_charges) || 0);
+  const bagCharges = round2(Number(opts.bagCharges || opts.bag_charges || opts.bags_charges || opts.bagsPrice) || 0);
   const extraCharges = round2(Number(opts.extraCharges || opts.extra_charges || opts.extra) || 0);
   const bagsCount = opts.bagsCount || opts.bags_count || opts.bags || '';
 
-  const preTotal = round2(taxableValue + cgst + sgst + igst + cess + transportation + loadingCharges + extraCharges);
+  const preTotal = round2(taxableValue + cgst + sgst + igst + cess + transportation + loadingCharges + bagCharges + extraCharges);
   let roundOffAmt = 0;
   let total = preTotal;
   if (roundOff) {
@@ -158,6 +175,7 @@ function computeTotals(items, opts = {}) {
   return {
     lines,
     subtotal,
+    returnAmount: returnTotal,
     lineDiscount,
     docDiscount,
     discountAmount: round2(lineDiscount + docDiscount),
@@ -165,6 +183,7 @@ function computeTotals(items, opts = {}) {
     cgst, sgst, igst, cess,
     transportation,
     loadingCharges,
+    bagCharges,
     extraCharges,
     bagsCount,
     roundOff: roundOffAmt,

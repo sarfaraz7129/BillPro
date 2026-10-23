@@ -8,14 +8,14 @@ const blank = (business, type) => ({
   date: today(),
   dueDate: type === 'expense' ? '' : new Date(Date.now() + (business.credit_days || 30) * 86400000).toISOString().slice(0, 10),
   partyId: null, partyName: '', partyGstin: '', partyStateCode: '',
-  items: [{ name: '', hsn: '', unit: 'pcs', qty: 1, rate: 0, gstRate: business.default_gst_rate, discountPct: 0, product_id: null }],
+  items: [{ name: '', hsn: '', unit: 'pcs', qty: 1, rate: 0, gstRate: business.default_gst_rate, discountPct: 0, product_id: null, isReturn: false }],
   discountType: 'flat', discountValue: 0, roundOff: true,
-  transportation: 0, loadingCharges: 0, bagsCount: '', extraCharges: 0,
+  transportation: 0, loadingCharges: 0, bagCharges: 0,
   paidAmount: 0, paymentMode: 'upi', notes: '', vehicleNo: '', transportDocNo: '', ewaybillNo: ''
 });
 
 /**
- * Full GST document editor used for invoices, purchase bills, quotations and expenses.
+ * Full GST document editor used for invoices, purchase bills, quotations, expenses and returns.
  * Mirrors the server-side totals maths so the preview matches the saved invoice exactly.
  */
 export default function DocumentEditor({ business, type, doc, user, onClose, onSaved, toast }) {
@@ -30,8 +30,7 @@ export default function DocumentEditor({ business, type, doc, user, onClose, onS
       ...doc,
       transportation: Number(doc.transportation) || 0,
       loadingCharges: Number(doc.loading_charges || doc.loadingCharges) || 0,
-      bagsCount: doc.bags_count || doc.bagsCount || doc.bags || '',
-      extraCharges: Number(doc.extra_charges || doc.extraCharges || doc.extra) || 0,
+      bagCharges: Number(doc.bag_charges || doc.bagCharges || doc.bags_charges) || 0,
       items: docItems.length
         ? docItems.map((l) => ({
             ...l,
@@ -39,13 +38,14 @@ export default function DocumentEditor({ business, type, doc, user, onClose, onS
             name: l.name || '',
             hsn: l.hsn || '',
             unit: l.unit || 'pcs',
-            qty: Number(l.qty) || 1,
+            qty: Math.abs(Number(l.qty)) || 1,
             rate: Number(l.rate) || 0,
             gstRate: l.gstRate !== undefined ? Number(l.gstRate) : (l.gst_rate !== undefined ? Number(l.gst_rate) : (business.default_gst_rate || 0)),
             discountPct: Number(l.discountPct) || 0,
-            discountFlat: Number(l.discountFlat) || Number(l.discount) || 0
+            discountFlat: Number(l.discountFlat) || Number(l.discount) || 0,
+            isReturn: !!(l.isReturn || l.is_return || (Number(l.qty) < 0))
           }))
-        : [{ name: '', hsn: '', unit: 'pcs', qty: 1, rate: 0, gstRate: business.default_gst_rate || 0, discountPct: 0, product_id: null }],
+        : [{ name: '', hsn: '', unit: 'pcs', qty: 1, rate: 0, gstRate: business.default_gst_rate || 0, discountPct: 0, product_id: null, isReturn: false }],
       discountValue: doc.discount_value !== undefined ? Number(doc.discount_value) : (doc.discountValue || 0),
       discountType: doc.discount_type || doc.discountType || 'flat',
       paidAmount: doc.paid_amount !== undefined ? Number(doc.paid_amount) : (doc.paidAmount || 0),
@@ -85,7 +85,9 @@ export default function DocumentEditor({ business, type, doc, user, onClose, onS
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
   const setItem = (i, k, v) => setForm((f) => ({ ...f, items: f.items.map((it, idx) => (idx === i ? { ...it, [k]: v } : it)) }));
-  const addLine = () => setForm((f) => ({ ...f, items: [...f.items, { name: '', hsn: '', unit: 'pcs', qty: 1, rate: 0, gstRate: business.default_gst_rate, discountPct: 0, product_id: null }] }));
+  const addLine = () => setForm((f) => ({ ...f, items: [...f.items, { name: '', hsn: '', unit: 'pcs', qty: 1, rate: 0, gstRate: business.default_gst_rate, discountPct: 0, product_id: null, isReturn: false }] }));
+  const addReturnLine = () => setForm((f) => ({ ...f, items: [...f.items, { name: '', hsn: '', unit: 'pcs', qty: 1, rate: 0, gstRate: business.default_gst_rate, discountPct: 0, product_id: null, isReturn: true }] }));
+  const toggleReturn = (i) => setForm((f) => ({ ...f, items: f.items.map((it, idx) => idx === i ? { ...it, isReturn: !it.isReturn } : it) }));
   const dropLine = (i) => setForm((f) => ({ ...f, items: f.items.length > 1 ? f.items.filter((_, idx) => idx !== i) : f.items }));
 
   const supplyType = useMemo(() => {
@@ -97,7 +99,7 @@ export default function DocumentEditor({ business, type, doc, user, onClose, onS
 
   const t = useMemo(() => totals(form.items, { ...form, supplyType }), [
     form.items, form.discountType, form.discountValue, form.roundOff,
-    form.transportation, form.loadingCharges, form.extraCharges, form.bagsCount,
+    form.transportation, form.loadingCharges, form.bagCharges,
     supplyType
   ]);
 
@@ -135,7 +137,7 @@ export default function DocumentEditor({ business, type, doc, user, onClose, onS
   const save = async (opts = {}) => {
     const andPrint = opts && opts.andPrint;
     setErr('');
-    const valid = form.items.filter((l) => String(l.name || '').trim() && Number(l.qty) > 0 && Number(l.rate) >= 0);
+    const valid = form.items.filter((l) => String(l.name || '').trim() && Math.abs(Number(l.qty)) > 0 && Number(l.rate) >= 0);
     if (!valid.length) return setErr('Add at least one line item with a name, quantity and rate.');
     if (type !== 'expense' && !form.partyId && !String(form.partyName || '').trim()) {
       return setErr('Choose a customer/supplier, or type a name for a walk-in party.');
@@ -150,16 +152,20 @@ export default function DocumentEditor({ business, type, doc, user, onClose, onS
         partyGstin: form.partyGstin || '',
         partyStateCode: form.partyStateCode || '',
         date: finalDate,
+        transportation: Number(form.transportation) || 0,
+        loadingCharges: Number(form.loadingCharges) || 0,
+        bagCharges: Number(form.bagCharges) || 0,
         items: valid.map((l) => ({
           product_id: l.product_id || null,
           name: String(l.name || '').trim(),
           hsn: l.hsn || '',
           unit: l.unit || 'pcs',
-          qty: Number(l.qty) || 1,
+          qty: Math.abs(Number(l.qty)) || 1,
           rate: Number(l.rate) || 0,
           gstRate: Number(l.gstRate) || 0,
           discountPct: Number(l.discountPct) || 0,
-          discountFlat: Number(l.discountFlat) || 0
+          discountFlat: Number(l.discountFlat) || 0,
+          isReturn: !!l.isReturn
         })),
         supplyType
       };
@@ -327,16 +333,25 @@ export default function DocumentEditor({ business, type, doc, user, onClose, onS
       <hr className="divider" style={{ margin: '8px 0' }} />
 
       <div className="lines">
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
           <h3 style={{ fontSize: 13.5 }}>Items</h3>
           <div className="spacer" />
-          <button className="btn sm" onClick={addLine}><Icon.plus size={14} /> Add line</button>
+          <button type="button" className="btn sm" onClick={addLine}><Icon.plus size={14} /> Add line</button>
+          <button
+            type="button"
+            className="btn sm"
+            onClick={addReturnLine}
+            style={{ color: '#dc2626', borderColor: '#fca5a5', background: '#fef2f2', fontWeight: 650 }}
+            title="Customer returned goods - amount is deducted (less) from the bill and restocked"
+          >
+            ↩ Add Return / Less item
+          </button>
         </div>
         <div className="doc-tbl-wrap">
           <table className="tbl doc-tbl">
             <thead>
               <tr>
-                <th style={{ width: '26%' }}>Item / service</th>
+                <th style={{ width: '28%' }}>Item / service</th>
                 <th style={{ width: 78 }}>HSN/SAC</th>
                 <th style={{ width: 66 }}>Qty</th>
                 <th style={{ width: 62 }}>Unit</th>
@@ -349,11 +364,13 @@ export default function DocumentEditor({ business, type, doc, user, onClose, onS
             </thead>
             <tbody>
               {form.items.map((it, i) => {
-                const gross = (Number(it.qty) || 0) * (Number(it.rate) || 0);
-                const afterDisc = gross - (gross * (Number(it.discountPct) || 0)) / 100 - (Number(it.discountFlat) || 0);
+                const isRet = !!it.isReturn;
+                const absQty = Math.abs(Number(it.qty)) || 0;
+                const gross = absQty * (Number(it.rate) || 0);
+                const afterDisc = isRet ? gross : (gross - (gross * (Number(it.discountPct) || 0)) / 100 - (Number(it.discountFlat) || 0));
                 const withTax = afterDisc * (1 + (Number(it.gstRate) || 0) / 100);
                 return (
-                  <tr key={i} style={{ position: 'relative', zIndex: form.items.length - i + 10 }}>
+                  <tr key={i} style={{ position: 'relative', zIndex: form.items.length - i + 10, background: isRet ? 'rgba(239, 68, 68, 0.05)' : 'inherit' }}>
                     <td>
                       <Picker
                         items={products}
@@ -368,16 +385,52 @@ export default function DocumentEditor({ business, type, doc, user, onClose, onS
                           toast(`Added ${name} to inventory`, 'ok');
                         }}
                       />
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
+                        <button
+                          type="button"
+                          className="btn xs"
+                          style={{
+                            fontSize: 10,
+                            padding: '1px 6px',
+                            height: 20,
+                            borderRadius: 4,
+                            color: isRet ? '#dc2626' : 'var(--muted)',
+                            borderColor: isRet ? '#f87171' : 'var(--line)',
+                            background: isRet ? '#fee2e2' : 'transparent',
+                            fontWeight: isRet ? 700 : 500
+                          }}
+                          onClick={() => toggleReturn(i)}
+                          title="Click to toggle between normal sale item and customer return"
+                        >
+                          {isRet ? '↩ Return (Deducted)' : '+ Normal item'}
+                        </button>
+                        {isRet && (
+                          <span style={{ fontSize: 10, color: '#dc2626', fontWeight: 650 }}>
+                            Less from bill & restocks +{absQty}
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td><input className="input" value={it.hsn || ''} onChange={(e) => setItem(i, 'hsn', e.target.value)} /></td>
-                    <td><input className="input" type="number" value={it.qty} onChange={(e) => setItem(i, 'qty', Number(e.target.value))} /></td>
+                    <td>
+                      <input
+                        className="input"
+                        type="number"
+                        min="1"
+                        value={absQty}
+                        onChange={(e) => setItem(i, 'qty', Math.abs(Number(e.target.value)))}
+                        style={isRet ? { color: '#dc2626', fontWeight: 600 } : {}}
+                      />
+                    </td>
                     <td><input className="input" value={it.unit || ''} onChange={(e) => setItem(i, 'unit', e.target.value)} /></td>
                     <td><input className="input" type="number" value={it.rate} onChange={(e) => setItem(i, 'rate', Number(e.target.value))} /></td>
-                    <td><input className="input" type="number" value={it.discountPct || ''} onChange={(e) => setItem(i, 'discountPct', Number(e.target.value))} /></td>
+                    <td><input className="input" type="number" disabled={isRet} value={isRet ? '' : (it.discountPct || '')} onChange={(e) => setItem(i, 'discountPct', Number(e.target.value))} /></td>
                     <td style={{ minWidth: 96 }}>
                       <GstRateInput value={it.gstRate} onChange={(r) => setItem(i, 'gstRate', r)} />
                     </td>
-                    <td className="num strong">{money(withTax)}</td>
+                    <td className="num strong" style={{ color: isRet ? '#dc2626' : 'inherit' }}>
+                      {isRet ? '-' : ''}{money(withTax)}
+                    </td>
                     <td><button className="icon-btn danger" onClick={() => dropLine(i)}><Icon.trash size={14} /></button></td>
                   </tr>
                 );
@@ -389,7 +442,7 @@ export default function DocumentEditor({ business, type, doc, user, onClose, onS
 
       <div className="doc-summary-grid">
         <div>
-          {/* Dispatch & Additional Charges: Transportation, Loading, Bags & Extra */}
+          {/* Logistics & Bag Charges */}
           <div style={{
             background: 'var(--surface-2)',
             padding: '12px 14px',
@@ -399,9 +452,9 @@ export default function DocumentEditor({ business, type, doc, user, onClose, onS
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 700, fontSize: 12.5, color: 'var(--ink)', marginBottom: 8 }}>
               <Icon.truck size={15} style={{ color: 'var(--brand)' }} />
-              Dispatch & Extra Charges
+              Logistics & Bag Charges
             </div>
-            <div className="form-grid c4">
+            <div className="form-grid c3">
               <Field label="Transportation (₹)" hint="Freight">
                 <input
                   type="number"
@@ -424,22 +477,14 @@ export default function DocumentEditor({ business, type, doc, user, onClose, onS
                   placeholder="0.00"
                 />
               </Field>
-              <Field label="Bags / Packaging" hint="e.g. 50 Bags">
-                <input
-                  className="input"
-                  value={form.bagsCount || ''}
-                  onChange={(e) => set('bagsCount', e.target.value)}
-                  placeholder="e.g. 50 Bags"
-                />
-              </Field>
-              <Field label="Extra Charges (₹)" hint="Misc / other">
+              <Field label="Bag Charges (₹)" hint="e.g. ₹8, ₹10 per bag / total">
                 <input
                   type="number"
                   min="0"
                   step="any"
                   className="input"
-                  value={form.extraCharges || ''}
-                  onChange={(e) => set('extraCharges', e.target.value === '' ? 0 : Number(e.target.value))}
+                  value={form.bagCharges || ''}
+                  onChange={(e) => set('bagCharges', e.target.value === '' ? 0 : Number(e.target.value))}
                   placeholder="0.00"
                 />
               </Field>
@@ -476,6 +521,12 @@ export default function DocumentEditor({ business, type, doc, user, onClose, onS
 
         <div className="tot-box">
           <Row label="Subtotal" value={t.subtotal} />
+          {t.returnAmount > 0 && (
+            <div className="kv" style={{ color: '#dc2626' }}>
+              <span className="k" style={{ fontWeight: 650 }}>↩ Returned items (Less)</span>
+              <span className="v" style={{ fontWeight: 700 }}>-{money(t.returnAmount)}</span>
+            </div>
+          )}
           {t.lineDiscount > 0 && <Row label="Line discount" value={-t.lineDiscount} />}
           {t.docDiscount > 0 && <Row label={`Bill discount (${form.discountType === 'pct' ? form.discountValue + '%' : 'flat'})`} value={-t.docDiscount} />}
           <Row label="Taxable value" value={t.taxableValue} strong />
@@ -484,13 +535,7 @@ export default function DocumentEditor({ business, type, doc, user, onClose, onS
             : <><Row label="CGST" value={t.cgst} /><Row label="SGST / UTGST" value={t.sgst} /></>}
           {Number(form.transportation) > 0 && <Row label="Transportation" value={Number(form.transportation)} />}
           {Number(form.loadingCharges) > 0 && <Row label="Loading charges" value={Number(form.loadingCharges)} />}
-          {Number(form.extraCharges) > 0 && <Row label="Extra charges" value={Number(form.extraCharges)} />}
-          {form.bagsCount ? (
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11.5, color: 'var(--brand)', fontWeight: 650, padding: '2px 0' }}>
-              <span>📦 Total Bags / Pkgs:</span>
-              <span>{form.bagsCount}</span>
-            </div>
-          ) : null}
+          {Number(form.bagCharges) > 0 && <Row label="Bag charges" value={Number(form.bagCharges)} />}
           {form.roundOff && <Row label="Round off" value={t.roundOff} />}
           <div className="grand" style={{ paddingTop: 6, marginTop: 4 }}><span style={{ fontWeight: 700 }}>Total</span><span className="v">{money(t.total)}</span></div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 3, fontSize: 11, color: 'var(--muted)' }}>
@@ -658,7 +703,7 @@ export default function DocumentEditor({ business, type, doc, user, onClose, onS
   );
 }
 
-export const TYPE_LABEL = { sale: 'Invoice', purchase: 'Purchase Bill', quotation: 'Quotation', expense: 'Expense' };
+export const TYPE_LABEL = { sale: 'Invoice', purchase: 'Purchase Bill', quotation: 'Quotation', expense: 'Expense', sale_return: 'Sales Return (Credit Note)' };
 
 function Row({ label, value, strong }) {
   return (
@@ -672,23 +717,35 @@ function Row({ label, value, strong }) {
 /** Client-side mirror of the server totals, so the preview never disagrees with the saved invoice. */
 export function totals(items, opts) {
   const r2 = (x) => Math.round((Number(x) || 0) * 100) / 100;
+  let returnAmount = 0;
   const lines = (items || []).filter((i) => i && i.name).map((raw) => {
-    const qty = Number(raw.qty) || 0;
+    const isReturn = !!(raw.isReturn || raw.is_return || (Number(raw.qty) < 0));
+    const qty = isReturn ? Math.abs(Number(raw.qty) || 0) : (Number(raw.qty) || 0);
     const gstRate = Number(raw.gstRate || 0);
     const rate = Number(raw.rate) || 0;
-    const gross = r2(qty * rate);
-    const disc = r2((gross * (Number(raw.discountPct) || 0)) / 100 + (Number(raw.discountFlat) || 0));
-    return { gross, disc, taxable: r2(Math.max(0, gross - disc)), gstRate };
+    const absGross = r2(qty * rate);
+    const gross = isReturn ? -absGross : absGross;
+    const disc = isReturn ? 0 : r2((absGross * (Number(raw.discountPct) || 0)) / 100 + (Number(raw.discountFlat) || 0));
+    const taxable = isReturn ? -absGross : r2(Math.max(0, gross - disc));
+    if (isReturn) {
+      returnAmount = r2(returnAmount + absGross * (1 + gstRate / 100));
+    }
+    return { isReturn, gross, disc, taxable, gstRate, rate, qty };
   });
-  const subtotal = r2(lines.reduce((s, l) => s + l.gross, 0));
-  const lineDiscount = r2(lines.reduce((s, l) => s + l.disc, 0));
-  const afterLine = r2(subtotal - lineDiscount);
+
+  const posLines = lines.filter((l) => !l.isReturn);
+  const posSubtotal = r2(posLines.reduce((s, l) => s + l.gross, 0));
+  const lineDiscount = r2(posLines.reduce((s, l) => s + l.disc, 0));
+  const afterLine = r2(posSubtotal - lineDiscount);
+
   let docDiscount = 0;
-  if (Number(opts.discountValue)) {
+  if (Number(opts.discountValue) && afterLine > 0) {
     docDiscount = r2(opts.discountType === 'pct' ? (afterLine * Number(opts.discountValue)) / 100 : Number(opts.discountValue));
     docDiscount = Math.min(docDiscount, afterLine);
   }
-  const taxableValue = r2(Math.max(0, afterLine - docDiscount));
+
+  const subtotal = r2(lines.reduce((s, l) => s + l.gross, 0));
+  const taxableValue = r2(lines.reduce((s, l) => s + l.taxable, 0) - docDiscount);
   const isInter = opts.supplyType === 'inter';
   const taxTotal = r2((taxableValue * weightedRate(lines, taxableValue)) / 100);
   const cgst = isInter ? 0 : r2(taxTotal / 2);
@@ -696,12 +753,12 @@ export function totals(items, opts) {
   const igst = isInter ? taxTotal : 0;
   const transportation = r2(Number(opts.transportation) || 0);
   const loadingCharges = r2(Number(opts.loadingCharges || opts.loading_charges) || 0);
-  const extraCharges = r2(Number(opts.extraCharges || opts.extra_charges || opts.extra) || 0);
-  const preTotal = r2(taxableValue + taxTotal + transportation + loadingCharges + extraCharges);
+  const bagCharges = r2(Number(opts.bagCharges || opts.bag_charges || opts.bags_charges) || 0);
+  const preTotal = r2(taxableValue + taxTotal + transportation + loadingCharges + bagCharges);
   const total = opts.roundOff ? Math.round(preTotal) : preTotal;
   return {
     subtotal, lineDiscount, docDiscount, taxableValue, cgst, sgst, igst,
-    transportation, loadingCharges, extraCharges, bagsCount: opts.bagsCount || opts.bags_count || '',
+    transportation, loadingCharges, bagCharges, returnAmount,
     roundOff: r2(total - preTotal), total,
     amountInWords: words(total)
   };
