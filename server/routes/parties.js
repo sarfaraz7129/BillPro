@@ -127,7 +127,7 @@ router.get('/:id/statement', (req, res) => {
 
   const docs = db.prepare(`SELECT id, type, number, date, total, due_amount, paid_amount, payment_status, status
     FROM documents WHERE party_id = ? AND status = 'active' AND date BETWEEN ? AND ? ORDER BY date, id`).all(party.id, from, to);
-  const txns = db.prepare('SELECT id, type, amount, date, mode, reference, notes FROM transactions WHERE party_id = ? AND date BETWEEN ? AND ? ORDER BY date, id').all(party.id, from, to);
+  const txns = db.prepare('SELECT id, type, amount, date, mode, reference, notes FROM transactions WHERE party_id = ? AND document_id IS NULL AND date BETWEEN ? AND ? ORDER BY date, id').all(party.id, from, to);
 
   let running = round2((party.balance_type === 'CR' ? -1 : 1) * party.opening_balance);
   const entries = [];

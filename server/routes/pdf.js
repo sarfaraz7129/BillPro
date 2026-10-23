@@ -46,7 +46,7 @@ router.get('/statement/:partyId', async (req, res, next) => {
     const from = req.query.from || '1900-01-01';
     const to = req.query.to || '2999-12-31';
     const docs = db.prepare("SELECT id, type, number, date, total, due_amount, paid_amount FROM documents WHERE party_id = ? AND status = 'active' AND date BETWEEN ? AND ? ORDER BY date, id").all(party.id, from, to);
-    const txns = db.prepare('SELECT id, type, amount, date, mode, reference FROM transactions WHERE party_id = ? AND date BETWEEN ? AND ? ORDER BY date, id').all(party.id, from, to);
+    const txns = db.prepare('SELECT id, type, amount, date, mode, reference FROM transactions WHERE party_id = ? AND document_id IS NULL AND date BETWEEN ? AND ? ORDER BY date, id').all(party.id, from, to);
     let running = round2((party.balance_type === 'CR' ? -1 : 1) * party.opening_balance);
     const entries = [];
     const merged = [...docs.map((d) => ({ sort: d.date + 'T1', ...d })), ...txns.map((t) => ({ sort: t.date + 'T2', ...t }))].sort((a, b) => a.sort.localeCompare(b.sort));

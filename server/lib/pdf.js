@@ -38,7 +38,7 @@ function render(doc, business, party, accent) {
     pdf.on('error', reject);
 
     const title = TITLE[doc.type] || 'INVOICE';
-    const lines = JSON.parse(doc.items || '[]');
+    const lines = Array.isArray(doc.items) ? doc.items : JSON.parse(doc.items || '[]');
 
     // ---------- header band ----------
     pdf.rect(0, 0, pdf.page.width, 92).fill(accent);
@@ -241,7 +241,8 @@ function render(doc, business, party, accent) {
       // Calculate Previous Balance & Net Balance
       if (party && party.balance !== undefined) {
         const netBal = Number(party.balance) || 0;
-        const prevBal = Math.round((netBal - due) * 100) / 100;
+        // Prior balance strictly before this document's net impact
+        const prevBal = Math.round((netBal - (Number(doc.total) - paid)) * 100) / 100;
 
         if (Math.abs(prevBal) > 0.01) {
           row(prevBal > 0 ? 'Previous Due' : 'Previous Advance', Math.abs(prevBal), false);
@@ -258,6 +259,7 @@ function render(doc, business, party, accent) {
         pdf.text(fmt(Math.abs(netBal)), totalsX + 112, totalsY + 5, { width: 68, align: 'right' });
         totalsY += 25;
       } else {
+        const due = Number(doc.due_amount) || 0;
         row('Amount Received', paid, false);
         if (due > 0) {
           totalsY += 3;

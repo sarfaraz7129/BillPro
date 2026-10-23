@@ -395,10 +395,21 @@ export default function DocumentEditor({ business, type, doc, user, onClose, onS
                   className="btn xs"
                   style={{ fontSize: 10, padding: '1px 5px', height: 20, background: 'var(--brand-soft)', color: 'var(--brand)', borderColor: 'var(--brand)', fontWeight: 650 }}
                   onClick={() => set('paidAmount', t.total)}
-                  title="Mark fully paid"
+                  title="Mark current bill fully paid"
                 >
-                  Full (₹{t.total})
+                  Bill ({money(t.total)})
                 </button>
+                {selectedParty && Number(selectedParty.balance) > 0.01 && (
+                  <button
+                    type="button"
+                    className="btn xs"
+                    style={{ fontSize: 10, padding: '1px 5px', height: 20, background: '#fef2f2', color: '#b91c1c', borderColor: '#fca5a5', fontWeight: 650 }}
+                    onClick={() => set('paidAmount', Math.round((t.total + Number(selectedParty.balance)) * 100) / 100)}
+                    title="Pay Current Bill + Full Previous Balance"
+                  >
+                    All ({money(t.total + Number(selectedParty.balance))})
+                  </button>
+                )}
               </div>
             </div>
             <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
@@ -415,7 +426,7 @@ export default function DocumentEditor({ business, type, doc, user, onClose, onS
               />
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4, fontSize: 11.5, paddingTop: 4, borderTop: '1px dashed var(--line)' }}>
-              <span style={{ color: 'var(--muted)', fontWeight: 600 }}>Balance due:</span>
+              <span style={{ color: 'var(--muted)', fontWeight: 600 }}>This bill due:</span>
               <span style={{
                 fontWeight: 750,
                 fontSize: 12,
@@ -426,6 +437,12 @@ export default function DocumentEditor({ business, type, doc, user, onClose, onS
                   : '₹0.00 (Fully Paid)'}
               </span>
             </div>
+            {Number(form.paidAmount) > t.total + 0.005 && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 2, fontSize: 11, color: '#16a34a', fontWeight: 600 }}>
+                <span>Paid towards previous due:</span>
+                <span>+{money(Number(form.paidAmount) - t.total)}</span>
+              </div>
+            )}
           </div>
 
           {selectedParty && type === 'sale' && (

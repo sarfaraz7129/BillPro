@@ -499,8 +499,8 @@ function DocViewer({ doc, party, payments, business, onClose, onEdit, onShare, o
             <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px dashed var(--line)' }}>
               {party && party.balance !== undefined ? (() => {
                 const netBal = Number(party.balance) || 0;
-                const billDue = Number(doc.due_amount) || 0;
-                const prevBal = Math.round((netBal - billDue) * 100) / 100;
+                const paid = Number(doc.paid_amount || 0);
+                const prevBal = Math.round((netBal - (Number(doc.total) - paid)) * 100) / 100;
                 return (
                   <>
                     {Math.abs(prevBal) > 0.01 && (
@@ -511,7 +511,7 @@ function DocViewer({ doc, party, payments, business, onClose, onEdit, onShare, o
                     )}
                     <div className="kv">
                       <span className="k">Amount Received</span>
-                      <span className="v pos">{money(doc.paid_amount || 0)}</span>
+                      <span className="v pos">{money(paid)}</span>
                     </div>
                     <div style={{
                       marginTop: 8,

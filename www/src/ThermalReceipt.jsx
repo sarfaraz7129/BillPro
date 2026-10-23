@@ -68,8 +68,8 @@ export default function ThermalReceiptModal({ doc, party, business, onClose, onW
 
     const hasPartyBal = partyData && partyData.balance !== undefined;
     const netBal = hasPartyBal ? Number(partyData.balance) || 0 : Number(doc.due_amount) || 0;
-    const billDue = Number(doc.due_amount) || 0;
-    const prevBal = hasPartyBal ? Math.round((netBal - billDue) * 100) / 100 : 0;
+    const paid = Number(doc.paid_amount || 0);
+    const prevBal = hasPartyBal ? Math.round((netBal - (Number(doc.total) - paid)) * 100) / 100 : 0;
 
     const text = [
       double,
@@ -299,8 +299,8 @@ export default function ThermalReceiptModal({ doc, party, business, onClose, onW
 
           {partyData && partyData.balance !== undefined ? (() => {
             const netBal = Number(partyData.balance) || 0;
-            const billDue = Number(doc.due_amount) || 0;
-            const prevBal = Math.round((netBal - billDue) * 100) / 100;
+            const paid = Number(doc.paid_amount || 0);
+            const prevBal = Math.round((netBal - (Number(doc.total) - paid)) * 100) / 100;
             return (
               <div style={{ marginTop: 2 }}>
                 {Math.abs(prevBal) > 0.01 && (
@@ -311,7 +311,7 @@ export default function ThermalReceiptModal({ doc, party, business, onClose, onW
                 )}
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 2 }}>
                   <span>Amount Received:</span>
-                  <span>{money(doc.paid_amount || 0)}</span>
+                  <span>{money(paid)}</span>
                 </div>
                 <div style={{
                   display: 'flex',

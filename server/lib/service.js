@@ -22,9 +22,9 @@ function partyBalance(businessId, partyId) {
   if (!party) return null;
   const sign = party.balance_type === 'CR' ? -1 : 1;
   let bal = round2(sign * party.opening_balance);
-  const sales = db.prepare("SELECT COALESCE(SUM(due_amount),0) s FROM documents WHERE party_id = ? AND type = 'sale' AND status = 'active'").get(partyId);
-  const purchases = db.prepare("SELECT COALESCE(SUM(paid_amount),0) s FROM documents WHERE party_id = ? AND type = 'purchase' AND status = 'active'").get(partyId);
-  const txns = db.prepare("SELECT COALESCE(SUM(CASE WHEN type='you_gave' THEN amount WHEN type='you_got' THEN -amount ELSE 0 END),0) s FROM transactions WHERE party_id = ?").get(partyId);
+  const sales = db.prepare("SELECT COALESCE(SUM(total - paid_amount),0) s FROM documents WHERE party_id = ? AND type = 'sale' AND status = 'active'").get(partyId);
+  const purchases = db.prepare("SELECT COALESCE(SUM(total - paid_amount),0) s FROM documents WHERE party_id = ? AND type = 'purchase' AND status = 'active'").get(partyId);
+  const txns = db.prepare("SELECT COALESCE(SUM(CASE WHEN type='you_gave' THEN amount WHEN type='you_got' THEN -amount ELSE 0 END),0) s FROM transactions WHERE party_id = ? AND document_id IS NULL").get(partyId);
   bal = round2(bal + sales.s + txns.s - purchases.s);
   return {
     party,
@@ -124,7 +124,7 @@ function buildDocument(business, body, type, existing) {
     round_off: totals.roundOff,
     total: totals.total,
     amount_in_words: totals.amountInWords,
-    paid_amount: Math.min(paid, totals.total),
+    paid_amount: round2(paid),
     due_amount: round2(Math.max(0, totals.total - paid)),
     payment_status: paid <= 0 ? 'unpaid' : paid >= totals.total - 0.005 ? 'paid' : 'partial',
     payment_mode: body.paymentMode || null,

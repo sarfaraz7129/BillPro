@@ -72,7 +72,7 @@ export default function POS({ business, toast }) {
         date: today(),
         dueDate: '',
         items: lines,
-        paidAmount: Math.min(paid, t.total),
+        paidAmount: party ? paid : Math.min(paid, t.total),
         paymentMode: mode,
         supplyType,
         roundOff: true
@@ -249,10 +249,24 @@ export default function POS({ business, toast }) {
               </Field>
             </div>
             <div className="btn-row" style={{ marginTop: 6 }}>
-              <button className="btn sm" onClick={() => setPaid(t.total)}>Exact</button>
+              <button className="btn sm" onClick={() => setPaid(t.total)}>Bill ({money(t.total)})</button>
+              {party && Number(party.balance) > 0.01 && (
+                <button
+                  className="btn sm"
+                  style={{ background: '#fef2f2', color: '#b91c1c', borderColor: '#fca5a5', fontWeight: 650 }}
+                  onClick={() => setPaid(Math.round((t.total + Number(party.balance)) * 100) / 100)}
+                >
+                  All ({money(t.total + Number(party.balance))})
+                </button>
+              )}
               {[100, 500, 1000].map((n) => <button key={n} className="btn sm" onClick={() => setPaid(Math.ceil(t.total / n) * n)}>Round {n}</button>)}
             </div>
-            {paid > t.total && <div className="kv" style={{ marginTop: 8 }}><span className="k">Return change</span><span className="v pos">{money(paid - t.total)}</span></div>}
+            {(!party && paid > t.total) && (
+              <div className="kv" style={{ marginTop: 8 }}><span className="k">Return change</span><span className="v pos">{money(paid - t.total)}</span></div>
+            )}
+            {(party && paid > t.total) && (
+              <div className="kv" style={{ marginTop: 8 }}><span className="k">Paid to previous due</span><span className="v pos">+{money(paid - t.total)}</span></div>
+            )}
 
             {party && (
               <div style={{ marginTop: 10, padding: '8px 10px', background: 'var(--surface)', borderRadius: 8, border: '1px dashed var(--line)', fontSize: 11.5 }}>
@@ -269,14 +283,14 @@ export default function POS({ business, toast }) {
                 {paid > 0 && (
                   <div className="kv" style={{ marginBottom: 2 }}>
                     <span className="k">- Receiving Now</span>
-                    <span className="v pos">-{money(Math.min(paid, t.total))}</span>
+                    <span className="v pos">-{money(paid)}</span>
                   </div>
                 )}
                 <div className="kv" style={{ fontWeight: 700, paddingTop: 3, borderTop: '1px solid var(--line)', marginTop: 3 }}>
                   <span className="k" style={{ color: 'var(--ink)' }}>Net Closing Khata</span>
-                  <span className="v" style={{ color: ((party.balance || 0) + t.total - Math.min(paid, t.total)) > 0 ? '#dc2626' : ((party.balance || 0) + t.total - Math.min(paid, t.total)) < 0 ? '#16a34a' : 'inherit' }}>
+                  <span className="v" style={{ color: ((party.balance || 0) + t.total - paid) > 0 ? '#dc2626' : ((party.balance || 0) + t.total - paid) < 0 ? '#16a34a' : 'inherit' }}>
                     {(() => {
-                      const net = (party.balance || 0) + t.total - Math.min(paid, t.total);
+                      const net = (party.balance || 0) + t.total - paid;
                       return net > 0 ? `${money(net)} (Due)` : net < 0 ? `${money(Math.abs(net))} (Adv)` : '₹0.00 (Settled)';
                     })()}
                   </span>
