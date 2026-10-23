@@ -4,13 +4,28 @@ const fs = require('fs');
 const path = require('path');
 const bcrypt = require('bcryptjs');
 
-const REGISTRY_PATH = path.join(__dirname, 'persistent_registry.json');
+const SEED_REGISTRY_PATH = path.join(__dirname, 'persistent_registry.json');
+const REGISTRY_PATH = process.env.BILLPRO_DATA_DIR
+  ? path.join(process.env.BILLPRO_DATA_DIR, 'persistent_registry.json')
+  : SEED_REGISTRY_PATH;
+
+function ensureRegistryFile() {
+  const dir = path.dirname(REGISTRY_PATH);
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  if (!fs.existsSync(REGISTRY_PATH) && REGISTRY_PATH !== SEED_REGISTRY_PATH && fs.existsSync(SEED_REGISTRY_PATH)) {
+    fs.copyFileSync(SEED_REGISTRY_PATH, REGISTRY_PATH);
+  }
+  if (REGISTRY_PATH !== SEED_REGISTRY_PATH && fs.existsSync(REGISTRY_PATH)) fs.chmodSync(REGISTRY_PATH, 0o600);
+}
+
+const hasPersistentRegistryStorage = () => Boolean(process.env.BILLPRO_DATA_DIR);
 
 /**
  * Loads the registry array from persistent_registry.json
  */
 function loadRegistry() {
   try {
+    ensureRegistryFile();
     if (!fs.existsSync(REGISTRY_PATH)) return [];
     const raw = fs.readFileSync(REGISTRY_PATH, 'utf8');
     return JSON.parse(raw);
@@ -25,20 +40,49 @@ function loadRegistry() {
  */
 function saveToRegistry(clientRecord) {
   try {
+    ensureRegistryFile();
     const list = loadRegistry();
     const cleanEmail = String(clientRecord.email || '').trim().toLowerCase();
-    const idx = list.findIndex(
-      (c) => String(c.email || '').trim().toLowerCase() === cleanEmail ||
-             (c.phone && clientRecord.phone && String(c.phone).trim() === String(clientRecord.phone).trim())
-    );
-    if (idx >= 0) {
-      list[idx] = { ...list[idx], ...clientRecord };
-    } else {
-      list.push(clientRecord);
-    }
-    fs.writeFileSync(REGISTRY_PATH, JSON.stringify(list, null, 2), 'utf8');
+    if (!cleanEmail) throw new Error('A client email is required for registry persistence');
+    const previousEmail = String(clientRecord.previous_email || '').trim().toLowerCase();
+    const currentIdx = list.findIndex((c) => String(c.email || '').trim().toLowerCase() === cleanEmail);
+    const previousIdx = previousEmail ? list.findIndex((c) => String(c.email || '').trim().toLowerCase() === previousEmail) : -1;
+    const idx = currentIdx >= 0 ? currentIdx : previousIdx;
+    const record = { ...(idx >= 0 ? list[idx] : {}), ...clientRecord, email: cleanEmail };
+    delete record.previous_email;
+    if (clientRecord.password_hash && !clientRecord.password) delete record.password;
+    if (idx >= 0) list[idx] = record;
+    else list.push(record);
+
+    // Upsert by email only. Phone numbers are not unique (family/shared business numbers).
+    const deduped = list.filter((c, i) => {
+      const email = String(c.email || '').trim().toLowerCase();
+      if (previousEmail && previousEmail !== cleanEmail && email === previousEmail) return false;
+      return i === list.findIndex((x) => String(x.email || '').trim().toLowerCase() === email);
+    });
+    const tempPath = `${REGISTRY_PATH}.tmp`;
+    fs.writeFileSync(tempPath, JSON.stringify(deduped, null, 2), { encoding: 'utf8', mode: 0o600 });
+    fs.renameSync(tempPath, REGISTRY_PATH);
+    return { ok: true, path: REGISTRY_PATH, isPersistent: hasPersistentRegistryStorage() };
   } catch (err) {
     console.warn('[Persistent Registry Save Warning]:', err.message);
+    return { ok: false, error: err.message, isPersistent: hasPersistentRegistryStorage() };
+  }
+}
+
+function removeFromRegistry(email) {
+  try {
+    const cleanEmail = String(email || '').trim().toLowerCase();
+    if (!cleanEmail) return { ok: false, error: 'Email is required' };
+    const list = loadRegistry().filter((c) => String(c.email || '').trim().toLowerCase() !== cleanEmail);
+    ensureRegistryFile();
+    const tempPath = `${REGISTRY_PATH}.tmp`;
+    fs.writeFileSync(tempPath, JSON.stringify(list, null, 2), { encoding: 'utf8', mode: 0o600 });
+    fs.renameSync(tempPath, REGISTRY_PATH);
+    return { ok: true, isPersistent: hasPersistentRegistryStorage() };
+  } catch (err) {
+    console.warn('[Persistent Registry Remove Warning]:', err.message);
+    return { ok: false, error: err.message, isPersistent: hasPersistentRegistryStorage() };
   }
 }
 
@@ -61,7 +105,7 @@ function syncPersistentClients(db) {
 
       if (!user) {
         // Create user account
-        const pwdHash = bcrypt.hashSync(c.password || 'demo1234', 10);
+        const pwdHash = c.password_hash || bcrypt.hashSync(c.password || 'demo1234', 10);
         const res = db.prepare(`
           INSERT INTO users (name, email, phone, password_hash, role, permissions, is_superadmin, status, plan, expires_at, initial_password)
           VALUES (?, ?, ?, ?, 'owner', ?, 0, ?, ?, ?, ?)
@@ -73,13 +117,17 @@ function syncPersistentClients(db) {
           allPermsJson,
           c.status || 'active',
           c.plan || 'yearly',
-          c.expires_at || '2028-12-31',
-          c.password || 'demo1234'
+          (c.plan === 'lifetime' || c.expires_at === null) ? null : (c.expires_at || '2028-12-31'),
+          c.password || c.initial_password || null
         );
         user = db.prepare('SELECT * FROM users WHERE id = ?').get(res.lastInsertRowid);
       } else {
         // Update credentials & profile to match persistent registry
-        const pwdHash = c.password ? bcrypt.hashSync(c.password, 10) : user.password_hash;
+        const pwdHash = c.password ? bcrypt.hashSync(c.password, 10) : (c.password_hash || user.password_hash);
+        const resolvedPlan = c.plan || user.plan || 'yearly';
+        const resolvedExpiry = resolvedPlan === 'lifetime'
+          ? null
+          : (c.expires_at !== undefined ? c.expires_at : (user.expires_at || '2028-12-31'));
         db.prepare(`
           UPDATE users 
           SET name = ?, phone = ?, password_hash = ?, initial_password = ?, status = ?, plan = ?, expires_at = ?
@@ -88,10 +136,10 @@ function syncPersistentClients(db) {
           c.name.trim(),
           c.phone ? String(c.phone).trim() : user.phone,
           pwdHash,
-          c.password || user.initial_password || 'demo1234',
+          c.password || c.initial_password || user.initial_password || null,
           c.status || user.status || 'active',
-          c.plan || user.plan || 'yearly',
-          c.expires_at || user.expires_at || '2028-12-31',
+          resolvedPlan,
+          resolvedExpiry,
           user.id
         );
       }
@@ -164,42 +212,8 @@ function syncPersistentClients(db) {
         }
       }
 
-      // Ensure Mohammad Sayyad Zoheb is also registered as a Party (Customer) across other businesses
-      // so if any other merchant/admin searches for Mohammad Sayyad Zoheb in Khata, he appears!
-      const activeBizs = db.prepare('SELECT id FROM businesses').all();
-      for (const ab of activeBizs) {
-        const existingParty = db.prepare(
-          'SELECT id FROM parties WHERE business_id = ? AND lower(name) = ?'
-        ).get(ab.id, c.name.toLowerCase());
-
-        if (!existingParty) {
-          db.prepare(`
-            INSERT INTO parties (business_id, type, name, contact_name, phone, email, city, state, state_code, opening_balance, balance_type, credit_limit, credit_days)
-            VALUES (?, 'customer', ?, ?, ?, ?, ?, ?, '29', 0, 'DR', 50000, 30)
-          `).run(
-            ab.id,
-            c.name,
-            c.name,
-            c.phone || null,
-            cleanEmail,
-            c.business?.city || 'Udupi',
-            c.business?.state || 'Karnataka'
-          );
-        }
-      }
     }
 
-    // Always ensure "City Walk" customer is present across every business in the system
-    const allBizs = db.prepare('SELECT id FROM businesses').all();
-    for (const b of allBizs) {
-      const cw = db.prepare('SELECT id FROM parties WHERE business_id = ? AND lower(name) = ?').get(b.id, 'city walk');
-      if (!cw) {
-        db.prepare(`
-          INSERT INTO parties (business_id, type, name, contact_name, phone, email, city, state, state_code, opening_balance, balance_type, credit_limit, credit_days)
-          VALUES (?, 'customer', 'City Walk', 'City Walk Customer', '9845099887', 'citywalk@example.com', 'Udupi', 'Karnataka', '29', 0, 'DR', 50000, 30)
-        `).run(b.id);
-      }
-    }
   } catch (err) {
     console.error('[Persistent Clients Sync Error]:', err);
   }
@@ -221,7 +235,9 @@ function syncAllCurrentDataToRegistry(db) {
         email: u.email,
         phone: u.phone,
         plan: u.plan || 'yearly',
-        expires_at: u.expires_at || '2028-12-31',
+        expires_at: u.plan === 'lifetime' ? null : (u.expires_at || '2028-12-31'),
+        initial_password: u.initial_password || null,
+        password_hash: u.password_hash,
         status: u.status || 'active',
         business: {
           name: biz.name,
@@ -249,6 +265,8 @@ function syncAllCurrentDataToRegistry(db) {
 module.exports = {
   loadRegistry,
   saveToRegistry,
+  removeFromRegistry,
+  hasPersistentRegistryStorage,
   syncPersistentClients,
   syncAllCurrentDataToRegistry
 };

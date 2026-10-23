@@ -121,6 +121,7 @@ export default function SuperAdmin({ user, toast }) {
     try {
       const res = await api.adminCreateUser(provForm);
       toast(`Customer account created for ${res.user.name}`, 'ok');
+      if (res.persistence_warning) toast(res.persistence_warning, 'err');
       setProvisionModal(false);
 
       const targetPhone = provForm.phone || (res.user && res.user.phone);
@@ -155,11 +156,12 @@ export default function SuperAdmin({ user, toast }) {
     if (!renewTarget) return;
     setRenewBusy(true);
     try {
-      await api.adminRenewUser(renewTarget.id, {
+      const result = await api.adminRenewUser(renewTarget.id, {
         plan: renewPlan,
         days: renewDays ? Number(renewDays) : undefined
       });
       toast(`Renewed ${renewTarget.name}'s subscription under ${renewPlan.toUpperCase()} plan`, 'ok');
+      if (result.persistence_warning) toast(result.persistence_warning, 'err');
       setRenewTarget(null);
       loadAll();
     } catch (err) {
@@ -210,8 +212,9 @@ export default function SuperAdmin({ user, toast }) {
     if (!editTarget) return;
     setEditBusy(true);
     try {
-      await api.adminUpdateUser(editTarget.id, editTarget);
+      const result = await api.adminUpdateUser(editTarget.id, editTarget);
       toast(`Saved changes for ${editTarget.name} & ${editTarget.business_name || 'business'}!`, 'ok');
+      if (result.persistence_warning) toast(result.persistence_warning, 'err');
       setEditTarget(null);
       loadAll();
     } catch (err) {
@@ -239,6 +242,7 @@ export default function SuperAdmin({ user, toast }) {
     try {
       const res = await api.adminConvertInquiry(convertTarget.id, convertForm);
       toast(`Inquiry converted to client account for ${res.user.name}!`, 'ok');
+      if (res.persistence_warning) toast(res.persistence_warning, 'err');
       const targetPhone = convertTarget.phone || (res.user && res.user.phone);
       if (res.welcome_whatsapp) {
         openWhatsApp(targetPhone, res.welcome_whatsapp);

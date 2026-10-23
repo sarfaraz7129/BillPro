@@ -187,7 +187,7 @@ router.post('/active-business/:id', auth, (req, res) => {
 function publicUser(u) {
   const isSuperadmin = Boolean(u.is_superadmin);
   let isExpired = false;
-  if (!isSuperadmin && u.expires_at) {
+  if (!isSuperadmin && u.plan !== 'lifetime' && u.expires_at) {
     const today = istToday();
     if (u.expires_at < today) {
       isExpired = true;

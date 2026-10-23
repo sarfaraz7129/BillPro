@@ -6,7 +6,7 @@ const { auth, PERMISSIONS } = require('../middleware');
 const { istToday, istAddDays } = require('../lib/time');
 const { getSystemSettings, updateSystemSettings } = require('../lib/settings');
 const { normaliseGstin } = require('../lib/gst');
-const { saveToRegistry } = require('../lib/persistent-clients');
+const { saveToRegistry, removeFromRegistry, hasPersistentRegistryStorage } = require('../lib/persistent-clients');
 
 const router = express.Router();
 const ALL_PERMS = Object.keys(PERMISSIONS);
@@ -21,6 +21,33 @@ function requireSuperAdmin(req, res, next) {
 router.use(auth);
 router.use(requireSuperAdmin);
 
+function saveUserSnapshotToRegistry(userId, previousEmail) {
+  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
+  if (!user) return { ok: false, error: 'User not found' };
+  const business = db.prepare('SELECT * FROM businesses WHERE owner_id = ? ORDER BY id LIMIT 1').get(userId);
+  const parties = business ? db.prepare('SELECT name, contact_name, phone, email, type, city, state FROM parties WHERE business_id = ?').all(business.id) : [];
+  const record = {
+    name: user.name,
+    email: user.email,
+    phone: user.phone,
+    initial_password: user.initial_password || null,
+    password_hash: user.password_hash,
+    plan: user.plan || 'yearly',
+    expires_at: user.plan === 'lifetime' ? null : user.expires_at,
+    status: user.status || 'active',
+    business: business ? {
+      name: business.name, legal_name: business.legal_name, gstin: business.gstin, pan: business.pan,
+      phone: business.phone, city: business.city, state: business.state, state_code: business.state_code,
+      pincode: business.pincode, invoice_prefix: business.invoice_prefix, estimate_prefix: business.estimate_prefix,
+      estimate_counter: business.estimate_counter, default_bill_mode: business.default_bill_mode,
+      default_gst_rate: business.default_gst_rate, credit_days: business.credit_days
+    } : null,
+    parties,
+    ...(previousEmail && previousEmail !== user.email ? { previous_email: previousEmail } : {})
+  };
+  return saveToRegistry(record);
+}
+
 /**
  * Super Admin Dashboard Overview Stats
  */
@@ -31,7 +58,7 @@ router.get('/stats', (req, res) => {
   const suspendedUsers = db.prepare("SELECT COUNT(*) n FROM users WHERE status = 'suspended'").get().n;
   const expiredUsers = db.prepare(`
     SELECT COUNT(*) n FROM users 
-    WHERE is_superadmin = 0 AND expires_at IS NOT NULL AND expires_at < ?
+    WHERE is_superadmin = 0 AND plan != 'lifetime' AND expires_at IS NOT NULL AND expires_at < ?
   `).get(today).n;
 
   const totalBusinesses = db.prepare('SELECT COUNT(*) n FROM businesses').get().n;
@@ -103,9 +130,9 @@ router.get('/users', (req, res) => {
  * Helper to compute expiry date based on plan or custom input
  */
 function computeExpiry(plan, customDays, customDate) {
+  if (plan === 'lifetime') return null;
   if (customDate) return customDate;
   if (customDays && Number(customDays) > 0) return istAddDays(Number(customDays));
-  if (plan === 'lifetime') return null;
   if (plan === 'monthly') return istAddDays(30);
   // Default to yearly
   return istAddDays(365);
@@ -170,7 +197,7 @@ router.post('/users', (req, res) => {
   const newBizId = bizInsert.lastInsertRowid;
   db.prepare('UPDATE users SET active_business_id = ? WHERE id = ?').run(newBizId, newUserId);
 
-  saveToRegistry({
+  const registrySave = saveToRegistry({
     name: name.trim(),
     email: cleanEmail,
     phone: (phone || '').trim() || null,
@@ -196,9 +223,13 @@ router.post('/users', (req, res) => {
   const cleanPhone = (phone || '').trim();
 
   const welcomeWhatsapp = `👋 *Welcome to BillPro Billing Suite!*\n\nYour business billing account is active:\n🌐 *Login:* ${origin}\n📧 *Login User:* ${cleanEmail}${cleanPhone ? `\n📱 *Mobile:* ${cleanPhone}` : ''}\n🔑 *Password:* ${rawPassword}\n🏢 *Business:* ${cleanBizName}\n📦 *Plan:* ${plan.toUpperCase()} (${expiryText})\n\n💡 Sign in now to start issuing GST invoices, manage stock, and track Khata ledgers!`;
+  const persistenceWarning = !hasPersistentRegistryStorage()
+    ? 'This server is using ephemeral storage. Attach a Render Persistent Disk and set BILLPRO_DATA_DIR=/var/data or this new account may be lost on redeploy.'
+    : (!registrySave.ok ? `Account created, but persistence snapshot failed: ${registrySave.error}` : null);
 
   res.json({
     ok: true,
+    persistence_warning: persistenceWarning,
     user: {
       id: newUserId,
       name: name.trim(),
@@ -255,7 +286,7 @@ router.put('/users/:id', (req, res) => {
   const updatedPhone = phone !== undefined ? ((phone || '').trim() || null) : targetUser.phone;
   const updatedStatus = (req.user.id === userId) ? 'active' : (status !== undefined ? status : targetUser.status);
   const updatedPlan = plan !== undefined ? plan : targetUser.plan;
-  const updatedExpiry = expires_at !== undefined ? (expires_at || null) : targetUser.expires_at;
+  const updatedExpiry = updatedPlan === 'lifetime' ? null : (expires_at !== undefined ? (expires_at || null) : targetUser.expires_at);
   const updatedIsAdmin = (req.user.id === userId) ? 1 : (is_superadmin !== undefined ? (is_superadmin ? 1 : 0) : targetUser.is_superadmin);
 
   let pwdHash = targetUser.password_hash;
@@ -352,6 +383,11 @@ router.put('/users/:id', (req, res) => {
     db.prepare('UPDATE users SET active_business_id = ? WHERE id = ?').run(newBizInsert.lastInsertRowid, userId);
   }
 
+  const registrySave = saveUserSnapshotToRegistry(userId, targetUser.email);
+  const persistenceWarning = !hasPersistentRegistryStorage()
+    ? 'Runtime storage is ephemeral. Attach a Render Persistent Disk and set BILLPRO_DATA_DIR=/var/data to keep this update across deployments.'
+    : (!registrySave.ok ? `Profile was updated, but registry snapshot failed: ${registrySave.error}` : null);
+
   const origin = req.headers.origin || (req.headers.host ? `${req.protocol}://${req.headers.host}` : 'https://billpro.in');
   const expiryText = updatedExpiry ? `Valid until ${updatedExpiry}` : 'Lifetime Access (Never expires)';
   const welcomeWhatsapp = `👋 *Welcome to BillPro Billing Suite!*\n\nYour business billing account is active:\n🌐 *Login:* ${origin}\n📧 *Login User:* ${updatedEmail}${updatedPhone ? `\n📱 *Mobile:* ${updatedPhone}` : ''}\n🔑 *Password:* ${rawPassword}\n🏢 *Business:* ${primaryBiz ? primaryBiz.name : 'Your Business'}\n📦 *Plan:* ${(updatedPlan || 'yearly').toUpperCase()} (${expiryText})\n\n💡 Sign in now to start issuing GST invoices, manage stock, and track Khata ledgers!`;
@@ -361,6 +397,7 @@ router.put('/users/:id', (req, res) => {
 
   res.json({
     ok: true,
+    persistence_warning: persistenceWarning,
     user: {
       ...updated,
       initial_password: rawPassword,
@@ -403,8 +440,13 @@ router.post('/users/:id/renew', (req, res) => {
   `).run(plan, newExpiry, userId);
 
   const updated = db.prepare('SELECT id, name, email, phone, role, is_superadmin, status, plan, expires_at FROM users WHERE id = ?').get(userId);
+  const registrySave = saveUserSnapshotToRegistry(userId);
+  const persistenceWarning = !hasPersistentRegistryStorage()
+    ? 'Runtime storage is ephemeral. Attach a Render Persistent Disk and set BILLPRO_DATA_DIR=/var/data to keep this renewal across deployments.'
+    : (!registrySave.ok ? `Renewal was saved, but registry snapshot failed: ${registrySave.error}` : null);
   res.json({
     ok: true,
+    persistence_warning: persistenceWarning,
     user: { ...updated, is_superadmin: Boolean(updated.is_superadmin) },
     message: `Account renewed successfully under ${plan.toUpperCase()} plan.`
   });
@@ -434,8 +476,13 @@ router.delete('/users/:id', (req, res) => {
     db.prepare('DELETE FROM businesses WHERE id = ?').run(b.id);
   }
   db.prepare('DELETE FROM users WHERE id = ?').run(userId);
+  const registryResult = removeFromRegistry(target.email);
 
-  res.json({ ok: true, message: `User ${target.email} and all associated business records have been removed.` });
+  res.json({
+    ok: true,
+    persistence_warning: !registryResult.ok ? `Registry cleanup failed: ${registryResult.error}` : null,
+    message: `User ${target.email} and all associated business records have been removed.`
+  });
 });
 
 /**
@@ -445,53 +492,20 @@ router.post('/users/:id/persist', (req, res) => {
   const userId = Number(req.params.id);
   const targetUser = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
   if (!targetUser) return res.status(404).json({ error: 'User not found' });
-
-  let primaryBiz = null;
-  if (targetUser.active_business_id) {
-    primaryBiz = db.prepare('SELECT * FROM businesses WHERE id = ?').get(targetUser.active_business_id);
-  }
-  if (!primaryBiz) {
-    primaryBiz = db.prepare('SELECT * FROM businesses WHERE owner_id = ? ORDER BY id ASC LIMIT 1').get(userId);
+  if (!hasPersistentRegistryStorage()) {
+    return res.status(409).json({
+      error: 'Permanent locking is unavailable on ephemeral storage. Attach a Render Persistent Disk mounted at /var/data and set BILLPRO_DATA_DIR=/var/data, then retry.'
+    });
   }
 
-  const parties = primaryBiz ? db.prepare('SELECT * FROM parties WHERE business_id = ?').all(primaryBiz.id) : [];
-
-  saveToRegistry({
-    name: targetUser.name,
-    email: targetUser.email,
-    phone: targetUser.phone,
-    password: targetUser.initial_password || (targetUser.email === 'zoheb@billpro.in' ? 'demo1234' : 'BillPro@123'),
-    plan: targetUser.plan || 'yearly',
-    expires_at: targetUser.expires_at || null,
-    status: targetUser.status || 'active',
-    business: primaryBiz ? {
-      name: primaryBiz.name,
-      legal_name: primaryBiz.legal_name,
-      gstin: primaryBiz.gstin,
-      pan: primaryBiz.pan,
-      phone: primaryBiz.phone,
-      city: primaryBiz.city,
-      state: primaryBiz.state,
-      state_code: primaryBiz.state_code,
-      pincode: primaryBiz.pincode,
-      invoice_prefix: primaryBiz.invoice_prefix,
-      default_gst_rate: primaryBiz.default_gst_rate,
-      credit_days: primaryBiz.credit_days
-    } : null,
-    parties: parties.map(p => ({
-      name: p.name,
-      contact_name: p.contact_name,
-      phone: p.phone,
-      email: p.email,
-      type: p.type,
-      city: p.city,
-      state: p.state
-    }))
-  });
+  const primaryBiz = db.prepare('SELECT * FROM businesses WHERE owner_id = ? ORDER BY id ASC LIMIT 1').get(userId);
+  const saved = saveUserSnapshotToRegistry(userId);
+  if (!saved.ok) return res.status(500).json({ error: `Could not persist client: ${saved.error}` });
 
   res.json({
     ok: true,
-    message: `${targetUser.name} & ${primaryBiz ? primaryBiz.name : 'business'} locked into persistent registry!`
+    message: `${targetUser.name} & ${primaryBiz ? primaryBiz.name : 'account'} locked into persistent storage.`,
+    storage: 'persistent'
   });
 });
 
@@ -573,7 +587,7 @@ router.post('/inquiries/:id/convert', (req, res) => {
   const newBizId = bizInsert.lastInsertRowid;
   db.prepare('UPDATE users SET active_business_id = ? WHERE id = ?').run(newBizId, newUserId);
 
-  saveToRegistry({
+  const registrySave = saveToRegistry({
     name: inquiry.name,
     email: candidateEmail,
     phone: inquiry.phone,
@@ -596,8 +610,13 @@ router.post('/inquiries/:id/convert', (req, res) => {
 
   const welcomeWhatsapp = `👋 *Welcome to BillPro Billing Suite!*\n\nYour business billing account is active:\n🌐 *Login:* ${origin}\n📧 *Login User:* ${candidateEmail}\n📱 *Mobile:* ${inquiry.phone}\n🔑 *Password:* ${rawPassword}\n🏢 *Business:* ${cleanBizName}\n📦 *Plan:* ${plan.toUpperCase()} (${expiryText})\n\n💡 Sign in now to start issuing GST invoices, manage stock, and track Khata ledgers!`;
 
+  const persistenceWarning = !hasPersistentRegistryStorage()
+    ? 'This server is using ephemeral storage. Attach a Render Persistent Disk and set BILLPRO_DATA_DIR=/var/data or this account may be lost on redeploy.'
+    : (!registrySave.ok ? `Account created, but persistence snapshot failed: ${registrySave.error}` : null);
+
   res.json({
     ok: true,
+    persistence_warning: persistenceWarning,
     user: {
       id: newUserId,
       name: inquiry.name,
@@ -687,14 +706,17 @@ router.get('/backup', (req, res) => {
 
     // JSON Snapshot of everything
     const snapshot = {
-      version: 1,
+      version: 2,
       exported_at: new Date().toISOString(),
-      users: db.prepare('SELECT id, name, email, phone, role, permissions, is_superadmin, status, plan, expires_at, initial_password, password_hash FROM users').all(),
+      users: db.prepare('SELECT id, name, email, phone, role, permissions, active_business_id, lang, is_superadmin, status, plan, expires_at, initial_password, password_hash, created_at FROM users').all(),
       businesses: db.prepare('SELECT * FROM businesses').all(),
       parties: db.prepare('SELECT * FROM parties').all(),
       products: db.prepare('SELECT * FROM products').all(),
+      product_categories: db.prepare('SELECT * FROM product_categories').all(),
       documents: db.prepare('SELECT * FROM documents').all(),
-      transactions: db.prepare('SELECT * FROM transactions').all()
+      transactions: db.prepare('SELECT * FROM transactions').all(),
+      stock_moves: db.prepare('SELECT * FROM stock_moves').all(),
+      staff: db.prepare('SELECT * FROM staff').all()
     };
 
     res.setHeader('Content-Type', 'application/json');
@@ -706,160 +728,182 @@ router.get('/backup', (req, res) => {
 });
 
 /**
- * Restore from JSON Snapshot
+ * Restore from a full JSON snapshot. Remaps IDs by email/business ownership so a
+ * fresh Render database can safely restore into newly allocated SQLite IDs.
  */
 router.post('/restore', (req, res) => {
   try {
     const data = req.body;
-    if (!data || (!data.businesses && !data.users)) {
-      return res.status(400).json({ error: 'Invalid backup format. Expected users or businesses data.' });
+    if (!data || (!Array.isArray(data.businesses) && !Array.isArray(data.users))) {
+      return res.status(400).json({ error: 'Invalid backup format. Expected users or businesses arrays.' });
     }
 
+    const maps = {
+      users: new Map(), businesses: new Map(), parties: new Map(), products: new Map(), documents: new Map()
+    };
+    const restored = { users: 0, businesses: 0, parties: 0, products: 0, documents: 0, transactions: 0, stock_moves: 0 };
+    const configuredAdminEmail = String(process.env.BILLPRO_SUPERADMIN_EMAIL || process.env.SUPERADMIN_EMAIL || '').trim().toLowerCase();
+    const publicDemoEmails = ['demo@billpro.in', 'admin@billpro.in', 'demo.user@billpro.in'];
+    const tableColumnCache = new Map();
+    const tableColumns = (table) => {
+      if (!tableColumnCache.has(table)) tableColumnCache.set(table, new Set(db.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name)));
+      return tableColumnCache.get(table);
+    };
+    const filtered = (table, row, omitId = true) => Object.fromEntries(
+      Object.entries(row || {}).filter(([key, value]) => tableColumns(table).has(key) && !(omitId && key === 'id') && value !== undefined)
+    );
+    const insertRow = (table, row) => {
+      const clean = filtered(table, row, true);
+      const keys = Object.keys(clean);
+      if (!keys.length) throw new Error(`No restorable columns for ${table}`);
+      const info = db.prepare(`INSERT INTO ${table} (${keys.map((k) => `"${k}"`).join(',')}) VALUES (${keys.map(() => '?').join(',')})`)
+        .run(...keys.map((k) => clean[k]));
+      return Number(info.lastInsertRowid);
+    };
+    const updateRow = (table, id, row) => {
+      const clean = filtered(table, row, true);
+      const keys = Object.keys(clean);
+      if (keys.length) db.prepare(`UPDATE ${table} SET ${keys.map((k) => `"${k}"=?`).join(',')} WHERE id=?`)
+        .run(...keys.map((k) => clean[k]), id);
+    };
+
     const tx = db.transaction(() => {
-      // Restore users
-      if (Array.isArray(data.users)) {
-        for (const u of data.users) {
-          const cleanEmail = String(u.email || '').trim().toLowerCase();
-          const exists = db.prepare('SELECT id FROM users WHERE lower(email) = ?').get(cleanEmail);
-          if (!exists) {
-            db.prepare(`
-              INSERT INTO users (name, email, phone, password_hash, role, permissions, is_superadmin, status, plan, expires_at, initial_password)
-              VALUES (@name, @email, @phone, @password_hash, @role, @permissions, @is_superadmin, @status, @plan, @expires_at, @initial_password)
-            `).run({
-              name: u.name,
-              email: cleanEmail,
-              phone: u.phone || null,
-              password_hash: u.password_hash || bcrypt.hashSync(u.initial_password || 'BillPro@123', 10),
-              role: u.role || 'owner',
-              permissions: typeof u.permissions === 'string' ? u.permissions : JSON.stringify(u.permissions || ALL_PERMS),
-              is_superadmin: u.is_superadmin ? 1 : 0,
-              status: u.status || 'active',
-              plan: u.plan || 'yearly',
-              expires_at: u.expires_at || null,
-              initial_password: u.initial_password || 'BillPro@123'
-            });
+      // Restore/merge users by email, never by their old SQLite row IDs.
+      for (const original of (Array.isArray(data.users) ? data.users : [])) {
+        const email = String(original.email || '').trim().toLowerCase();
+        if (!email) continue;
+        const row = { ...original, email };
+        if (row.plan === 'lifetime') row.expires_at = null;
+        if (process.env.NODE_ENV === 'production' && publicDemoEmails.includes(email)) row.is_superadmin = 0;
+        const existing = db.prepare('SELECT * FROM users WHERE lower(email)=?').get(email);
+        let id;
+        if (existing) {
+          if (email === configuredAdminEmail) {
+            row.password_hash = existing.password_hash;
+            row.is_superadmin = 1;
+            row.role = 'owner';
           }
+          delete row.active_business_id;
+          updateRow('users', existing.id, row);
+          id = existing.id;
+        } else {
+          delete row.active_business_id;
+          id = insertRow('users', row);
         }
+        if (original.id !== undefined) maps.users.set(Number(original.id), id);
+        restored.users++;
       }
 
-      // Restore businesses
-      if (Array.isArray(data.businesses)) {
-        for (const b of data.businesses) {
-          const exists = db.prepare('SELECT id FROM businesses WHERE id = ?').get(b.id);
-          if (!exists) {
-            db.prepare(`
-              INSERT INTO businesses (id, owner_id, name, legal_name, gstin, pan, address, city, state, state_code, pincode, phone, email, upi_id, invoice_prefix, default_gst_rate, credit_days, color)
-              VALUES (@id, @owner_id, @name, @legal_name, @gstin, @pan, @address, @city, @state, @state_code, @pincode, @phone, @email, @upi_id, @invoice_prefix, @default_gst_rate, @credit_days, @color)
-            `).run({
-              id: b.id,
-              owner_id: b.owner_id || 1,
-              name: b.name,
-              legal_name: b.legal_name || b.name,
-              gstin: b.gstin || null,
-              pan: b.pan || null,
-              address: b.address || null,
-              city: b.city || null,
-              state: b.state || null,
-              state_code: b.state_code || null,
-              pincode: b.pincode || null,
-              phone: b.phone || null,
-              email: b.email || null,
-              upi_id: b.upi_id || null,
-              invoice_prefix: b.invoice_prefix || 'INV',
-              default_gst_rate: b.default_gst_rate || 18,
-              credit_days: b.credit_days || 30,
-              color: b.color || '#4f46e5'
-            });
-          }
-        }
+      // Restore businesses by mapped owner and natural business identity.
+      for (const original of (Array.isArray(data.businesses) ? data.businesses : [])) {
+        const ownerId = maps.users.get(Number(original.owner_id)) || Number(original.owner_id);
+        if (!db.prepare('SELECT id FROM users WHERE id=?').get(ownerId)) continue;
+        const row = { ...original, owner_id: ownerId };
+        const existing = db.prepare(`SELECT id FROM businesses WHERE owner_id=? AND
+          (lower(name)=lower(?) OR (? IS NOT NULL AND gstin=?)) ORDER BY id LIMIT 1`)
+          .get(ownerId, original.name || '', original.gstin || null, original.gstin || null);
+        const id = existing ? existing.id : insertRow('businesses', row);
+        if (existing) updateRow('businesses', id, row);
+        if (original.id !== undefined) maps.businesses.set(Number(original.id), id);
+        restored.businesses++;
       }
 
-      // Restore parties
-      if (Array.isArray(data.parties)) {
-        for (const p of data.parties) {
-          const exists = db.prepare('SELECT id FROM parties WHERE business_id = ? AND lower(name) = ?').get(p.business_id, p.name.toLowerCase());
-          if (!exists) {
-            db.prepare(`
-              INSERT INTO parties (id, business_id, type, name, contact_name, phone, email, city, state, state_code, opening_balance, balance_type, credit_limit, credit_days)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            `).run(
-              p.id || null, p.business_id, p.type || 'customer', p.name, p.contact_name || p.name, p.phone || null, p.email || null,
-              p.city || null, p.state || null, p.state_code || '29', p.opening_balance || 0, p.balance_type || 'DR',
-              p.credit_limit || 0, p.credit_days || 30
-            );
-          }
-        }
+      // Now that tenant IDs are mapped, restore parties, categories, products and staff.
+      for (const original of (Array.isArray(data.parties) ? data.parties : [])) {
+        const businessId = maps.businesses.get(Number(original.business_id)) || Number(original.business_id);
+        if (!db.prepare('SELECT id FROM businesses WHERE id=?').get(businessId)) continue;
+        const row = { ...original, business_id: businessId };
+        const existing = (original.id && db.prepare('SELECT id FROM parties WHERE id=? AND business_id=?').get(original.id, businessId))
+          || db.prepare('SELECT id FROM parties WHERE business_id=? AND type=? AND lower(name)=lower(?)').get(businessId, original.type || 'customer', original.name || '');
+        const id = existing ? existing.id : insertRow('parties', row);
+        if (existing) updateRow('parties', id, row);
+        if (original.id !== undefined) maps.parties.set(Number(original.id), id);
+        restored.parties++;
       }
 
-      // Restore products
-      if (Array.isArray(data.products)) {
-        for (const pr of data.products) {
-          const exists = db.prepare('SELECT id FROM products WHERE id = ?').get(pr.id);
-          if (!exists) {
-            db.prepare(`
-              INSERT INTO products (id, business_id, name, item_code, hsn, unit, sale_price, purchase_price, gst_rate, cess_rate, stock, min_stock, is_service)
-              VALUES (@id, @business_id, @name, @item_code, @hsn, @unit, @sale_price, @purchase_price, @gst_rate, @cess_rate, @stock, @min_stock, @is_service)
-            `).run({
-              id: pr.id,
-              business_id: pr.business_id,
-              name: pr.name,
-              item_code: pr.item_code || null,
-              hsn: pr.hsn || null,
-              unit: pr.unit || 'PCS',
-              sale_price: pr.sale_price || 0,
-              purchase_price: pr.purchase_price || 0,
-              gst_rate: pr.gst_rate || 0,
-              cess_rate: pr.cess_rate || 0,
-              stock: pr.stock || 0,
-              min_stock: pr.min_stock || 0,
-              is_service: pr.is_service ? 1 : 0
-            });
-          }
-        }
+      for (const original of (Array.isArray(data.product_categories) ? data.product_categories : [])) {
+        const business_id = maps.businesses.get(Number(original.business_id)) || Number(original.business_id);
+        if (!db.prepare('SELECT id FROM businesses WHERE id=?').get(business_id)) continue;
+        const exists = db.prepare('SELECT id FROM product_categories WHERE business_id=? AND lower(name)=lower(?)').get(business_id, original.name);
+        if (exists) updateRow('product_categories', exists.id, { ...original, business_id });
+        else insertRow('product_categories', { ...original, business_id });
       }
 
-      // Restore documents
-      if (Array.isArray(data.documents)) {
-        for (const doc of data.documents) {
-          const exists = db.prepare('SELECT id FROM documents WHERE id = ?').get(doc.id);
-          if (!exists) {
-            db.prepare(`
-              INSERT INTO documents (id, business_id, doc_type, doc_number, doc_date, due_date, party_id, party_name, party_gstin, party_phone, party_address, party_city, party_state, party_state_code, subtotal, tax_total, round_off, total, balance_due, status, items_json, notes, terms, created_at, bag_charges)
-              VALUES (@id, @business_id, @doc_type, @doc_number, @doc_date, @due_date, @party_id, @party_name, @party_gstin, @party_phone, @party_address, @party_city, @party_state, @party_state_code, @subtotal, @tax_total, @round_off, @total, @balance_due, @status, @items_json, @notes, @terms, @created_at, @bag_charges)
-            `).run({
-              id: doc.id,
-              business_id: doc.business_id,
-              doc_type: doc.doc_type || 'tax_invoice',
-              doc_number: doc.doc_number,
-              doc_date: doc.doc_date,
-              due_date: doc.due_date || null,
-              party_id: doc.party_id || null,
-              party_name: doc.party_name,
-              party_gstin: doc.party_gstin || null,
-              party_phone: doc.party_phone || null,
-              party_address: doc.party_address || null,
-              party_city: doc.party_city || null,
-              party_state: doc.party_state || null,
-              party_state_code: doc.party_state_code || null,
-              subtotal: doc.subtotal || 0,
-              tax_total: doc.tax_total || 0,
-              round_off: doc.round_off || 0,
-              total: doc.total || 0,
-              balance_due: doc.balance_due || 0,
-              status: doc.status || 'unpaid',
-              items_json: typeof doc.items_json === 'string' ? doc.items_json : JSON.stringify(doc.items_json || []),
-              notes: doc.notes || null,
-              terms: doc.terms || null,
-              created_at: doc.created_at || new Date().toISOString(),
-              bag_charges: doc.bag_charges || 0
-            });
-          }
-        }
+      for (const original of (Array.isArray(data.products) ? data.products : [])) {
+        const business_id = maps.businesses.get(Number(original.business_id)) || Number(original.business_id);
+        if (!db.prepare('SELECT id FROM businesses WHERE id=?').get(business_id)) continue;
+        const row = { ...original, business_id };
+        const existing = (original.id && db.prepare('SELECT id FROM products WHERE id=? AND business_id=?').get(original.id, business_id))
+          || (original.sku ? db.prepare('SELECT id FROM products WHERE business_id=? AND sku=?').get(business_id, original.sku) : null)
+          || db.prepare('SELECT id FROM products WHERE business_id=? AND lower(name)=lower(?)').get(business_id, original.name || '');
+        const id = existing ? existing.id : insertRow('products', row);
+        if (existing) updateRow('products', id, row);
+        if (original.id !== undefined) maps.products.set(Number(original.id), id);
+        restored.products++;
+      }
+
+      for (const original of (Array.isArray(data.documents) ? data.documents : [])) {
+        const business_id = maps.businesses.get(Number(original.business_id)) || Number(original.business_id);
+        if (!db.prepare('SELECT id FROM businesses WHERE id=?').get(business_id)) continue;
+        const party_id = original.party_id == null ? null : (maps.parties.get(Number(original.party_id)) || null);
+        const created_by = original.created_by == null ? null : (maps.users.get(Number(original.created_by)) || null);
+        let items = original.items;
+        try {
+          const parsed = typeof items === 'string' ? JSON.parse(items) : (items || []);
+          items = JSON.stringify(parsed.map((line) => line && line.product_id != null
+            ? { ...line, product_id: maps.products.get(Number(line.product_id)) || null }
+            : line));
+        } catch (_) { items = typeof original.items === 'string' ? original.items : '[]'; }
+        const row = { ...original, business_id, party_id, created_by, items };
+        const existing = (original.id && db.prepare('SELECT id FROM documents WHERE id=? AND business_id=?').get(original.id, business_id))
+          || db.prepare('SELECT id FROM documents WHERE business_id=? AND type=? AND number=?').get(business_id, original.type, original.number);
+        const id = existing ? existing.id : insertRow('documents', row);
+        if (existing) updateRow('documents', id, row);
+        if (original.id !== undefined) maps.documents.set(Number(original.id), id);
+        restored.documents++;
+      }
+
+      for (const original of (Array.isArray(data.transactions) ? data.transactions : [])) {
+        const business_id = maps.businesses.get(Number(original.business_id)) || Number(original.business_id);
+        const party_id = maps.parties.get(Number(original.party_id)) || Number(original.party_id);
+        if (!db.prepare('SELECT id FROM businesses WHERE id=?').get(business_id) || !db.prepare('SELECT id FROM parties WHERE id=?').get(party_id)) continue;
+        const row = { ...original, business_id, party_id, document_id: original.document_id == null ? null : (maps.documents.get(Number(original.document_id)) || null) };
+        const existing = db.prepare(`SELECT id FROM transactions WHERE business_id=? AND party_id=? AND type=? AND amount=? AND date=? AND COALESCE(reference,'')=COALESCE(?,'') AND COALESCE(document_id,0)=COALESCE(?,0) LIMIT 1`)
+          .get(business_id, party_id, original.type, original.amount, original.date, original.reference || null, row.document_id);
+        if (existing) updateRow('transactions', existing.id, row); else insertRow('transactions', row);
+        restored.transactions++;
+      }
+
+      for (const original of (Array.isArray(data.stock_moves) ? data.stock_moves : [])) {
+        const business_id = maps.businesses.get(Number(original.business_id)) || Number(original.business_id);
+        const product_id = maps.products.get(Number(original.product_id)) || null;
+        if (!product_id || !db.prepare('SELECT id FROM businesses WHERE id=?').get(business_id)) continue;
+        const row = { ...original, business_id, product_id, document_id: original.document_id == null ? null : (maps.documents.get(Number(original.document_id)) || null) };
+        const existing = db.prepare(`SELECT id FROM stock_moves WHERE business_id=? AND product_id=? AND date=? AND reason=? AND qty=? AND COALESCE(document_id,0)=COALESCE(?,0) AND COALESCE(notes,'')=COALESCE(?,'') LIMIT 1`)
+          .get(business_id, product_id, original.date, original.reason, original.qty, row.document_id, original.notes || null);
+        if (existing) updateRow('stock_moves', existing.id, row); else insertRow('stock_moves', row);
+        restored.stock_moves++;
+      }
+
+      for (const original of (Array.isArray(data.staff) ? data.staff : [])) {
+        const business_id = maps.businesses.get(Number(original.business_id)) || Number(original.business_id);
+        if (!db.prepare('SELECT id FROM businesses WHERE id=?').get(business_id)) continue;
+        const existing = db.prepare('SELECT id FROM staff WHERE business_id=? AND lower(email)=lower(?)').get(business_id, original.email);
+        if (existing) updateRow('staff', existing.id, { ...original, business_id });
+        else insertRow('staff', { ...original, business_id });
+      }
+
+      // Reconnect each user's active business to the newly mapped ID.
+      for (const original of (Array.isArray(data.users) ? data.users : [])) {
+        if (original.id == null || original.active_business_id == null) continue;
+        const userId = maps.users.get(Number(original.id));
+        const businessId = maps.businesses.get(Number(original.active_business_id));
+        if (userId && businessId) db.prepare('UPDATE users SET active_business_id=? WHERE id=?').run(businessId, userId);
       }
     });
     tx();
-
-    res.json({ ok: true, message: 'Data restored successfully!' });
+    const registryWarning = hasPersistentRegistryStorage() ? null : 'This restore is on ephemeral storage; download a backup before every redeploy or restart.';
+    res.json({ ok: true, message: 'Data restored successfully!', restored, persistence_warning: registryWarning });
   } catch (err) {
     res.status(500).json({ error: 'Failed to restore data: ' + err.message });
   }

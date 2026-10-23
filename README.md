@@ -66,17 +66,13 @@ When you connect your GitHub repository to Render, **Auto-Deploy is enabled by d
 
 BillPro uses a high-performance, embedded SQLite database (`better-sqlite3` with WAL mode).
 
-* **On Render Free Tier:**
-  Files are ephemeral. If the instance restarts, demo/sample data may be re-seeded; production customer data must use a persistent disk. The public demo merchant is isolated from all customer businesses.
-* **For Persistent Production Data (Render Starter Plan + Disk):**
-  1. In your Render Web Service dashboard, go to the **Disks** tab.
-  2. Click **Add Disk**:
-     - **Name:** `billpro-data`
-     - **Mount Path:** `/var/data`
-     - **Size:** `1 GB` (or more)
-  3. In **Environment Variables**, add:
-     - `BILLPRO_DATA_DIR` = `/var/data`
-  4. Now all your businesses, customer khatas, invoices, and products persist permanently across every deployment and server reboot!
+* **On Render Free Tier:** Files are ephemeral. A runtime “Lock Permanent” action cannot survive a deployment without persistent storage; BillPro now rejects that action instead of falsely reporting success. Production database and client registry writes need a persistent disk.
+* **For Persistent Production Data (Render plan with Persistent Disk support):**
+  1. **Before changing storage**, download a full JSON backup from Super Admin → Database & Backups.
+  2. In Render Web Service → **Disks**, add a disk named `billpro-data`, mounted at `/var/data` (1 GB or more).
+  3. In **Environment Variables**, set `BILLPRO_DATA_DIR` to `/var/data` and deploy.
+  4. Restore the JSON backup in Super Admin → Database & Backups, then verify users, businesses, products, and invoices.
+  5. Client registry snapshots are now written to that same mounted disk; lifetime plan and expiry values are preserved through registry syncs.
 
 ---
 

@@ -7,13 +7,18 @@
 // The test DB is pointed at by BILLPRO_DB (set in package.json "test"); wipe it here.
 if (process.env.BILLPRO_DB) {
   const fs = require('fs');
+  const path = require('path');
   fs.rmSync(process.env.BILLPRO_DB, { force: true });
   fs.rmSync(process.env.BILLPRO_DB + '-wal', { force: true });
   fs.rmSync(process.env.BILLPRO_DB + '-shm', { force: true });
+  process.env.BILLPRO_DATA_DIR = path.join(path.dirname(path.resolve(process.env.BILLPRO_DB)), 'test-registry-data');
+  fs.rmSync(process.env.BILLPRO_DATA_DIR, { recursive: true, force: true });
 }
 
 const { seed, EMAIL, PASSWORD } = require('./seed-demo');
 seed();
+const { db } = require('../server/db');
+const { loadRegistry, saveToRegistry, removeFromRegistry, syncPersistentClients } = require('../server/lib/persistent-clients');
 
 const jwt = require('jsonwebtoken');
 const { JWT_SECRET } = require('../server/middleware');
@@ -52,6 +57,11 @@ async function run() {
   const login = await call('POST', '/api/auth/login', { email: EMAIL, password: PASSWORD });
   ok('logs in with the demo account', login.status === 200 && !!login.body.token, login.status);
   token = login.body.token;
+  saveToRegistry({ name: 'Registry Test A', email: 'registry-a@test.invalid', phone: '9000011122', plan: 'lifetime', expires_at: null });
+  saveToRegistry({ name: 'Registry Test B', email: 'registry-b@test.invalid', phone: '9000011122', plan: 'yearly', expires_at: '2027-10-23' });
+  ok('registry keeps separate client accounts that share a phone number',
+    loadRegistry().some((c) => c.email === 'registry-a@test.invalid') && loadRegistry().some((c) => c.email === 'registry-b@test.invalid'));
+  removeFromRegistry('registry-a@test.invalid'); removeFromRegistry('registry-b@test.invalid');
 
   const noAuth = await fetch(base + '/api/businesses');
   ok('blocks unauthenticated API calls', noAuth.status === 401, noAuth.status);
@@ -352,12 +362,28 @@ async function run() {
     password: 'Priya@Secure2026'
   });
   ok('super admin directly provisions new customer', directProvision.status === 200 && directProvision.body.user.plan === 'monthly' && Boolean(directProvision.body.user.expires_at));
+  const testDataDir = process.env.BILLPRO_DATA_DIR;
+  delete process.env.BILLPRO_DATA_DIR;
+  const lockWithoutDisk = await call('POST', `/api/admin/users/${directProvision.body.user.id}/persist`);
+  process.env.BILLPRO_DATA_DIR = testDataDir;
+  ok('does not claim permanent lock on ephemeral storage', lockWithoutDisk.status === 409, lockWithoutDisk.body);
 
   // 7. Renew subscription (e.g. upgrade to lifetime)
   const renewClient = await call('POST', `/api/admin/users/${directProvision.body.user.id}/renew`, {
     plan: 'lifetime'
   });
   ok('renews and updates client subscription plan to lifetime', renewClient.status === 200 && renewClient.body.user.plan === 'lifetime' && renewClient.body.user.expires_at === null);
+  const lifetimeRegistryEntry = loadRegistry().find((c) => c.email === 'priya@sharmafashion.in');
+  ok('registry snapshot records lifetime with no expiry', lifetimeRegistryEntry?.plan === 'lifetime' && lifetimeRegistryEntry.expires_at === null, lifetimeRegistryEntry);
+  db.prepare("UPDATE users SET plan = 'yearly', expires_at = '2028-12-31' WHERE id = ?").run(directProvision.body.user.id);
+  syncPersistentClients(db);
+  const restoredLifetimeUser = db.prepare('SELECT plan, expires_at FROM users WHERE id = ?').get(directProvision.body.user.id);
+  ok('startup sync does not downgrade lifetime clients to yearly or add an expiry', restoredLifetimeUser.plan === 'lifetime' && restoredLifetimeUser.expires_at === null, restoredLifetimeUser);
+  const diskLock = await call('POST', `/api/admin/users/${directProvision.body.user.id}/persist`);
+  ok('permanent lock succeeds with configured persistent storage', diskLock.status === 200 && diskLock.body.storage === 'persistent', diskLock.body);
+  db.prepare("UPDATE users SET expires_at = '2020-01-01' WHERE id = ?").run(directProvision.body.user.id);
+  const lifetimeLogin = await call('POST', '/api/auth/login', { email: 'priya@sharmafashion.in', password: 'Priya@Secure2026' });
+  ok('lifetime account is never marked expired even if an old expiry remains', lifetimeLogin.status === 200 && lifetimeLogin.body.user.is_expired === false);
 
   // 8. Suspend account and verify access blocked
   const suspendUser = await call('PUT', `/api/admin/users/${directProvision.body.user.id}`, {
@@ -448,6 +474,39 @@ async function run() {
     headers: { 'Authorization': 'Bearer ' + token }
   });
   ok('generates clean Estimate Bill PDF', estPdfRes.status === 200 && Number(estPdfRes.headers.get('content-length') || 0) > 1000);
+
+  // Full restore verification with deliberately shifted source IDs, as happens on a fresh Render DB.
+  const backup = (await call('GET', '/api/admin/backup')).body;
+  const bump = (v) => v == null ? v : Number(v) + 50000;
+  for (const u of backup.users || []) { u.id = bump(u.id); u.active_business_id = bump(u.active_business_id); }
+  for (const b of backup.businesses || []) { b.id = bump(b.id); b.owner_id = bump(b.owner_id); }
+  for (const p of backup.parties || []) { p.id = bump(p.id); p.business_id = bump(p.business_id); }
+  for (const c of backup.product_categories || []) { c.id = bump(c.id); c.business_id = bump(c.business_id); }
+  for (const p of backup.products || []) { p.id = bump(p.id); p.business_id = bump(p.business_id); }
+  for (const d of backup.documents || []) {
+    d.id = bump(d.id); d.business_id = bump(d.business_id); d.party_id = bump(d.party_id); d.created_by = bump(d.created_by);
+    try { d.items = JSON.stringify(JSON.parse(d.items).map((line) => line.product_id ? { ...line, product_id: bump(line.product_id) } : line)); } catch (_) {}
+  }
+  for (const t of backup.transactions || []) { t.id = bump(t.id); t.business_id = bump(t.business_id); t.party_id = bump(t.party_id); t.document_id = bump(t.document_id); }
+  for (const m of backup.stock_moves || []) { m.id = bump(m.id); m.business_id = bump(m.business_id); m.product_id = bump(m.product_id); m.document_id = bump(m.document_id); }
+  for (const s of backup.staff || []) { s.id = bump(s.id); s.business_id = bump(s.business_id); }
+  const countsBeforeRestore = {
+    businesses: db.prepare('SELECT COUNT(*) n FROM businesses').get().n,
+    parties: db.prepare('SELECT COUNT(*) n FROM parties').get().n,
+    products: db.prepare('SELECT COUNT(*) n FROM products').get().n,
+    documents: db.prepare('SELECT COUNT(*) n FROM documents').get().n,
+    transactions: db.prepare('SELECT COUNT(*) n FROM transactions').get().n
+  };
+  const restoreRes = await call('POST', '/api/admin/restore', backup);
+  ok('restores JSON backup despite shifted user/business/entity IDs', restoreRes.status === 200, restoreRes.body);
+  const countsAfterRestore = {
+    businesses: db.prepare('SELECT COUNT(*) n FROM businesses').get().n,
+    parties: db.prepare('SELECT COUNT(*) n FROM parties').get().n,
+    products: db.prepare('SELECT COUNT(*) n FROM products').get().n,
+    documents: db.prepare('SELECT COUNT(*) n FROM documents').get().n,
+    transactions: db.prepare('SELECT COUNT(*) n FROM transactions').get().n
+  };
+  ok('backup restore is idempotent and does not duplicate tenant records', JSON.stringify(countsBeforeRestore) === JSON.stringify(countsAfterRestore), { countsBeforeRestore, countsAfterRestore });
 
   server.close();
   console.log(`\n${passed} passed, ${failed} failed\n`);
