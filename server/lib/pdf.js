@@ -138,6 +138,11 @@ function render(doc, business, party, accent) {
     let transY = y;
     if (doc.vehicle_no) { pdf.text(`Vehicle: ${doc.vehicle_no}`, 460, transY, { width: 120 }); transY += 12; }
     if (doc.transport_doc_no) { pdf.text(`LR No: ${doc.transport_doc_no}`, 460, transY, { width: 120 }); transY += 12; }
+    if (doc.bags_count) {
+      pdf.font('Helvetica-Bold').text(`Bags / Pkgs: ${doc.bags_count}`, 460, transY, { width: 120 });
+      transY += 12;
+      pdf.font('Helvetica');
+    }
     pdf.text(`Supply: ${doc.supply_type === 'inter' ? 'Inter' : 'Intra'}`, 460, transY, { width: 120 }); transY += 12;
 
     y = Math.max(partyY, posExtraY, transY, 172) + 8;
@@ -225,6 +230,9 @@ function render(doc, business, party, accent) {
     if (isInter) row(`IGST`, doc.igst);
     else { row('CGST', doc.cgst); row('SGST / UTGST', doc.sgst); }
     if (doc.cess) row('Cess', doc.cess);
+    if (Number(doc.transportation) > 0) row('Transportation', doc.transportation);
+    if (Number(doc.loading_charges) > 0) row('Loading charges', doc.loading_charges);
+    if (Number(doc.extra_charges) > 0) row('Extra charges', doc.extra_charges);
     if (doc.round_off) row('Round off', doc.round_off);
     pdf.moveTo(totalsX, totalsY - 2).lineTo(576, totalsY - 2).strokeColor(accent).lineWidth(1).stroke();
     row('CURRENT BILL TOTAL', doc.total, true);

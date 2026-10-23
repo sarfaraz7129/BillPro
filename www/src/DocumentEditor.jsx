@@ -10,6 +10,7 @@ const blank = (business, type) => ({
   partyId: null, partyName: '', partyGstin: '', partyStateCode: '',
   items: [{ name: '', hsn: '', unit: 'pcs', qty: 1, rate: 0, gstRate: business.default_gst_rate, discountPct: 0, product_id: null }],
   discountType: 'flat', discountValue: 0, roundOff: true,
+  transportation: 0, loadingCharges: 0, bagsCount: '', extraCharges: 0,
   paidAmount: 0, paymentMode: 'upi', notes: '', vehicleNo: '', transportDocNo: '', ewaybillNo: ''
 });
 
@@ -27,6 +28,10 @@ export default function DocumentEditor({ business, type, doc, user, onClose, onS
     return {
       ...blank(business, doc.type || type),
       ...doc,
+      transportation: Number(doc.transportation) || 0,
+      loadingCharges: Number(doc.loading_charges || doc.loadingCharges) || 0,
+      bagsCount: doc.bags_count || doc.bagsCount || doc.bags || '',
+      extraCharges: Number(doc.extra_charges || doc.extraCharges || doc.extra) || 0,
       items: docItems.length
         ? docItems.map((l) => ({
             ...l,
@@ -90,7 +95,11 @@ export default function DocumentEditor({ business, type, doc, user, onClose, onS
     return code === own ? 'intra' : 'inter';
   }, [form.partyStateCode, business.state_code]);
 
-  const t = useMemo(() => totals(form.items, { ...form, supplyType }), [form.items, form.discountType, form.discountValue, form.roundOff, supplyType]);
+  const t = useMemo(() => totals(form.items, { ...form, supplyType }), [
+    form.items, form.discountType, form.discountValue, form.roundOff,
+    form.transportation, form.loadingCharges, form.extraCharges, form.bagsCount,
+    supplyType
+  ]);
 
   const pickProduct = (i, p) => {
     if (!p) return setForm((f) => ({
@@ -380,6 +389,63 @@ export default function DocumentEditor({ business, type, doc, user, onClose, onS
 
       <div className="doc-summary-grid">
         <div>
+          {/* Dispatch & Additional Charges: Transportation, Loading, Bags & Extra */}
+          <div style={{
+            background: 'var(--surface-2)',
+            padding: '12px 14px',
+            borderRadius: 10,
+            border: '1px solid var(--line)',
+            marginBottom: 10
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 700, fontSize: 12.5, color: 'var(--ink)', marginBottom: 8 }}>
+              <Icon.truck size={15} style={{ color: 'var(--brand)' }} />
+              Dispatch & Extra Charges
+            </div>
+            <div className="form-grid c4">
+              <Field label="Transportation (₹)" hint="Freight">
+                <input
+                  type="number"
+                  min="0"
+                  step="any"
+                  className="input"
+                  value={form.transportation || ''}
+                  onChange={(e) => set('transportation', e.target.value === '' ? 0 : Number(e.target.value))}
+                  placeholder="0.00"
+                />
+              </Field>
+              <Field label="Loading Charges (₹)" hint="Hamali">
+                <input
+                  type="number"
+                  min="0"
+                  step="any"
+                  className="input"
+                  value={form.loadingCharges || ''}
+                  onChange={(e) => set('loadingCharges', e.target.value === '' ? 0 : Number(e.target.value))}
+                  placeholder="0.00"
+                />
+              </Field>
+              <Field label="Bags / Packaging" hint="e.g. 50 Bags">
+                <input
+                  className="input"
+                  value={form.bagsCount || ''}
+                  onChange={(e) => set('bagsCount', e.target.value)}
+                  placeholder="e.g. 50 Bags"
+                />
+              </Field>
+              <Field label="Extra Charges (₹)" hint="Misc / other">
+                <input
+                  type="number"
+                  min="0"
+                  step="any"
+                  className="input"
+                  value={form.extraCharges || ''}
+                  onChange={(e) => set('extraCharges', e.target.value === '' ? 0 : Number(e.target.value))}
+                  placeholder="0.00"
+                />
+              </Field>
+            </div>
+          </div>
+
           <div className="form-grid">
             <Field label="Discount on the whole bill">
               <div style={{ display: 'flex', gap: 6 }}>
@@ -416,6 +482,15 @@ export default function DocumentEditor({ business, type, doc, user, onClose, onS
           {supplyType === 'inter'
             ? <Row label="IGST" value={t.igst} />
             : <><Row label="CGST" value={t.cgst} /><Row label="SGST / UTGST" value={t.sgst} /></>}
+          {Number(form.transportation) > 0 && <Row label="Transportation" value={Number(form.transportation)} />}
+          {Number(form.loadingCharges) > 0 && <Row label="Loading charges" value={Number(form.loadingCharges)} />}
+          {Number(form.extraCharges) > 0 && <Row label="Extra charges" value={Number(form.extraCharges)} />}
+          {form.bagsCount ? (
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11.5, color: 'var(--brand)', fontWeight: 650, padding: '2px 0' }}>
+              <span>📦 Total Bags / Pkgs:</span>
+              <span>{form.bagsCount}</span>
+            </div>
+          ) : null}
           {form.roundOff && <Row label="Round off" value={t.roundOff} />}
           <div className="grand" style={{ paddingTop: 6, marginTop: 4 }}><span style={{ fontWeight: 700 }}>Total</span><span className="v">{money(t.total)}</span></div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 3, fontSize: 11, color: 'var(--muted)' }}>
@@ -619,10 +694,14 @@ export function totals(items, opts) {
   const cgst = isInter ? 0 : r2(taxTotal / 2);
   const sgst = isInter ? 0 : r2(taxTotal / 2);
   const igst = isInter ? taxTotal : 0;
-  const preTotal = r2(taxableValue + taxTotal);
+  const transportation = r2(Number(opts.transportation) || 0);
+  const loadingCharges = r2(Number(opts.loadingCharges || opts.loading_charges) || 0);
+  const extraCharges = r2(Number(opts.extraCharges || opts.extra_charges || opts.extra) || 0);
+  const preTotal = r2(taxableValue + taxTotal + transportation + loadingCharges + extraCharges);
   const total = opts.roundOff ? Math.round(preTotal) : preTotal;
   return {
     subtotal, lineDiscount, docDiscount, taxableValue, cgst, sgst, igst,
+    transportation, loadingCharges, extraCharges, bagsCount: opts.bagsCount || opts.bags_count || '',
     roundOff: r2(total - preTotal), total,
     amountInWords: words(total)
   };

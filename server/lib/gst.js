@@ -141,7 +141,13 @@ function computeTotals(items, opts = {}) {
   const sgst = round2(lines.reduce((s, l) => s + l.sgst, 0));
   const igst = round2(lines.reduce((s, l) => s + l.igst, 0));
   const cess = round2(lines.reduce((s, l) => s + l.cess, 0));
-  const preTotal = round2(taxableValue + cgst + sgst + igst + cess);
+
+  const transportation = round2(Number(opts.transportation) || 0);
+  const loadingCharges = round2(Number(opts.loadingCharges || opts.loading_charges) || 0);
+  const extraCharges = round2(Number(opts.extraCharges || opts.extra_charges || opts.extra) || 0);
+  const bagsCount = opts.bagsCount || opts.bags_count || opts.bags || '';
+
+  const preTotal = round2(taxableValue + cgst + sgst + igst + cess + transportation + loadingCharges + extraCharges);
   let roundOffAmt = 0;
   let total = preTotal;
   if (roundOff) {
@@ -157,6 +163,10 @@ function computeTotals(items, opts = {}) {
     discountAmount: round2(lineDiscount + docDiscount),
     taxableValue,
     cgst, sgst, igst, cess,
+    transportation,
+    loadingCharges,
+    extraCharges,
+    bagsCount,
     roundOff: roundOffAmt,
     total,
     totalTax: round2(cgst + sgst + igst + cess),

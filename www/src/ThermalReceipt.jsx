@@ -124,6 +124,7 @@ export default function ThermalReceiptModal({ doc, party, business, initialWidth
       row('Standard Time (IST):', fmtDateTime(doc.created_at || doc.date)),
       row(`Customer: ${doc.party_name || 'Walk-in'}`, doc.payment_mode ? `Mode: ${doc.payment_mode.toUpperCase()}` : ''),
       ...(doc.party_gstin ? [row(`Party GSTIN: ${doc.party_gstin}`, '')] : []),
+      ...(doc.bags_count ? [row(`Bags / Pkgs:`, doc.bags_count)] : []),
       ...itemLines,
       line,
       row('Subtotal:', money(doc.subtotal)),
@@ -132,6 +133,9 @@ export default function ThermalReceiptModal({ doc, party, business, initialWidth
       doc.supply_type === 'inter'
         ? row('IGST:', money(doc.igst))
         : [row('CGST:', money(doc.cgst)), row('SGST:', money(doc.sgst))].join('\n'),
+      Number(doc.transportation) > 0 ? row('Transportation:', money(doc.transportation)) : '',
+      Number(doc.loading_charges) > 0 ? row('Loading Charges:', money(doc.loading_charges)) : '',
+      Number(doc.extra_charges) > 0 ? row('Extra Charges:', money(doc.extra_charges)) : '',
       doc.round_off ? row('Round Off:', money(doc.round_off)) : '',
       double,
       row('CURRENT BILL TOTAL:', money(doc.total)),
@@ -271,6 +275,12 @@ export default function ThermalReceiptModal({ doc, party, business, initialWidth
           {doc.party_gstin && (
             <div><b>Party GSTIN:</b> {doc.party_gstin}</div>
           )}
+          {doc.bags_count ? (
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 1 }}>
+              <span><b>Bags / Pkgs:</b></span>
+              <span><b>{doc.bags_count}</b></span>
+            </div>
+          ) : null}
 
           <div className="dashed" />
 
@@ -349,6 +359,25 @@ export default function ThermalReceiptModal({ doc, party, business, initialWidth
               <span>{money(doc.round_off)}</span>
             </div>
           ) : null}
+
+          {Number(doc.transportation) > 0 && (
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span>Transportation:</span>
+              <span>{money(doc.transportation)}</span>
+            </div>
+          )}
+          {Number(doc.loading_charges) > 0 && (
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span>Loading Charges:</span>
+              <span>{money(doc.loading_charges)}</span>
+            </div>
+          )}
+          {Number(doc.extra_charges) > 0 && (
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span>Extra Charges:</span>
+              <span>{money(doc.extra_charges)}</span>
+            </div>
+          )}
 
           <div className="double">
             <div className="grand-total">

@@ -154,6 +154,10 @@ CREATE TABLE IF NOT EXISTS documents (
   payment_mode  TEXT,
   status        TEXT NOT NULL DEFAULT 'active',  -- active | draft | cancelled
   notes         TEXT,
+  transportation REAL NOT NULL DEFAULT 0,
+  loading_charges REAL NOT NULL DEFAULT 0,
+  bags_count    TEXT,
+  extra_charges REAL NOT NULL DEFAULT 0,
   transport_doc_no TEXT,
   vehicle_no    TEXT,
   ewaybill_no   TEXT,
@@ -260,6 +264,21 @@ try {
   }
   if (!userCols.includes('expires_at')) {
     db.exec('ALTER TABLE users ADD COLUMN expires_at TEXT');
+  }
+
+  // Migration: Ensure documents table has transportation, loading_charges, bags_count, extra_charges
+  const docCols = db.prepare('PRAGMA table_info(documents)').all().map((c) => c.name);
+  if (!docCols.includes('transportation')) {
+    db.exec('ALTER TABLE documents ADD COLUMN transportation REAL NOT NULL DEFAULT 0');
+  }
+  if (!docCols.includes('loading_charges')) {
+    db.exec('ALTER TABLE documents ADD COLUMN loading_charges REAL NOT NULL DEFAULT 0');
+  }
+  if (!docCols.includes('bags_count')) {
+    db.exec('ALTER TABLE documents ADD COLUMN bags_count TEXT');
+  }
+  if (!docCols.includes('extra_charges')) {
+    db.exec('ALTER TABLE documents ADD COLUMN extra_charges REAL NOT NULL DEFAULT 0');
   }
 
   const bcrypt = require('bcryptjs');

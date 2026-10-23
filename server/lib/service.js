@@ -90,11 +90,21 @@ function unwindStock(businessId, doc) {
 /** Build a document row from a request body, computing GST + totals server-side. */
 function buildDocument(business, body, type, existing = null) {
   const supplyType = body.supplyType === 'inter' ? 'inter' : (body.supplyType === 'intra' ? 'intra' : inferSupply(business, body));
+
+  const transportation = Number(body.transportation !== undefined ? body.transportation : (existing ? existing.transportation : 0)) || 0;
+  const loadingCharges = Number(body.loadingCharges !== undefined ? body.loadingCharges : (body.loading_charges !== undefined ? body.loading_charges : (existing ? existing.loading_charges : 0))) || 0;
+  const extraCharges = Number(body.extraCharges !== undefined ? body.extraCharges : (body.extra_charges !== undefined ? body.extra_charges : (body.extra !== undefined ? body.extra : (existing ? existing.extra_charges : 0)))) || 0;
+  const bagsCount = body.bagsCount !== undefined ? String(body.bagsCount).trim() : (body.bags_count !== undefined ? String(body.bags_count).trim() : (body.bags !== undefined ? String(body.bags).trim() : (existing ? existing.bags_count : null)));
+
   const totals = computeTotals(body.items, {
     discountType: body.discountType || (existing ? existing.discount_type : 'flat'),
     discountValue: Number(body.discountValue !== undefined ? body.discountValue : (existing ? existing.discount_value : 0)),
     roundOff: body.roundOff !== false,
     cessRate: Number(body.cessRate !== undefined ? body.cessRate : (existing ? existing.cess : 0)),
+    transportation,
+    loadingCharges,
+    extraCharges,
+    bagsCount,
     supplyType
   });
   const paid = round2(Number(body.paidAmount !== undefined ? body.paidAmount : (body.paid_amount !== undefined ? body.paid_amount : (existing ? existing.paid_amount : 0))));
@@ -122,6 +132,10 @@ function buildDocument(business, body, type, existing = null) {
     sgst: totals.sgst,
     igst: totals.igst,
     cess: totals.cess,
+    transportation,
+    loading_charges: loadingCharges,
+    bags_count: bagsCount || null,
+    extra_charges: extraCharges,
     round_off: totals.roundOff,
     total: totals.total,
     amount_in_words: totals.amountInWords,
@@ -153,7 +167,7 @@ function inferSupply(business, body) {
 
 const DOC_COLS = `business_id, type, number, party_id, party_name, party_gstin, party_state_code, date, due_date,
   place_of_supply, supply_type, currency, items, subtotal, discount_type, discount_value, discount_amount,
-  taxable_value, cgst, sgst, igst, cess, round_off, total, amount_in_words, paid_amount, due_amount,
+  taxable_value, cgst, sgst, igst, cess, transportation, loading_charges, bags_count, extra_charges, round_off, total, amount_in_words, paid_amount, due_amount,
   payment_status, payment_mode, status, notes, transport_doc_no, vehicle_no, ewaybill_no, ewaybill_date,
   ewaybill_valid_upto, irn, ack_no, ack_date, signed_by, created_by`;
 
@@ -163,7 +177,7 @@ function docValues(d) {
   return [
     d.business_id ?? null, d.type ?? null, d.number ?? null, d.party_id ?? null, d.party_name ?? null, d.party_gstin ?? null, d.party_state_code ?? null, d.date ?? null, d.due_date ?? null,
     d.place_of_supply ?? null, d.supply_type ?? null, d.currency ?? 'INR', d.items ?? '[]', d.subtotal ?? 0, d.discount_type ?? 'flat', d.discount_value ?? 0, d.discount_amount ?? 0,
-    d.taxable_value ?? 0, d.cgst ?? 0, d.sgst ?? 0, d.igst ?? 0, d.cess ?? 0, d.round_off ?? 0, d.total ?? 0, d.amount_in_words ?? '', d.paid_amount ?? 0, d.due_amount ?? 0,
+    d.taxable_value ?? 0, d.cgst ?? 0, d.sgst ?? 0, d.igst ?? 0, d.cess ?? 0, d.transportation ?? 0, d.loading_charges ?? 0, d.bags_count ?? null, d.extra_charges ?? 0, d.round_off ?? 0, d.total ?? 0, d.amount_in_words ?? '', d.paid_amount ?? 0, d.due_amount ?? 0,
     d.payment_status ?? 'unpaid', d.payment_mode ?? null, d.status ?? 'active', d.notes ?? '', d.transport_doc_no ?? null, d.vehicle_no ?? null, d.ewaybill_no ?? null, d.ewaybill_date ?? null,
     d.ewaybill_valid_upto ?? null, d.irn ?? null, d.ack_no ?? null, d.ack_date ?? null, d.signed_by ?? null, d.created_by ?? null
   ];
