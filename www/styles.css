@@ -694,16 +694,29 @@ tr:hover .row-actions { opacity: 1; }
     height: 52px;
     padding: 0 10px;
     gap: 8px;
-    overflow: hidden;
+    overflow: visible !important;
     width: 100%;
     box-sizing: border-box;
+    z-index: 80;
   }
   
   /* Business switcher button adapted for mobile */
+  .biz-switch {
+    position: relative;
+    overflow: visible !important;
+  }
   .biz-btn { max-width: calc(100vw - 145px); padding: 4px 8px 4px 5px; gap: 6px; border-radius: 20px; background: var(--surface); border: 1px solid var(--line); }
   .biz-btn .nm { max-width: calc(100vw - 195px); font-size: 12.5px; }
   .biz-btn .nm small { font-size: 9.5px; }
-  .biz-menu { max-width: calc(100vw - 20px); left: 0; }
+  .biz-menu {
+    position: absolute;
+    top: 46px;
+    left: 0;
+    width: min(340px, calc(100vw - 16px));
+    max-width: calc(100vw - 16px);
+    z-index: 9999 !important;
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.28);
+  }
   
   /* Sidebar Drawer - Native App Style */
   .sidebar {
@@ -1291,4 +1304,58 @@ tr:hover .row-actions { opacity: 1; }
   background: var(--brand-soft);
   border-color: var(--brand);
 }
+
+/* ---------- Super Admin mobile styling ---------- */
+.super-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 14px;
+  margin-top: 20px;
+}
+.super-stat-box {
+  background: rgba(255, 255, 255, 0.1);
+  padding: 12px 16px;
+  border-radius: 10px;
+}
+.super-stat-box .lbl {
+  font-size: 11.5px;
+  color: #c7d2fe;
+}
+.super-stat-box .val {
+  font-size: 24px;
+  font-weight: 700;
+  margin-top: 4px;
+}
+
+@media (max-width: 768px) {
+  .super-header-card {
+    padding: 16px 14px !important;
+  }
+  .super-stats-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 8px !important;
+    margin-top: 14px !important;
+  }
+  .super-stat-box {
+    padding: 10px 12px !important;
+  }
+  .super-stat-box .lbl {
+    font-size: 10.5px !important;
+  }
+  .super-stat-box .val {
+    font-size: 20px !important;
+  }
+  .super-stat-box:last-child {
+    grid-column: span 2;
+  }
+  .super-tabs {
+    padding: 4px !important;
+    gap: 4px !important;
+  }
+  .super-tabs button {
+    padding: 8px 12px !important;
+    font-size: 12.5px !important;
+  }
+}
+
 

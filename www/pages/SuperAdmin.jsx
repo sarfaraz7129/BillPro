@@ -268,7 +268,7 @@ export default function SuperAdmin({ user, toast }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       {/* Top Header Card */}
-      <div className="card" style={{ padding: '20px 24px', background: 'linear-gradient(135deg, #1e1b4b 0%, #312e81 100%)', color: '#fff' }}>
+      <div className="card super-header-card" style={{ padding: '20px 24px', background: 'linear-gradient(135deg, #1e1b4b 0%, #312e81 100%)', color: '#fff' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16 }}>
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
@@ -294,34 +294,35 @@ export default function SuperAdmin({ user, toast }) {
         </div>
 
         {/* Quick Stats Grid */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 14, marginTop: 20 }}>
-          <div style={{ background: 'rgba(255,255,255,0.1)', padding: '12px 16px', borderRadius: 10 }}>
-            <div style={{ fontSize: 11.5, color: '#c7d2fe' }}>Total Clients</div>
-            <div style={{ fontSize: 24, fontWeight: 700, marginTop: 4 }}>{stats?.users?.total || users.length}</div>
+        <div className="super-stats-grid">
+          <div className="super-stat-box">
+            <div className="lbl">Total Clients</div>
+            <div className="val">{stats?.users?.total || users.length}</div>
           </div>
-          <div style={{ background: 'rgba(255,255,255,0.1)', padding: '12px 16px', borderRadius: 10 }}>
-            <div style={{ fontSize: 11.5, color: '#86efac' }}>Active Accounts</div>
-            <div style={{ fontSize: 24, fontWeight: 700, marginTop: 4, color: '#86efac' }}>{stats?.users?.active || 0}</div>
+          <div className="super-stat-box">
+            <div className="lbl" style={{ color: '#86efac' }}>Active Accounts</div>
+            <div className="val" style={{ color: '#86efac' }}>{stats?.users?.active || 0}</div>
           </div>
-          <div style={{ background: 'rgba(255,255,255,0.1)', padding: '12px 16px', borderRadius: 10 }}>
-            <div style={{ fontSize: 11.5, color: '#fca5a5' }}>Expired / Due</div>
-            <div style={{ fontSize: 24, fontWeight: 700, marginTop: 4, color: '#fca5a5' }}>{stats?.users?.expired || 0}</div>
+          <div className="super-stat-box">
+            <div className="lbl" style={{ color: '#fca5a5' }}>Expired / Due</div>
+            <div className="val" style={{ color: '#fca5a5' }}>{stats?.users?.expired || 0}</div>
           </div>
-          <div style={{ background: 'rgba(255,255,255,0.1)', padding: '12px 16px', borderRadius: 10 }}>
-            <div style={{ fontSize: 11.5, color: '#fde047' }}>New Inquiries</div>
-            <div style={{ fontSize: 24, fontWeight: 700, marginTop: 4, color: '#fde047' }}>{stats?.inquiries?.new || 0}</div>
+          <div className="super-stat-box">
+            <div className="lbl" style={{ color: '#fde047' }}>New Inquiries</div>
+            <div className="val" style={{ color: '#fde047' }}>{stats?.inquiries?.new || 0}</div>
           </div>
-          <div style={{ background: 'rgba(255,255,255,0.1)', padding: '12px 16px', borderRadius: 10 }}>
-            <div style={{ fontSize: 11.5, color: '#c7d2fe' }}>Lifetime Licenses</div>
-            <div style={{ fontSize: 24, fontWeight: 700, marginTop: 4 }}>{stats?.plans?.lifetime || 0}</div>
+          <div className="super-stat-box">
+            <div className="lbl">Lifetime Licenses</div>
+            <div className="val">{stats?.plans?.lifetime || 0}</div>
           </div>
         </div>
       </div>
 
       {/* Navigation Tabs */}
-      <div className="auth-tabs" style={{ background: 'var(--card-bg, #fff)', padding: 6, borderRadius: 12, border: '1px solid var(--border)' }}>
+      <div className="auth-tabs super-tabs" style={{ background: 'var(--card-bg, #fff)', padding: 6, borderRadius: 12, border: '1px solid var(--border)', overflowX: 'auto', whiteSpace: 'nowrap', display: 'flex', gap: 6, scrollbarWidth: 'none' }}>
         <button
           type="button"
+          style={{ whiteSpace: 'nowrap', flexShrink: 0 }}
           className={tab === 'clients' ? 'on' : ''}
           onClick={() => setTab('clients')}
         >
@@ -329,6 +330,7 @@ export default function SuperAdmin({ user, toast }) {
         </button>
         <button
           type="button"
+          style={{ whiteSpace: 'nowrap', flexShrink: 0 }}
           className={tab === 'inquiries' ? 'on' : ''}
           onClick={() => setTab('inquiries')}
         >
@@ -341,6 +343,7 @@ export default function SuperAdmin({ user, toast }) {
         </button>
         <button
           type="button"
+          style={{ whiteSpace: 'nowrap', flexShrink: 0 }}
           className={tab === 'settings' ? 'on' : ''}
           onClick={() => setTab('settings')}
         >
@@ -352,8 +355,8 @@ export default function SuperAdmin({ user, toast }) {
       {tab === 'clients' && (
         <div className="card">
           <div className="card-h" style={{ flexWrap: 'wrap', gap: 12 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 260 }}>
-              <div className="search-wrap" style={{ flex: 1 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 260, flexWrap: 'wrap' }}>
+              <div className="search-wrap" style={{ flex: '1 1 200px' }}>
                 <Icon.search size={15} />
                 <input
                   className="input"
@@ -364,7 +367,7 @@ export default function SuperAdmin({ user, toast }) {
               </div>
               <select
                 className="input"
-                style={{ width: 'auto' }}
+                style={{ width: 'auto', flex: '0 0 auto' }}
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
               >
@@ -379,7 +382,8 @@ export default function SuperAdmin({ user, toast }) {
             </button>
           </div>
 
-          <div className="table-wrap">
+          {/* Desktop Table View */}
+          <div className="table-wrap desktop-only">
             <table className="table">
               <thead>
                 <tr>
@@ -536,6 +540,181 @@ export default function SuperAdmin({ user, toast }) {
                 )}
               </tbody>
             </table>
+          </div>
+
+          {/* Mobile Responsive Cards View */}
+          <div className="mobile-only mobile-cards-list" style={{ padding: 12 }}>
+            {filteredUsers.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: 30, color: 'var(--ink-3)' }}>
+                No clients found matching filter.
+              </div>
+            ) : (
+              filteredUsers.map((u) => {
+                const isSelf = u.id === user.id;
+                const primaryBiz = u.businesses && u.businesses.length > 0 ? u.businesses[0] : null;
+                return (
+                  <div
+                    key={u.id}
+                    className="super-client-card"
+                    style={{
+                      background: u.is_expired ? 'rgba(239, 68, 68, 0.03)' : 'var(--surface)',
+                      border: `1px solid ${u.is_expired ? '#fecaca' : 'var(--line)'}`,
+                      borderRadius: 14,
+                      padding: 14,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: 12,
+                      boxShadow: '0 1px 3px rgba(0,0,0,0.03)'
+                    }}
+                  >
+                    {/* Header: Avatar, Name & Status */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, flex: 1 }}>
+                        <div
+                          style={{
+                            width: 38,
+                            height: 38,
+                            borderRadius: '50%',
+                            background: colorFor(u.name || u.email),
+                            color: '#fff',
+                            display: 'grid',
+                            placeItems: 'center',
+                            fontWeight: 700,
+                            fontSize: 14,
+                            flexShrink: 0
+                          }}
+                        >
+                          {initials(u.name || u.email)}
+                        </div>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontWeight: 700, color: 'var(--ink)', fontSize: 14, display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 5 }}>
+                            <span>{u.name}</span>
+                            {u.is_superadmin && (
+                              <span style={{ fontSize: 9.5, background: '#4f46e5', color: '#fff', padding: '1px 5px', borderRadius: 4, fontWeight: 700 }}>
+                                SUPER ADMIN
+                              </span>
+                            )}
+                            {isSelf && (
+                              <span style={{ fontSize: 9.5, background: '#e2e8f0', color: '#334155', padding: '1px 5px', borderRadius: 4, fontWeight: 600 }}>
+                                YOU
+                              </span>
+                            )}
+                          </div>
+                          <div style={{ fontSize: 12, color: 'var(--ink-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {u.email}
+                          </div>
+                        </div>
+                      </div>
+
+                      <span
+                        className={`badge ${
+                          u.status === 'suspended' ? 'red' : u.is_expired ? 'amber' : 'green'
+                        }`}
+                        style={{ flexShrink: 0, fontWeight: 700 }}
+                      >
+                        {u.status === 'suspended' ? 'Suspended' : u.is_expired ? 'Expired' : 'Active'}
+                      </span>
+                    </div>
+
+                    {/* Business & Plan Details Box */}
+                    <div
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: '1fr 1fr',
+                        gap: 8,
+                        padding: '10px 12px',
+                        background: 'var(--surface-2)',
+                        borderRadius: 10,
+                        fontSize: 12
+                      }}
+                    >
+                      <div>
+                        <div style={{ fontSize: 10.5, color: 'var(--muted)', textTransform: 'uppercase', fontWeight: 600 }}>Primary Business</div>
+                        <div style={{ fontWeight: 650, color: 'var(--ink)', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {primaryBiz ? primaryBiz.name : '—'}
+                        </div>
+                        <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 1 }}>
+                          {u.business_count} biz · {u.invoice_count} bills
+                        </div>
+                      </div>
+
+                      <div>
+                        <div style={{ fontSize: 10.5, color: 'var(--muted)', textTransform: 'uppercase', fontWeight: 600 }}>Plan & Expiry</div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
+                          <span
+                            style={{
+                              display: 'inline-block',
+                              padding: '1px 6px',
+                              borderRadius: 4,
+                              fontSize: 10.5,
+                              fontWeight: 700,
+                              textTransform: 'uppercase',
+                              background: u.plan === 'lifetime' ? '#fef3c7' : u.plan === 'yearly' ? '#dbeafe' : '#f3e8ff',
+                              color: u.plan === 'lifetime' ? '#92400e' : u.plan === 'yearly' ? '#1e40af' : '#6b21a8'
+                            }}
+                          >
+                            {u.plan}
+                          </span>
+                        </div>
+                        <div style={{ fontSize: 11, color: u.is_expired ? '#dc2626' : 'var(--ink-2)', fontWeight: u.is_expired ? 700 : 500, marginTop: 2 }}>
+                          {u.plan === 'lifetime' ? 'Lifetime' : (u.expires_at ? `${u.is_expired ? 'Expired' : 'Valid'}: ${u.expires_at}` : '—')}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Phone & WhatsApp */}
+                    {u.phone && (
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 12.5 }}>
+                        <span style={{ color: 'var(--ink-2)' }}>📞 <b>{u.phone}</b></span>
+                        <button
+                          type="button"
+                          className="btn xs"
+                          style={{ background: 'rgba(34, 197, 94, 0.12)', color: '#16a34a', border: '1px solid rgba(34, 197, 94, 0.25)', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                          onClick={() => openWhatsApp(u.phone, `Hello ${u.name}, from BillPro Support!`)}
+                        >
+                          <Icon.whatsapp size={13} /> Chat on WhatsApp
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Action Buttons Row */}
+                    <div style={{ display: 'grid', gridTemplateColumns: isSelf ? '1fr 1fr' : '1fr 1fr auto', gap: 8, paddingTop: 4, borderTop: '1px solid var(--line-soft)' }}>
+                      <button
+                        type="button"
+                        className="btn sm"
+                        style={{ fontWeight: 600, justifyContent: 'center' }}
+                        onClick={() => {
+                          setRenewTarget(u);
+                          setRenewPlan(u.plan || 'yearly');
+                          setRenewDays('');
+                        }}
+                      >
+                        <Icon.sparkles size={13} /> Renew Plan
+                      </button>
+                      <button
+                        type="button"
+                        className="btn sm"
+                        style={{ fontWeight: 600, justifyContent: 'center' }}
+                        onClick={() => setEditTarget({ ...u, new_password: '' })}
+                      >
+                        <Icon.edit size={13} /> Edit Client
+                      </button>
+                      {!isSelf && (
+                        <button
+                          type="button"
+                          className="btn sm red"
+                          title="Delete client"
+                          style={{ padding: '0 12px', justifyContent: 'center' }}
+                          onClick={() => setDeleteTarget(u)}
+                        >
+                          <Icon.trash size={13} />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })
+            )}
           </div>
         </div>
       )}

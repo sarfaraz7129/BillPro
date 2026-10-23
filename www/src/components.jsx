@@ -5,21 +5,56 @@ import { money } from './api.js';
 
 /* ---------------- modal ---------------- */
 export function Modal({ title, sub, children, footer, onClose, size = '' }) {
+  const isClosingViaPopRef = useRef(false);
+
   useEffect(() => {
-    const onKey = (e) => { if (e.key === 'Escape') onClose && onClose(); };
+    // Push dummy history entry so Android/browser back gesture closes the modal instead of exiting the PWA
+    try {
+      window.history.pushState({ billproModalOpen: true }, '');
+    } catch (_) {}
+
+    const onPop = () => {
+      isClosingViaPopRef.current = true;
+      if (onClose) onClose();
+    };
+
+    const onKey = (e) => {
+      if (e.key === 'Escape' && onClose) onClose();
+    };
+
+    window.addEventListener('popstate', onPop);
     document.addEventListener('keydown', onKey);
     document.body.style.overflow = 'hidden';
-    return () => { document.removeEventListener('keydown', onKey); document.body.style.overflow = ''; };
+
+    return () => {
+      window.removeEventListener('popstate', onPop);
+      document.removeEventListener('keydown', onKey);
+      document.body.style.overflow = '';
+      if (!isClosingViaPopRef.current && window.history.state?.billproModalOpen) {
+        try {
+          window.history.back();
+        } catch (_) {}
+      }
+    };
   }, [onClose]);
+
   return (
     <div className="modal-bg" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose && onClose(); }}>
       <div className={`modal ${size}`}>
         <div className="modal-h">
-          <div style={{ flex: 1 }}>
-            <h3>{title}</h3>
-            {sub && <div className="sub">{sub}</div>}
+          <div style={{ flex: 1, minWidth: 0, paddingRight: 8 }}>
+            <h3 style={{ margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{title}</h3>
+            {sub && <div className="sub" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sub}</div>}
           </div>
-          <button className="icon-btn" onClick={onClose}><Icon.close /></button>
+          <button
+            type="button"
+            className="btn sm"
+            onClick={onClose}
+            aria-label="Close modal"
+            style={{ fontWeight: 650, padding: '4px 10px', flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 4 }}
+          >
+            <Icon.close size={14} /> Close
+          </button>
         </div>
         <div className="modal-b">{children}</div>
         {footer && <div className="modal-f">{footer}</div>}

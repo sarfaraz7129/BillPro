@@ -299,15 +299,53 @@ function DocViewer({ doc, party, payments, business, onClose, onEdit, onShare, o
         size="wide" onClose={onClose}
         footer={
           <>
+            <button className="btn" onClick={onClose} style={{ fontWeight: 650, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <Icon.arrowLeft size={14} /> Back to Invoices
+            </button>
             {isSale && doc.due_amount > 0 && doc.status === 'active' && <button className="btn green" onClick={() => setPayOpen(true)}><Icon.rupee size={14} /> Receive payment</button>}
             <button className="btn" onClick={() => onDuplicate(doc)}><Icon.copy size={14} /> Duplicate</button>
             <button className="btn" onClick={() => onEdit(doc)}><Icon.edit size={14} /> Edit</button>
             <a href={pdfUrl(`invoice/${doc.id}`, true)} download={`${doc.number}.pdf`} className="btn primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Icon.download size={14} /> Download PDF</a>
             <a href={pdfUrl(`invoice/${doc.id}`)} target="_blank" rel="noreferrer" className="btn" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }} title="Open print-ready PDF in new tab"><Icon.print size={14} /> Print</a>
-            <button className="btn" onClick={onClose}>Close</button>
           </>
         }
       >
+        {/* Prominent Back to Invoices Header Banner */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.08) 0%, rgba(139, 92, 246, 0.08) 100%)',
+          border: '1px solid rgba(99, 102, 241, 0.22)',
+          borderRadius: 10,
+          padding: '8px 12px',
+          marginBottom: 14,
+          flexWrap: 'wrap',
+          gap: 8
+        }}>
+          <button
+            type="button"
+            className="btn primary sm"
+            onClick={onClose}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 700 }}
+          >
+            <Icon.arrowLeft size={16} /> Back to Invoices
+          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 12, color: 'var(--ink-2)', fontWeight: 600 }}>
+              Viewing {TYPE_LABEL[doc.type] || 'Invoice'} #{doc.number}
+            </span>
+            <button
+              type="button"
+              className="btn sm"
+              onClick={onClose}
+              style={{ fontWeight: 650, background: 'var(--surface)' }}
+            >
+              ✕ Close
+            </button>
+          </div>
+        </div>
+
         {/* Business Branding Banner */}
         <div style={{
           display: 'flex',
