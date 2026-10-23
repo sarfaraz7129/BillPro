@@ -15,7 +15,19 @@ router.get('/:id/pdf', async (req, res, next) => {
     const doc = db.prepare('SELECT * FROM documents WHERE id = ?').get(req.params.id);
     if (!doc) return res.status(404).send('Document not found');
     const business = db.prepare('SELECT * FROM businesses WHERE id = ?').get(doc.business_id);
-    const party = doc.party_id ? db.prepare('SELECT * FROM parties WHERE id = ?').get(doc.party_id) : null;
+    const rawParty = doc.party_id ? db.prepare('SELECT * FROM parties WHERE id = ?').get(doc.party_id) : null;
+    let party = rawParty;
+    if (rawParty) {
+      const { partyBalance } = require('../lib/service');
+      const bal = partyBalance(doc.business_id, rawParty.id);
+      party = {
+        ...rawParty,
+        balance: bal ? bal.balance : 0,
+        direction: bal ? bal.direction : 'DR',
+        creditAvailable: bal?.creditAvailable ?? null,
+        overLimit: !!bal?.overLimit
+      };
+    }
     const { documentPdf } = require('../lib/pdf');
     const buf = await documentPdf(doc, business, party);
     const filename = `${doc.number.replace(/[^\w-]/g, '_')}.pdf`;

@@ -229,6 +229,47 @@ function render(doc, business, party, accent) {
     pdf.moveTo(totalsX, totalsY - 2).lineTo(576, totalsY - 2).strokeColor(accent).lineWidth(1).stroke();
     row('TOTAL', doc.total, true);
 
+    // If sale or purchase: display Received Amount, Current Bill Due, Previous Balance, and Net Balance
+    const isSaleOrPurchase = doc.type === 'sale' || doc.type === 'purchase';
+    if (isSaleOrPurchase) {
+      totalsY += 4;
+      pdf.moveTo(totalsX, totalsY - 2).lineTo(576, totalsY - 2).strokeColor(LINE).lineWidth(0.5).stroke();
+
+      const paid = Number(doc.paid_amount) || 0;
+      const due = Number(doc.due_amount) || 0;
+
+      row('Amount Received', paid, false);
+      if (due > 0 || paid > 0) {
+        row('Current Bill Due', due, false);
+      }
+
+      // Calculate Previous Balance & Net Balance
+      if (party && party.balance !== undefined) {
+        const netBal = Number(party.balance) || 0;
+        const prevBal = Math.round((netBal - due) * 100) / 100;
+
+        if (Math.abs(prevBal) > 0.01) {
+          row(prevBal > 0 ? 'Previous Due' : 'Previous Advance', Math.abs(prevBal), false);
+        }
+
+        totalsY += 3;
+        // Highlighted Net Balance box
+        pdf.roundedRect(totalsX, totalsY - 1, 186, 21, 3).fillAndStroke('#f8fafc', '#cbd5e1');
+        pdf.font('Helvetica-Bold').fontSize(8.5).fillColor(netBal > 0 ? '#b91c1c' : (netBal < 0 ? '#15803d' : INK));
+        const netLabel = netBal > 0 ? 'NET BALANCE DUE' : (netBal < 0 ? 'NET ADVANCE' : 'NET BALANCE');
+        pdf.text(netLabel, totalsX + 6, totalsY + 5, { width: 104 });
+        pdf.text(fmt(Math.abs(netBal)), totalsX + 112, totalsY + 5, { width: 68, align: 'right' });
+        totalsY += 25;
+      } else if (due > 0) {
+        totalsY += 3;
+        pdf.roundedRect(totalsX, totalsY - 1, 186, 21, 3).fillAndStroke('#f8fafc', '#cbd5e1');
+        pdf.font('Helvetica-Bold').fontSize(8.5).fillColor('#b91c1c');
+        pdf.text('NET BALANCE DUE', totalsX + 6, totalsY + 5, { width: 104 });
+        pdf.text(fmt(due), totalsX + 112, totalsY + 5, { width: 68, align: 'right' });
+        totalsY += 25;
+      }
+    }
+
     // ---------- left column: words, HSN summary, bank ----------
     let ly = summaryY;
     const leftWidth = 330;

@@ -21,7 +21,18 @@ router.get('/invoice/:id', async (req, res, next) => {
   try {
     const doc = db.prepare('SELECT * FROM documents WHERE id = ? AND business_id = ?').get(req.params.id, req.business.id);
     if (!doc) return res.status(404).json({ error: 'Document not found' });
-    const party = doc.party_id ? db.prepare('SELECT * FROM parties WHERE id = ?').get(doc.party_id) : null;
+    const rawParty = doc.party_id ? db.prepare('SELECT * FROM parties WHERE id = ?').get(doc.party_id) : null;
+    let party = rawParty;
+    if (rawParty) {
+      const bal = partyBalance(req.business.id, rawParty.id);
+      party = {
+        ...rawParty,
+        balance: bal ? bal.balance : 0,
+        direction: bal ? bal.direction : 'DR',
+        creditAvailable: bal?.creditAvailable ?? null,
+        overLimit: !!bal?.overLimit
+      };
+    }
     const buf = await documentPdf(doc, req.business, party);
     send(res, buf, `${doc.number.replace(/[^\w-]/g, '_')}.pdf`, req.query.download === '1');
   } catch (e) { next(e); }

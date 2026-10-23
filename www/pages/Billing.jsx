@@ -25,6 +25,7 @@ export default function Billing({ business, user, initialType, initialDocId, got
   const [confirm, setConfirm] = useState(null);
   const [share, setShare] = useState(null);
   const [thermalDoc, setThermalDoc] = useState(null);
+  const [thermalParty, setThermalParty] = useState(null);
   const [whatsAppModal, setWhatsAppModal] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -145,7 +146,10 @@ export default function Billing({ business, user, initialType, initialDocId, got
                       <button
                         type="button"
                         className="btn xs"
-                        onClick={() => api.document(r.id).then((d) => setThermalDoc(d.document))}
+                        onClick={() => api.document(r.id).then((d) => {
+                          setThermalDoc(d.document);
+                          setThermalParty(d.party);
+                        })}
                       >
                         <Icon.file size={13} /> Thermal
                       </button>
@@ -195,7 +199,10 @@ export default function Billing({ business, user, initialType, initialDocId, got
                           <button
                             className="icon-btn"
                             title="Print Thermal Receipt (58mm/80mm)"
-                            onClick={() => api.document(r.id).then((d) => setThermalDoc(d.document))}
+                            onClick={() => api.document(r.id).then((d) => {
+                              setThermalDoc(d.document);
+                              setThermalParty(d.party);
+                            })}
                           >
                             <Icon.file size={14} />
                           </button>
@@ -236,7 +243,10 @@ export default function Billing({ business, user, initialType, initialDocId, got
         onEdit={(d) => { setView(null); setEditor({ type: d.type, doc: d }); }}
         onShare={(d) => setWhatsAppModal({ doc: d, party: view?.party })}
         onWhatsApp={(d, p) => setWhatsAppModal({ doc: d, party: p || view?.party })}
-        onThermal={(d) => setThermalDoc(d)}
+        onThermal={(d, p) => {
+          setThermalDoc(d);
+          setThermalParty(p || view?.party || null);
+        }}
         onPaid={async (d, amount, mode) => { try { await api.payDocument(d.id, { amount, mode }); toast('Payment recorded', 'ok'); const fresh = await api.document(d.id); setView(fresh); load(); } catch (e) { toast(e.message, 'err'); } }}
         onEwb={async (d, body) => { try { const r = await api.ewaybill(d.id, body); toast(`E-Way Bill ${r.ewaybillNo} generated`, 'ok'); setView(await api.document(d.id)); } catch (e) { toast(e.message, 'err'); } }}
         onEinv={async (d) => { try { const r = await api.einvoice(d.id); toast(`e-Invoice IRN generated: ${r.ackNo}`, 'ok'); setView(await api.document(d.id)); } catch (e) { toast(e.message, 'err'); } }}
@@ -246,9 +256,10 @@ export default function Billing({ business, user, initialType, initialDocId, got
       {thermalDoc && (
         <ThermalReceiptModal
           doc={thermalDoc}
+          party={thermalParty}
           business={business}
-          onClose={() => setThermalDoc(null)}
-          onWhatsApp={(d) => setWhatsAppModal({ doc: d, party: view?.party })}
+          onClose={() => { setThermalDoc(null); setThermalParty(null); }}
+          onWhatsApp={(d) => setWhatsAppModal({ doc: d, party: thermalParty || view?.party })}
           toast={toast}
         />
       )}
@@ -439,7 +450,7 @@ function DocViewer({ doc, party, payments, business, onClose, onEdit, onShare, o
 
         <div className="btn-row" style={{ marginBottom: 12, flexWrap: 'wrap' }}>
           <button className="btn sm" style={{ color: '#059669', fontWeight: 600, borderColor: '#a7f3d0' }} onClick={() => (onWhatsApp ? onWhatsApp(doc, party) : onShare(doc))}><Icon.whatsapp size={14} /> Send on WhatsApp</button>
-          <button className="btn sm" style={{ fontWeight: 600 }} onClick={() => onThermal && onThermal(doc)}><Icon.print size={14} /> 🧾 Thermal Receipt (58/80mm)</button>
+          <button className="btn sm" style={{ fontWeight: 600 }} onClick={() => onThermal && onThermal(doc, party)}><Icon.print size={14} /> 🧾 Thermal Receipt (58/80mm)</button>
           {isSale && (doc.irn
             ? <span className="pill brand"><Icon.stamp size={12} /> IRN {String(doc.irn).slice(0, 16)}…</span>
             : <button className="btn sm" onClick={() => onEinv(doc)}><Icon.stamp size={14} /> Generate e-Invoice (IRN)</button>)}
@@ -483,6 +494,70 @@ function DocViewer({ doc, party, payments, business, onClose, onEdit, onShare, o
               </>}
             <div className="grand"><span style={{ fontWeight: 700 }}>Total</span><span className="v">{money(doc.total)}</span></div>
             <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 6 }}>{doc.amount_in_words}</div>
+
+            {/* Payment & Net Balance Breakdown */}
+            <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px dashed var(--line)' }}>
+              <div className="kv">
+                <span className="k">Amount Received</span>
+                <span className="v pos">{money(doc.paid_amount || 0)}</span>
+              </div>
+              <div className="kv">
+                <span className="k">This Bill Due</span>
+                <span className={`v ${doc.due_amount > 0 ? 'neg' : ''}`}>{money(doc.due_amount || 0)}</span>
+              </div>
+
+              {party && party.balance !== undefined ? (() => {
+                const netBal = Number(party.balance) || 0;
+                const billDue = Number(doc.due_amount) || 0;
+                const prevBal = Math.round((netBal - billDue) * 100) / 100;
+                return (
+                  <>
+                    {Math.abs(prevBal) > 0.01 && (
+                      <div className="kv">
+                        <span className="k">{prevBal > 0 ? 'Previous Due' : 'Previous Advance'}</span>
+                        <span className={`v ${prevBal > 0 ? 'neg' : 'pos'}`}>{money(Math.abs(prevBal))}</span>
+                      </div>
+                    )}
+                    <div style={{
+                      marginTop: 8,
+                      padding: '8px 10px',
+                      borderRadius: 8,
+                      background: netBal > 0 ? '#fef2f2' : (netBal < 0 ? '#f0fdf4' : 'var(--surface-2)'),
+                      border: `1px solid ${netBal > 0 ? '#fecaca' : (netBal < 0 ? '#bbf7d0' : 'var(--line)')}`,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      fontWeight: 700,
+                      fontSize: 13
+                    }}>
+                      <span style={{ color: netBal > 0 ? '#b91c1c' : (netBal < 0 ? '#15803d' : 'var(--ink)') }}>
+                        {netBal > 0 ? 'Net Balance Due (To Collect):' : (netBal < 0 ? 'Net Advance Balance:' : 'Net Balance (Settled):')}
+                      </span>
+                      <span style={{ color: netBal > 0 ? '#b91c1c' : (netBal < 0 ? '#15803d' : 'var(--ink)') }}>
+                        {money(Math.abs(netBal))}
+                      </span>
+                    </div>
+                  </>
+                );
+              })() : doc.due_amount > 0 ? (
+                <div style={{
+                  marginTop: 8,
+                  padding: '8px 10px',
+                  borderRadius: 8,
+                  background: '#fef2f2',
+                  border: '1px solid #fecaca',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  fontWeight: 700,
+                  fontSize: 13,
+                  color: '#b91c1c'
+                }}>
+                  <span>Net Balance Due:</span>
+                  <span>{money(doc.due_amount)}</span>
+                </div>
+              ) : null}
+            </div>
           </div>
           <div>
             <h3 style={{ fontSize: 13, marginBottom: 8 }}>Payments on this document</h3>

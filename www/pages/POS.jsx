@@ -387,6 +387,7 @@ export default function POS({ business, toast }) {
       {thermalDoc && (
         <ThermalReceiptModal
           doc={thermalDoc}
+          party={party}
           business={business}
           onClose={() => setThermalDoc(null)}
           onWhatsApp={(d) => setWhatsAppDoc(d)}

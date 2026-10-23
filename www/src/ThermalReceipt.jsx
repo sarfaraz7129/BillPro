@@ -3,10 +3,30 @@ import { api, money, fmtDate, fmtDateTime } from './api.js';
 import { Icon } from './ui.jsx';
 import { Modal } from './components.jsx';
 
-export default function ThermalReceiptModal({ doc, business, onClose, onWhatsApp, toast }) {
+export default function ThermalReceiptModal({ doc, party, business, onClose, onWhatsApp, toast }) {
   const [width, setWidth] = useState('80'); // '58' or '80'
   const [qrUrl, setQrUrl] = useState('');
   const [copied, setCopied] = useState(false);
+  const [partyData, setPartyData] = useState(party || null);
+
+  useEffect(() => {
+    let active = true;
+    if (party) {
+      setPartyData(party);
+    } else if (doc && doc.party_id) {
+      api.party(doc.party_id)
+        .then((res) => {
+          if (active && res && res.party) {
+            setPartyData({
+              ...res.party,
+              balance: res.balance !== undefined ? res.balance : res.party.balance
+            });
+          }
+        })
+        .catch(() => {});
+    }
+    return () => { active = false; };
+  }, [doc?.party_id, party]);
 
   useEffect(() => {
     let active = true;
@@ -46,6 +66,11 @@ export default function ThermalReceiptModal({ doc, business, onClose, onWhatsApp
       return l + ' '.repeat(space) + r;
     };
 
+    const hasPartyBal = partyData && partyData.balance !== undefined;
+    const netBal = hasPartyBal ? Number(partyData.balance) || 0 : Number(doc.due_amount) || 0;
+    const billDue = Number(doc.due_amount) || 0;
+    const prevBal = hasPartyBal ? Math.round((netBal - billDue) * 100) / 100 : 0;
+
     const text = [
       double,
       center(business.name.toUpperCase()),
@@ -77,8 +102,11 @@ export default function ThermalReceiptModal({ doc, business, onClose, onWhatsApp
       double,
       row('GRAND TOTAL:', money(doc.total)),
       double,
-      row('Paid Amount:', money(doc.paid_amount)),
-      doc.due_amount > 0 ? row('Balance Due:', money(doc.due_amount)) : '',
+      row('Paid Amount:', money(doc.paid_amount || 0)),
+      (billDue > 0 || doc.paid_amount > 0) ? row('This Bill Due:', money(billDue)) : '',
+      Math.abs(prevBal) > 0.01 ? row(prevBal > 0 ? 'Previous Due:' : 'Previous Advance:', money(Math.abs(prevBal))) : '',
+      line,
+      row(netBal > 0 ? 'NET BALANCE DUE:' : (netBal < 0 ? 'NET ADVANCE:' : 'NET BALANCE:'), money(Math.abs(netBal))),
       line,
       business.upi_id ? center(`UPI ID: ${business.upi_id}`) : '',
       center('Thank you! Visit again.'),
@@ -272,15 +300,62 @@ export default function ThermalReceiptModal({ doc, business, onClose, onWhatsApp
           </div>
 
           <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-            <span>Paid:</span>
-            <span>{money(doc.paid_amount)}</span>
+            <span>Paid / Received:</span>
+            <span>{money(doc.paid_amount || 0)}</span>
           </div>
-          {doc.due_amount > 0 && (
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold' }}>
-              <span>Balance Due:</span>
-              <span>{money(doc.due_amount)}</span>
+          {(doc.due_amount > 0 || doc.paid_amount > 0) && (
+            <div style={{ display: 'flex', justifyContent: 'space-between', color: doc.due_amount > 0 ? '#b91c1c' : 'inherit' }}>
+              <span>This Bill Due:</span>
+              <span>{money(doc.due_amount || 0)}</span>
             </div>
           )}
+
+          {partyData && partyData.balance !== undefined ? (() => {
+            const netBal = Number(partyData.balance) || 0;
+            const billDue = Number(doc.due_amount) || 0;
+            const prevBal = Math.round((netBal - billDue) * 100) / 100;
+            return (
+              <div style={{ marginTop: 4 }}>
+                {Math.abs(prevBal) > 0.01 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9em', color: '#555' }}>
+                    <span>{prevBal > 0 ? 'Previous Due:' : 'Previous Advance:'}</span>
+                    <span>{money(Math.abs(prevBal))}</span>
+                  </div>
+                )}
+                <div style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  fontWeight: 'bold',
+                  fontSize: '1em',
+                  padding: '4px 6px',
+                  marginTop: 3,
+                  borderRadius: 4,
+                  background: netBal > 0 ? '#fef2f2' : (netBal < 0 ? '#f0fdf4' : '#f8fafc'),
+                  border: `1px solid ${netBal > 0 ? '#dc2626' : (netBal < 0 ? '#16a34a' : '#94a3b8')}`,
+                  color: netBal > 0 ? '#b91c1c' : (netBal < 0 ? '#15803d' : '#0f172a')
+                }}>
+                  <span>{netBal > 0 ? 'NET BALANCE DUE:' : (netBal < 0 ? 'NET ADVANCE:' : 'NET BALANCE:')}</span>
+                  <span>{money(Math.abs(netBal))}</span>
+                </div>
+              </div>
+            );
+          })() : doc.due_amount > 0 ? (
+            <div style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              fontWeight: 'bold',
+              fontSize: '1em',
+              padding: '4px 6px',
+              marginTop: 3,
+              borderRadius: 4,
+              background: '#fef2f2',
+              border: '1px solid #dc2626',
+              color: '#b91c1c'
+            }}>
+              <span>NET BALANCE DUE:</span>
+              <span>{money(doc.due_amount)}</span>
+            </div>
+          ) : null}
 
           {/* Dynamic UPI QR Code */}
           {qrUrl && (
