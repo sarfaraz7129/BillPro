@@ -100,14 +100,12 @@ export default function ThermalReceiptModal({ doc, party, business, onClose, onW
         : [row('CGST:', money(doc.cgst)), row('SGST:', money(doc.sgst))].join('\n'),
       doc.round_off ? row('Round Off:', money(doc.round_off)) : '',
       double,
-      row('GRAND TOTAL:', money(doc.total)),
-      double,
-      row('Paid Amount:', money(doc.paid_amount || 0)),
-      (billDue > 0 || doc.paid_amount > 0) ? row('This Bill Due:', money(billDue)) : '',
+      row('CURRENT BILL TOTAL:', money(doc.total)),
       Math.abs(prevBal) > 0.01 ? row(prevBal > 0 ? 'Previous Due:' : 'Previous Advance:', money(Math.abs(prevBal))) : '',
+      row('Amount Received:', money(doc.paid_amount || 0)),
       line,
       row(netBal > 0 ? 'NET BALANCE DUE:' : (netBal < 0 ? 'NET ADVANCE:' : 'NET BALANCE:'), money(Math.abs(netBal))),
-      line,
+      double,
       business.upi_id ? center(`UPI ID: ${business.upi_id}`) : '',
       center('Thank you! Visit again.'),
       business.terms ? center(business.terms) : '',
@@ -294,41 +292,34 @@ export default function ThermalReceiptModal({ doc, party, business, onClose, onW
 
           <div className="double">
             <div className="grand-total">
-              <span>TOTAL PAYABLE:</span>
+              <span>CURRENT BILL TOTAL:</span>
               <span>{money(doc.total)}</span>
             </div>
           </div>
-
-          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-            <span>Paid / Received:</span>
-            <span>{money(doc.paid_amount || 0)}</span>
-          </div>
-          {(doc.due_amount > 0 || doc.paid_amount > 0) && (
-            <div style={{ display: 'flex', justifyContent: 'space-between', color: doc.due_amount > 0 ? '#b91c1c' : 'inherit' }}>
-              <span>This Bill Due:</span>
-              <span>{money(doc.due_amount || 0)}</span>
-            </div>
-          )}
 
           {partyData && partyData.balance !== undefined ? (() => {
             const netBal = Number(partyData.balance) || 0;
             const billDue = Number(doc.due_amount) || 0;
             const prevBal = Math.round((netBal - billDue) * 100) / 100;
             return (
-              <div style={{ marginTop: 4 }}>
+              <div style={{ marginTop: 2 }}>
                 {Math.abs(prevBal) > 0.01 && (
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9em', color: '#555' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#555', fontSize: '0.95em' }}>
                     <span>{prevBal > 0 ? 'Previous Due:' : 'Previous Advance:'}</span>
                     <span>{money(Math.abs(prevBal))}</span>
                   </div>
                 )}
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 2 }}>
+                  <span>Amount Received:</span>
+                  <span>{money(doc.paid_amount || 0)}</span>
+                </div>
                 <div style={{
                   display: 'flex',
                   justifyContent: 'space-between',
                   fontWeight: 'bold',
                   fontSize: '1em',
                   padding: '4px 6px',
-                  marginTop: 3,
+                  marginTop: 4,
                   borderRadius: 4,
                   background: netBal > 0 ? '#fef2f2' : (netBal < 0 ? '#f0fdf4' : '#f8fafc'),
                   border: `1px solid ${netBal > 0 ? '#dc2626' : (netBal < 0 ? '#16a34a' : '#94a3b8')}`,
@@ -339,23 +330,31 @@ export default function ThermalReceiptModal({ doc, party, business, onClose, onW
                 </div>
               </div>
             );
-          })() : doc.due_amount > 0 ? (
-            <div style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              fontWeight: 'bold',
-              fontSize: '1em',
-              padding: '4px 6px',
-              marginTop: 3,
-              borderRadius: 4,
-              background: '#fef2f2',
-              border: '1px solid #dc2626',
-              color: '#b91c1c'
-            }}>
-              <span>NET BALANCE DUE:</span>
-              <span>{money(doc.due_amount)}</span>
+          })() : (
+            <div style={{ marginTop: 2 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span>Amount Received:</span>
+                <span>{money(doc.paid_amount || 0)}</span>
+              </div>
+              {doc.due_amount > 0 && (
+                <div style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  fontWeight: 'bold',
+                  fontSize: '1em',
+                  padding: '4px 6px',
+                  marginTop: 4,
+                  borderRadius: 4,
+                  background: '#fef2f2',
+                  border: '1px solid #dc2626',
+                  color: '#b91c1c'
+                }}>
+                  <span>NET BALANCE DUE:</span>
+                  <span>{money(doc.due_amount)}</span>
+                </div>
+              )}
             </div>
-          ) : null}
+          )}
 
           {/* Dynamic UPI QR Code */}
           {qrUrl && (

@@ -492,20 +492,11 @@ function DocViewer({ doc, party, payments, business, onClose, onEdit, onShare, o
                 <div className="kv"><span className="k">CGST</span><span className="v">{money(doc.cgst)}</span></div>
                 <div className="kv"><span className="k">SGST</span><span className="v">{money(doc.sgst)}</span></div>
               </>}
-            <div className="grand"><span style={{ fontWeight: 700 }}>Total</span><span className="v">{money(doc.total)}</span></div>
+            <div className="grand"><span style={{ fontWeight: 700 }}>Current Bill Total</span><span className="v">{money(doc.total)}</span></div>
             <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 6 }}>{doc.amount_in_words}</div>
 
             {/* Payment & Net Balance Breakdown */}
             <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px dashed var(--line)' }}>
-              <div className="kv">
-                <span className="k">Amount Received</span>
-                <span className="v pos">{money(doc.paid_amount || 0)}</span>
-              </div>
-              <div className="kv">
-                <span className="k">This Bill Due</span>
-                <span className={`v ${doc.due_amount > 0 ? 'neg' : ''}`}>{money(doc.due_amount || 0)}</span>
-              </div>
-
               {party && party.balance !== undefined ? (() => {
                 const netBal = Number(party.balance) || 0;
                 const billDue = Number(doc.due_amount) || 0;
@@ -518,6 +509,10 @@ function DocViewer({ doc, party, payments, business, onClose, onEdit, onShare, o
                         <span className={`v ${prevBal > 0 ? 'neg' : 'pos'}`}>{money(Math.abs(prevBal))}</span>
                       </div>
                     )}
+                    <div className="kv">
+                      <span className="k">Amount Received</span>
+                      <span className="v pos">{money(doc.paid_amount || 0)}</span>
+                    </div>
                     <div style={{
                       marginTop: 8,
                       padding: '8px 10px',
@@ -531,7 +526,7 @@ function DocViewer({ doc, party, payments, business, onClose, onEdit, onShare, o
                       fontSize: 13
                     }}>
                       <span style={{ color: netBal > 0 ? '#b91c1c' : (netBal < 0 ? '#15803d' : 'var(--ink)') }}>
-                        {netBal > 0 ? 'Net Balance Due (To Collect):' : (netBal < 0 ? 'Net Advance Balance:' : 'Net Balance (Settled):')}
+                        {netBal > 0 ? 'Net Balance Due:' : (netBal < 0 ? 'Net Advance Balance:' : 'Net Balance:')}
                       </span>
                       <span style={{ color: netBal > 0 ? '#b91c1c' : (netBal < 0 ? '#15803d' : 'var(--ink)') }}>
                         {money(Math.abs(netBal))}
@@ -539,24 +534,32 @@ function DocViewer({ doc, party, payments, business, onClose, onEdit, onShare, o
                     </div>
                   </>
                 );
-              })() : doc.due_amount > 0 ? (
-                <div style={{
-                  marginTop: 8,
-                  padding: '8px 10px',
-                  borderRadius: 8,
-                  background: '#fef2f2',
-                  border: '1px solid #fecaca',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  fontWeight: 700,
-                  fontSize: 13,
-                  color: '#b91c1c'
-                }}>
-                  <span>Net Balance Due:</span>
-                  <span>{money(doc.due_amount)}</span>
-                </div>
-              ) : null}
+              })() : (
+                <>
+                  <div className="kv">
+                    <span className="k">Amount Received</span>
+                    <span className="v pos">{money(doc.paid_amount || 0)}</span>
+                  </div>
+                  {doc.due_amount > 0 && (
+                    <div style={{
+                      marginTop: 8,
+                      padding: '8px 10px',
+                      borderRadius: 8,
+                      background: '#fef2f2',
+                      border: '1px solid #fecaca',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      fontWeight: 700,
+                      fontSize: 13,
+                      color: '#b91c1c'
+                    }}>
+                      <span>Net Balance Due:</span>
+                      <span>{money(doc.due_amount)}</span>
+                    </div>
+                  )}
+                </>
+              )}
             </div>
           </div>
           <div>

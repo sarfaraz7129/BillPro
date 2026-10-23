@@ -227,9 +227,9 @@ function render(doc, business, party, accent) {
     if (doc.cess) row('Cess', doc.cess);
     if (doc.round_off) row('Round off', doc.round_off);
     pdf.moveTo(totalsX, totalsY - 2).lineTo(576, totalsY - 2).strokeColor(accent).lineWidth(1).stroke();
-    row('TOTAL', doc.total, true);
+    row('CURRENT BILL TOTAL', doc.total, true);
 
-    // If sale or purchase: display Received Amount, Current Bill Due, Previous Balance, and Net Balance
+    // If sale or purchase: display Current Bill Total, Previous Due, Amount Received, Net Balance
     const isSaleOrPurchase = doc.type === 'sale' || doc.type === 'purchase';
     if (isSaleOrPurchase) {
       totalsY += 4;
@@ -237,11 +237,6 @@ function render(doc, business, party, accent) {
 
       const paid = Number(doc.paid_amount) || 0;
       const due = Number(doc.due_amount) || 0;
-
-      row('Amount Received', paid, false);
-      if (due > 0 || paid > 0) {
-        row('Current Bill Due', due, false);
-      }
 
       // Calculate Previous Balance & Net Balance
       if (party && party.balance !== undefined) {
@@ -252,6 +247,8 @@ function render(doc, business, party, accent) {
           row(prevBal > 0 ? 'Previous Due' : 'Previous Advance', Math.abs(prevBal), false);
         }
 
+        row('Amount Received', paid, false);
+
         totalsY += 3;
         // Highlighted Net Balance box
         pdf.roundedRect(totalsX, totalsY - 1, 186, 21, 3).fillAndStroke('#f8fafc', '#cbd5e1');
@@ -260,13 +257,16 @@ function render(doc, business, party, accent) {
         pdf.text(netLabel, totalsX + 6, totalsY + 5, { width: 104 });
         pdf.text(fmt(Math.abs(netBal)), totalsX + 112, totalsY + 5, { width: 68, align: 'right' });
         totalsY += 25;
-      } else if (due > 0) {
-        totalsY += 3;
-        pdf.roundedRect(totalsX, totalsY - 1, 186, 21, 3).fillAndStroke('#f8fafc', '#cbd5e1');
-        pdf.font('Helvetica-Bold').fontSize(8.5).fillColor('#b91c1c');
-        pdf.text('NET BALANCE DUE', totalsX + 6, totalsY + 5, { width: 104 });
-        pdf.text(fmt(due), totalsX + 112, totalsY + 5, { width: 68, align: 'right' });
-        totalsY += 25;
+      } else {
+        row('Amount Received', paid, false);
+        if (due > 0) {
+          totalsY += 3;
+          pdf.roundedRect(totalsX, totalsY - 1, 186, 21, 3).fillAndStroke('#f8fafc', '#cbd5e1');
+          pdf.font('Helvetica-Bold').fontSize(8.5).fillColor('#b91c1c');
+          pdf.text('NET BALANCE DUE', totalsX + 6, totalsY + 5, { width: 104 });
+          pdf.text(fmt(due), totalsX + 112, totalsY + 5, { width: 68, align: 'right' });
+          totalsY += 25;
+        }
       }
     }
 
