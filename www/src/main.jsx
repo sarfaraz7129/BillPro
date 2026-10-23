@@ -589,7 +589,7 @@ export default function App() {
         </div>
       )}
 
-      {bizModal && <NewBusiness businesses={businesses} onClose={() => setBizModal(false)} toast={toast}
+      {bizModal && <NewBusiness businesses={businesses} user={user} onClose={() => setBizModal(false)} toast={toast}
         onCreated={async (b) => {
           const list = await api.businesses();
           setBusinesses(list.businesses);
@@ -604,7 +604,9 @@ export default function App() {
   );
 }
 
-function NewBusiness({ businesses, onClose, onCreated, toast }) {
+function NewBusiness({ businesses, onClose, onCreated, toast, user }) {
+  const [clients, setClients] = useState([]);
+  const [ownerId, setOwnerId] = useState(user?.id || '');
   const [form, setForm] = useState({
     name: '', gstin: '', address: '', city: '', state: '', state_code: '', pincode: '', phone: '', email: '',
     invoice_prefix: 'INV', default_gst_rate: 18, credit_days: 30, bank_name: '', bank_account_no: '', bank_ifsc: '',
@@ -614,10 +616,24 @@ function NewBusiness({ businesses, onClose, onCreated, toast }) {
   const [err, setErr] = useState('');
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
+  useEffect(() => {
+    if (user?.is_superadmin) {
+      api.adminUsers().then((res) => {
+        if (res && res.users) {
+          setClients(res.users);
+        }
+      }).catch(() => {});
+    }
+  }, [user?.is_superadmin]);
+
   const save = async () => {
     setErr(''); setBusy(true);
     try {
-      const r = await api.createBusiness(form);
+      const payload = { ...form };
+      if (user?.is_superadmin && ownerId) {
+        payload.owner_id = Number(ownerId);
+      }
+      const r = await api.createBusiness(payload);
       toast(`${r.business.name} is ready`, 'ok');
       onCreated(r.business);
     } catch (e) { setErr(e.message); setBusy(false); }
@@ -629,6 +645,20 @@ function NewBusiness({ businesses, onClose, onCreated, toast }) {
       footer={<><button className="btn" onClick={onClose}>Cancel</button><button className="btn primary" onClick={save} disabled={busy}>{busy ? 'Creating…' : 'Create business'}</button></>}>
       {err && <div className="banner err"><Icon.alert size={15} />{err}</div>}
       <div className="form-grid">
+        {user?.is_superadmin && (
+          <Field label="Owner / Client Account" full hint="Assign this business to a customer account or retain under platform Super Admin">
+            <select
+              className="input"
+              value={ownerId}
+              onChange={(e) => setOwnerId(e.target.value)}
+            >
+              <option value={user.id}>Super Admin (Self / Platform Business)</option>
+              {clients.filter(c => c.id !== user.id).map(c => (
+                <option key={c.id} value={c.id}>{c.name} ({c.email || c.phone || 'ID: ' + c.id})</option>
+              ))}
+            </select>
+          </Field>
+        )}
         <Field label="Business name" req><input className="input" value={form.name} onChange={(e) => set('name', e.target.value)} autoFocus placeholder="Coastal Traders" /></Field>
         <Field label="GSTIN" hint="Optional for unregistered / composition dealers">
           <input className="input" value={form.gstin} onChange={(e) => set('gstin', e.target.value.toUpperCase())} placeholder="29AAAAA1111A1Z1" />

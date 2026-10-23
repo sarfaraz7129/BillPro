@@ -6,6 +6,7 @@ const { auth, PERMISSIONS } = require('../middleware');
 const { istToday, istAddDays } = require('../lib/time');
 const { getSystemSettings, updateSystemSettings } = require('../lib/settings');
 const { normaliseGstin } = require('../lib/gst');
+const { saveToRegistry } = require('../lib/persistent-clients');
 
 const router = express.Router();
 const ALL_PERMS = Object.keys(PERMISSIONS);
@@ -166,6 +167,27 @@ router.post('/users', (req, res) => {
 
   const newBizId = bizInsert.lastInsertRowid;
   db.prepare('UPDATE users SET active_business_id = ? WHERE id = ?').run(newBizId, newUserId);
+
+  saveToRegistry({
+    name: name.trim(),
+    email: cleanEmail,
+    phone: (phone || '').trim() || null,
+    password: rawPassword,
+    plan,
+    expires_at: finalExpiry,
+    status: 'active',
+    business: {
+      name: cleanBizName,
+      legal_name: cleanLegal,
+      gstin: cleanGstin,
+      pan: cleanPan,
+      phone: (phone || '').trim() || null,
+      city: cleanCity,
+      state: cleanState,
+      pincode: cleanPincode,
+      upi_id: cleanUpi
+    }
+  });
 
   const origin = req.headers.origin || (req.headers.host ? `${req.protocol}://${req.headers.host}` : 'https://billpro.in');
   const expiryText = finalExpiry ? `Valid until ${finalExpiry}` : 'Lifetime Access (Never expires)';
@@ -479,6 +501,21 @@ router.post('/inquiries/:id/convert', (req, res) => {
 
   const newBizId = bizInsert.lastInsertRowid;
   db.prepare('UPDATE users SET active_business_id = ? WHERE id = ?').run(newBizId, newUserId);
+
+  saveToRegistry({
+    name: inquiry.name,
+    email: candidateEmail,
+    phone: inquiry.phone,
+    password: rawPassword,
+    plan,
+    expires_at: finalExpiry,
+    status: 'active',
+    business: {
+      name: cleanBizName,
+      phone: inquiry.phone,
+      city: inquiry.city || null
+    }
+  });
 
   // Mark inquiry as onboarded
   db.prepare("UPDATE inquiries SET status = 'onboarded' WHERE id = ?").run(inqId);

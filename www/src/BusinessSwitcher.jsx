@@ -62,22 +62,27 @@ export default function BusinessSwitcher({ businesses, active, onSwitch, onAdd, 
               </div>
             </div>
           )}
-          {businesses.map((b) => (
-            <div key={b.id} className={`item ${b.id === active.id ? 'on' : ''}`} onClick={(e) => { e.stopPropagation(); onSwitch(b); setOpen(false); }}>
-              <span className="biz-dot" style={{ background: b.logo_url ? '#ffffff' : (b.color || '#4f46e5'), width: 26, height: 26, fontSize: 11, overflow: 'hidden', border: b.logo_url ? '1px solid var(--line)' : 'none' }}>
-                {b.logo_url ? (
-                  <img src={b.logo_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
-                ) : (
-                  (b.name || '?').slice(0, 1).toUpperCase()
-                )}
-              </span>
-              <div style={{ minWidth: 0, flex: 1 }}>
-                <div className="nm">{b.name}</div>
-                <div className="st">{b.city || 'No city'} · Sales {moneyShort(b.stats ? b.stats.sales : 0)}</div>
+          <div className="biz-list" style={{ maxHeight: '260px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 2 }}>
+            {businesses.map((b) => (
+              <div key={b.id} className={`item ${b.id === active.id ? 'on' : ''}`} onClick={(e) => { e.stopPropagation(); onSwitch(b); setOpen(false); }}>
+                <span className="biz-dot" style={{ background: b.logo_url ? '#ffffff' : (b.color || '#4f46e5'), width: 26, height: 26, fontSize: 11, overflow: 'hidden', border: b.logo_url ? '1px solid var(--line)' : 'none' }}>
+                  {b.logo_url ? (
+                    <img src={b.logo_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                  ) : (
+                    (b.name || '?').slice(0, 1).toUpperCase()
+                  )}
+                </span>
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div className="nm">
+                    {b.name}
+                    {b.owner_name ? <span style={{ fontSize: 11, fontWeight: 500, color: 'var(--muted)', marginLeft: 6 }}>({b.owner_name})</span> : null}
+                  </div>
+                  <div className="st">{b.city || 'No city'} · Sales {moneyShort(b.stats ? b.stats.sales : 0)}</div>
+                </div>
+                {b.id === active.id && <Icon.check size={15} className="check" />}
               </div>
-              {b.id === active.id && <Icon.check size={15} className="check" />}
-            </div>
-          ))}
+            ))}
+          </div>
           <hr />
           {onSettings && (
             <div className="add" style={{ color: 'var(--ink)' }} onClick={(e) => { e.stopPropagation(); onSettings(); setOpen(false); }}>

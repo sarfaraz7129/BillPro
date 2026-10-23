@@ -13,7 +13,17 @@ router.use(auth);
 
 /** All businesses for this account + headline numbers for the consolidated view. */
 router.get('/', auth, (req, res) => {
-  const businesses = getUserBusinesses(req.user.id, req.user.email);
+  let businesses;
+  if (req.user.is_superadmin) {
+    businesses = db.prepare(`
+      SELECT b.*, u.name AS owner_name, u.email AS owner_email, u.phone AS owner_phone
+      FROM businesses b
+      LEFT JOIN users u ON u.id = b.owner_id
+      ORDER BY b.id ASC
+    `).all();
+  } else {
+    businesses = getUserBusinesses(req.user.id, req.user.email);
+  }
   const enriched = businesses.map((b) => ({ ...b, stats: businessStats(b.id) }));
   res.json({ businesses: enriched });
 });
@@ -23,6 +33,7 @@ router.post('/', auth, (req, res) => {
   if (!b.name) return res.status(400).json({ error: 'Business name is required' });
   const gstin = normaliseGstin(b.gstin);
   if (b.gstin && !gstin) return res.status(400).json({ error: 'GSTIN format looks invalid (expected 15 characters, e.g. 29ABCDE1234F1Z5)' });
+  const ownerId = (req.user.is_superadmin && b.owner_id) ? Number(b.owner_id) : req.user.id;
   const info = db.prepare(`INSERT INTO businesses
     (owner_id, name, legal_name, gstin, pan, address, city, state, state_code, pincode, phone, email, website,
      logo_url, bank_name, bank_account_no, bank_ifsc, bank_branch, upi_id, invoice_prefix, quoter_prefix,
@@ -32,7 +43,7 @@ router.post('/', auth, (req, res) => {
             @invoice_prefix, @quoter_prefix, @default_gst_rate, @composition_scheme, @invoice_theme, @invoice_footer,
             @terms, @credit_days, @color)`)
     .run({
-      owner_id: req.user.id,
+      owner_id: ownerId,
       name: b.name,
       legal_name: b.legal_name || b.name,
       gstin,

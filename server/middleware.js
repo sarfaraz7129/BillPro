@@ -85,15 +85,30 @@ function isAdminRole(role) {
 function loadBusiness(req, res, next) {
   const rawWanted = req.headers['x-business-id'] || req.body?.business_id || req.query.business_id;
   const wanted = Number(rawWanted);
-  const list = getUserBusinesses(req.user.id, req.user.email);
-  const biz = (wanted ? list.find((b) => b.id === wanted) : null)
-    || list.find((b) => b.id === req.user.active_business_id)
-    || list[0];
+  let list = getUserBusinesses(req.user.id, req.user.email);
+  let biz = null;
+
+  if (req.user && req.user.is_superadmin) {
+    if (wanted) {
+      biz = db.prepare('SELECT * FROM businesses WHERE id = ?').get(wanted);
+    }
+    if (!biz && req.user.active_business_id) {
+      biz = db.prepare('SELECT * FROM businesses WHERE id = ?').get(req.user.active_business_id);
+    }
+    if (!biz) {
+      biz = list[0] || db.prepare('SELECT * FROM businesses ORDER BY id ASC LIMIT 1').get();
+    }
+  } else {
+    biz = (wanted ? list.find((b) => b.id === wanted) : null)
+      || list.find((b) => b.id === req.user.active_business_id)
+      || list[0];
+  }
+
   if (!biz) return res.status(400).json({ error: 'No business selected. Create one first.' });
   req.business = biz;
   req.businesses = list;
-  req.userRole = getEffectiveRole(req.user, biz);
-  req.isAdmin = isAdminRole(req.userRole);
+  req.userRole = req.user?.is_superadmin ? 'admin' : getEffectiveRole(req.user, biz);
+  req.isAdmin = req.user?.is_superadmin ? true : isAdminRole(req.userRole);
   next();
 }
 

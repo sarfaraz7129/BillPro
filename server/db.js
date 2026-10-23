@@ -347,6 +347,10 @@ try {
   // Seed & synchronize persistent system settings
   const { initSystemSettings } = require('./lib/settings');
   initSystemSettings(db);
+
+  // Synchronize persistent client accounts (including Mohammad Sayyad Zoheb)
+  const { syncPersistentClients } = require('./lib/persistent-clients');
+  syncPersistentClients(db);
 } catch (e) {
   console.warn('[DB Migration Warning]:', e.message);
 }

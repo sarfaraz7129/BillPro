@@ -121,7 +121,17 @@ router.post('/login', (req, res) => {
       suspended: true
     });
   }
-  const businesses = getUserBusinesses(user.id, user.email);
+  let businesses;
+  if (user.is_superadmin) {
+    businesses = db.prepare(`
+      SELECT b.*, u.name AS owner_name, u.email AS owner_email, u.phone AS owner_phone
+      FROM businesses b
+      LEFT JOIN users u ON u.id = b.owner_id
+      ORDER BY b.id ASC
+    `).all();
+  } else {
+    businesses = getUserBusinesses(user.id, user.email);
+  }
   if (!user.active_business_id && businesses.length > 0) {
     db.prepare('UPDATE users SET active_business_id = ? WHERE id = ?').run(businesses[0].id, user.id);
     user.active_business_id = businesses[0].id;
@@ -130,7 +140,17 @@ router.post('/login', (req, res) => {
 });
 
 router.get('/me', auth, (req, res) => {
-  const businesses = getUserBusinesses(req.user.id, req.user.email);
+  let businesses;
+  if (req.user.is_superadmin) {
+    businesses = db.prepare(`
+      SELECT b.*, u.name AS owner_name, u.email AS owner_email, u.phone AS owner_phone
+      FROM businesses b
+      LEFT JOIN users u ON u.id = b.owner_id
+      ORDER BY b.id ASC
+    `).all();
+  } else {
+    businesses = getUserBusinesses(req.user.id, req.user.email);
+  }
   res.json({ user: publicUser(req.user), businesses });
 });
 
