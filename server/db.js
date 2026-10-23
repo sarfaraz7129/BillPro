@@ -326,9 +326,18 @@ try {
     } else if (configuredAdminEmail) {
       const configuredAdmin = db.prepare('SELECT id FROM users WHERE lower(email) = ?').get(configuredAdminEmail);
       if (configuredAdmin) {
+        // Promote the selected existing private account without changing its password.
         db.prepare("UPDATE users SET is_superadmin = 1, role = 'owner' WHERE id = ?").run(configuredAdmin.id);
       } else {
-        console.warn('[BillPro Security] BILLPRO_SUPERADMIN_EMAIL does not match an existing user; no new platform admin was created.');
+        const bootstrapPassword = String(process.env.BILLPRO_SUPERADMIN_PASSWORD || '');
+        if (bootstrapPassword.length < 16 || Buffer.byteLength(bootstrapPassword, 'utf8') > 72) {
+          console.warn('[BillPro Security] New platform admin not created: set BILLPRO_SUPERADMIN_PASSWORD to a unique 16-72 byte secret in the environment.');
+        } else {
+          db.prepare(`INSERT INTO users (name, email, password_hash, role, permissions, is_superadmin, status, plan)
+            VALUES (?, ?, ?, 'owner', ?, 1, 'active', 'lifetime')`)
+            .run('Platform Administrator', configuredAdminEmail, bcrypt.hashSync(bootstrapPassword, 12), ALL_PERMS);
+          console.warn('[BillPro Security] Created the configured platform administrator account.');
+        }
       }
     }
     console.warn('[BillPro Security] Public demo/admin aliases are isolated from platform-wide access in production.');
