@@ -5,6 +5,7 @@ import { Field, Picker, Modal, GstRateInput } from '../src/components.jsx';
 
 const blank = (business, type) => ({
   type,
+  isEstimate: (type === 'invoice' || type === 'sale') ? (business.default_bill_mode !== 'gst') : false,
   date: today(),
   dueDate: type === 'expense' ? '' : new Date(Date.now() + (business.credit_days || 30) * 86400000).toISOString().slice(0, 10),
   partyId: null, partyName: '', partyGstin: '', partyStateCode: '',
@@ -28,6 +29,9 @@ export default function DocumentEditor({ business, type, doc, user, onClose, onS
     return {
       ...blank(business, doc.type || type),
       ...doc,
+      isEstimate: doc.is_estimate !== undefined
+        ? Boolean(doc.is_estimate)
+        : (['invoice', 'sale'].includes(doc.type || type) ? business.default_bill_mode !== 'gst' : false),
       transportation: Number(doc.transportation) || 0,
       loadingCharges: Number(doc.loading_charges || doc.loadingCharges) || 0,
       bagCharges: Number(doc.bag_charges || doc.bagCharges || doc.bags_charges) || 0,
@@ -97,9 +101,10 @@ export default function DocumentEditor({ business, type, doc, user, onClose, onS
     return code === own ? 'intra' : 'inter';
   }, [form.partyStateCode, business.state_code]);
 
-  const t = useMemo(() => totals(form.items, { ...form, supplyType }), [
+  const t = useMemo(() => totals(form.items, { ...form, supplyType, isEstimate: form.isEstimate }), [
     form.items, form.discountType, form.discountValue, form.roundOff,
     form.transportation, form.loadingCharges, form.bagCharges,
+    form.isEstimate,
     supplyType
   ]);
 
@@ -147,6 +152,7 @@ export default function DocumentEditor({ business, type, doc, user, onClose, onS
       const finalDate = isUserAdmin ? form.date : (doc ? doc.date : today());
       const payload = {
         ...form,
+        is_estimate: form.isEstimate ? 1 : 0,
         partyId: form.partyId || null,
         partyName: String(form.partyName || '').trim() || (type === 'expense' ? '' : 'Walk-in Customer'),
         partyGstin: form.partyGstin || '',
@@ -182,20 +188,27 @@ export default function DocumentEditor({ business, type, doc, user, onClose, onS
     }
   };
 
+  const isInvoiceType = type === 'invoice' || type === 'sale' || (doc && (doc.type === 'invoice' || doc.type === 'sale'));
   const title = doc
-    ? `Edit ${TYPE_LABEL[doc.type]} ${doc.number}`
-    : `New ${TYPE_LABEL[type]}`;
+    ? (form.isEstimate ? `Edit Estimate Bill ${doc.number}` : `Edit ${TYPE_LABEL[doc.type]} ${doc.number}`)
+    : (form.isEstimate && isInvoiceType ? 'New Estimate Bill' : `New ${TYPE_LABEL[type]}`);
 
   return (
     <Modal
       title={title}
-      sub={`${business.name}${business.gstin ? ' · GSTIN ' + business.gstin : ''}`}
+      sub={form.isEstimate && isInvoiceType
+        ? 'Retail Cash Memo / Non-GST Estimate · Stock & Khata updated'
+        : `${business.name}${business.gstin ? ' · GSTIN ' + business.gstin : ''}`}
       size="xwide"
       onClose={onClose}
       footer={
         <div className="doc-modal-footer">
           <div className="doc-footer-hint">
-            {type !== 'expense' && (supplyType === 'inter' ? 'Inter-state supply · IGST applies' : 'Intra-state supply · CGST + SGST apply')}
+            {type !== 'expense' && (
+              form.isEstimate
+                ? '📋 Estimate Bill · Clean format · Real-world stock & khata tracking · Excluded from GSTR-1/3B'
+                : (supplyType === 'inter' ? 'Inter-state supply · IGST applies' : 'Intra-state supply · CGST + SGST apply')
+            )}
           </div>
           <div className="doc-footer-buttons">
             <button type="button" className="btn" onClick={onClose}>Cancel</button>
@@ -217,6 +230,82 @@ export default function DocumentEditor({ business, type, doc, user, onClose, onS
       }
     >
       {err && <div className="banner err"><Icon.alert size={15} />{err}</div>}
+
+      {/* Dual Billing Mode Selector (~80% Estimate, ~20% Official GST) */}
+      {isInvoiceType && (
+        <div
+          style={{
+            marginBottom: 12,
+            padding: '9px 12px',
+            borderRadius: 10,
+            background: form.isEstimate ? '#f8fafc' : '#eff6ff',
+            border: `1.5px solid ${form.isEstimate ? '#cbd5e1' : '#3b82f6'}`,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: 10
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 12, fontWeight: 700, color: '#334155' }}>Billing Mode:</span>
+            <div style={{ display: 'inline-flex', borderRadius: 8, padding: 2, background: '#e2e8f0' }}>
+              <button
+                type="button"
+                onClick={() => set('isEstimate', true)}
+                style={{
+                  padding: '5px 12px',
+                  fontSize: 12,
+                  fontWeight: 700,
+                  borderRadius: 6,
+                  border: 'none',
+                  cursor: 'pointer',
+                  background: form.isEstimate ? '#ffffff' : 'transparent',
+                  color: form.isEstimate ? '#0f172a' : '#64748b',
+                  boxShadow: form.isEstimate ? '0 1px 3px rgba(0,0,0,0.1)' : 'none'
+                }}
+              >
+                📋 Estimate Bill (~80%)
+              </button>
+              <button
+                type="button"
+                onClick={() => set('isEstimate', false)}
+                style={{
+                  padding: '5px 12px',
+                  fontSize: 12,
+                  fontWeight: 700,
+                  borderRadius: 6,
+                  border: 'none',
+                  cursor: 'pointer',
+                  background: !form.isEstimate ? '#2563eb' : 'transparent',
+                  color: !form.isEstimate ? '#ffffff' : '#64748b',
+                  boxShadow: !form.isEstimate ? '0 1px 3px rgba(0,0,0,0.1)' : 'none'
+                }}
+              >
+                🏛️ Official GST Bill (~20%)
+              </button>
+            </div>
+
+            <span style={{ fontSize: 12, color: form.isEstimate ? '#64748b' : '#1d4ed8', fontWeight: 500 }}>
+              {form.isEstimate
+                ? 'Series: EST-1, EST-2... · Clean print without business name/GSTIN'
+                : `Series: ${business.invoice_prefix || 'INV-'}... · Official Tax Invoice with GSTIN`}
+            </span>
+          </div>
+
+          <span
+            className="badge sm"
+            style={{
+              background: form.isEstimate ? '#f1f5f9' : '#dbeafe',
+              color: form.isEstimate ? '#475569' : '#1e40af',
+              border: `1px solid ${form.isEstimate ? '#cbd5e1' : '#93c5fd'}`,
+              fontWeight: 650
+            }}
+          >
+            {form.isEstimate ? 'Estimate Mode · Non-GST' : 'Official GST Invoice'}
+          </span>
+        </div>
+      )}
 
       <div className="form-grid c3">
         <Field label={type === 'purchase' ? 'Supplier' : type === 'expense' ? 'Expense head' : 'Billed to'} req={type !== 'expense'}>
@@ -357,7 +446,7 @@ export default function DocumentEditor({ business, type, doc, user, onClose, onS
                 <th style={{ width: 62 }}>Unit</th>
                 <th style={{ width: 92 }}>Rate</th>
                 <th style={{ width: 62 }}>Disc %</th>
-                <th style={{ width: 76 }}>GST %</th>
+                <th style={{ width: 76 }}>{form.isEstimate ? 'Tax' : 'GST %'}</th>
                 <th className="num" style={{ width: 96 }}>Amount</th>
                 <th style={{ width: 34 }} />
               </tr>
@@ -368,7 +457,7 @@ export default function DocumentEditor({ business, type, doc, user, onClose, onS
                 const absQty = Math.abs(Number(it.qty)) || 0;
                 const gross = absQty * (Number(it.rate) || 0);
                 const afterDisc = isRet ? gross : (gross - (gross * (Number(it.discountPct) || 0)) / 100 - (Number(it.discountFlat) || 0));
-                const withTax = afterDisc * (1 + (Number(it.gstRate) || 0) / 100);
+                const lineAmount = form.isEstimate ? afterDisc : (afterDisc * (1 + (Number(it.gstRate) || 0) / 100));
                 return (
                   <tr key={i} style={{ position: 'relative', zIndex: form.items.length - i + 10, background: isRet ? 'rgba(239, 68, 68, 0.05)' : 'inherit' }}>
                     <td>
@@ -426,10 +515,16 @@ export default function DocumentEditor({ business, type, doc, user, onClose, onS
                     <td><input className="input" type="number" value={it.rate} onChange={(e) => setItem(i, 'rate', Number(e.target.value))} /></td>
                     <td><input className="input" type="number" disabled={isRet} value={isRet ? '' : (it.discountPct || '')} onChange={(e) => setItem(i, 'discountPct', Number(e.target.value))} /></td>
                     <td style={{ minWidth: 96 }}>
-                      <GstRateInput value={it.gstRate} onChange={(r) => setItem(i, 'gstRate', r)} />
+                      {form.isEstimate ? (
+                        <span className="badge sm" style={{ background: '#f1f5f9', color: '#64748b', fontSize: 11, padding: '3px 6px' }}>
+                          0% Non-GST
+                        </span>
+                      ) : (
+                        <GstRateInput value={it.gstRate} onChange={(r) => setItem(i, 'gstRate', r)} />
+                      )}
                     </td>
                     <td className="num strong" style={{ color: isRet ? '#dc2626' : 'inherit' }}>
-                      {isRet ? '-' : ''}{money(withTax)}
+                      {isRet ? '-' : ''}{money(lineAmount)}
                     </td>
                     <td><button className="icon-btn danger" onClick={() => dropLine(i)}><Icon.trash size={14} /></button></td>
                   </tr>
@@ -529,10 +624,19 @@ export default function DocumentEditor({ business, type, doc, user, onClose, onS
           )}
           {t.lineDiscount > 0 && <Row label="Line discount" value={-t.lineDiscount} />}
           {t.docDiscount > 0 && <Row label={`Bill discount (${form.discountType === 'pct' ? form.discountValue + '%' : 'flat'})`} value={-t.docDiscount} />}
-          <Row label="Taxable value" value={t.taxableValue} strong />
-          {supplyType === 'inter'
-            ? <Row label="IGST" value={t.igst} />
-            : <><Row label="CGST" value={t.cgst} /><Row label="SGST / UTGST" value={t.sgst} /></>}
+          {!form.isEstimate ? (
+            <>
+              <Row label="Taxable value" value={t.taxableValue} strong />
+              {supplyType === 'inter'
+                ? <Row label="IGST" value={t.igst} />
+                : <><Row label="CGST" value={t.cgst} /><Row label="SGST / UTGST" value={t.sgst} /></>}
+            </>
+          ) : (
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11.5, color: '#64748b', padding: '3px 0' }}>
+              <span>GST (0% Non-GST Estimate):</span>
+              <span style={{ fontWeight: 600 }}>₹0.00</span>
+            </div>
+          )}
           {Number(form.transportation) > 0 && <Row label="Transportation" value={Number(form.transportation)} />}
           {Number(form.loadingCharges) > 0 && <Row label="Loading charges" value={Number(form.loadingCharges)} />}
           {Number(form.bagCharges) > 0 && <Row label="Bag charges" value={Number(form.bagCharges)} />}
@@ -717,18 +821,19 @@ function Row({ label, value, strong }) {
 /** Client-side mirror of the server totals, so the preview never disagrees with the saved invoice. */
 export function totals(items, opts) {
   const r2 = (x) => Math.round((Number(x) || 0) * 100) / 100;
+  const isEstimate = Boolean(opts && (opts.isEstimate || opts.is_estimate));
   let returnAmount = 0;
   const lines = (items || []).filter((i) => i && i.name).map((raw) => {
     const isReturn = !!(raw.isReturn || raw.is_return || (Number(raw.qty) < 0));
     const qty = isReturn ? Math.abs(Number(raw.qty) || 0) : (Number(raw.qty) || 0);
-    const gstRate = Number(raw.gstRate || 0);
+    const gstRate = isEstimate ? 0 : Number(raw.gstRate || 0);
     const rate = Number(raw.rate) || 0;
     const absGross = r2(qty * rate);
     const gross = isReturn ? -absGross : absGross;
     const disc = isReturn ? 0 : r2((absGross * (Number(raw.discountPct) || 0)) / 100 + (Number(raw.discountFlat) || 0));
     const taxable = isReturn ? -absGross : r2(Math.max(0, gross - disc));
     if (isReturn) {
-      returnAmount = r2(returnAmount + absGross * (1 + gstRate / 100));
+      returnAmount = r2(returnAmount + absGross * (isEstimate ? 1 : (1 + (Number(raw.gstRate || 0)) / 100)));
     }
     return { isReturn, gross, disc, taxable, gstRate, rate, qty };
   });
@@ -745,16 +850,19 @@ export function totals(items, opts) {
   }
 
   const subtotal = r2(lines.reduce((s, l) => s + l.gross, 0));
-  const taxableValue = r2(lines.reduce((s, l) => s + l.taxable, 0) - docDiscount);
+  const netDiscounted = r2(lines.reduce((s, l) => s + l.taxable, 0) - docDiscount);
+  const taxableValue = isEstimate ? 0 : netDiscounted;
   const isInter = opts.supplyType === 'inter';
-  const taxTotal = r2((taxableValue * weightedRate(lines, taxableValue)) / 100);
-  const cgst = isInter ? 0 : r2(taxTotal / 2);
-  const sgst = isInter ? 0 : r2(taxTotal / 2);
-  const igst = isInter ? taxTotal : 0;
+  const taxTotal = isEstimate ? 0 : r2((taxableValue * weightedRate(lines, taxableValue)) / 100);
+  const cgst = (isEstimate || isInter) ? 0 : r2(taxTotal / 2);
+  const sgst = (isEstimate || isInter) ? 0 : r2(taxTotal / 2);
+  const igst = (isEstimate || !isInter) ? 0 : taxTotal;
   const transportation = r2(Number(opts.transportation) || 0);
   const loadingCharges = r2(Number(opts.loadingCharges || opts.loading_charges) || 0);
   const bagCharges = r2(Number(opts.bagCharges || opts.bag_charges || opts.bags_charges) || 0);
-  const preTotal = r2(taxableValue + taxTotal + transportation + loadingCharges + bagCharges);
+  const preTotal = isEstimate
+    ? r2(netDiscounted + transportation + loadingCharges + bagCharges)
+    : r2(taxableValue + taxTotal + transportation + loadingCharges + bagCharges);
   const total = opts.roundOff ? Math.round(preTotal) : preTotal;
   return {
     subtotal, lineDiscount, docDiscount, taxableValue, cgst, sgst, igst,

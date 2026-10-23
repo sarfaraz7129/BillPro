@@ -4,6 +4,7 @@ import { Icon } from './ui.jsx';
 import { Modal } from './components.jsx';
 
 export default function ThermalReceiptModal({ doc, party, business, initialWidth, onClose, onWhatsApp, toast }) {
+  const isEstimate = Boolean(doc && doc.is_estimate);
   const [width, setWidth] = useState(() => {
     return initialWidth || localStorage.getItem('billpro.receipt_width') || '80';
   });
@@ -84,74 +85,130 @@ export default function ThermalReceiptModal({ doc, party, business, initialWidth
     const netBal = hasPartyBal ? Number(partyData.balance) || 0 : Number(doc.due_amount) || 0;
     const paid = Number(doc.paid_amount || 0);
     const prevBal = hasPartyBal ? Math.round((netBal - (Number(doc.total) - paid)) * 100) / 100 : 0;
+    const isEstimate = Boolean(doc.is_estimate);
 
-    const itemLines = isLq50
+    const itemLines = isEstimate
+      ? (isLq50
+          ? [
+              line,
+              row('Item Description', 'Qty     Rate       Total'),
+              line,
+              ...doc.items.map((it) => {
+                const isRet = !!(it.isReturn || it.is_return || (Number(it.qty) < 0));
+                const baseName = (isRet ? '[RET] ' : '') + it.name;
+                const name = baseName.length > 26 ? baseName.slice(0, 26) : baseName.padEnd(26, ' ');
+                const qty = `${isRet ? '-' : ''}${Math.abs(it.qty)} ${it.unit || ''}`.slice(0, 7).padStart(7, ' ');
+                const rate = `${it.rate}`.slice(0, 8).padStart(8, ' ');
+                const tot = `${isRet && Number(it.total) > 0 ? '-' : ''}${it.total}`.slice(0, 10).padStart(10, ' ');
+                return `${name} ${qty} ${rate} ${tot}`;
+              })
+            ]
+          : [
+              line,
+              row('Item', 'Qty x Rate = Total'),
+              line,
+              ...doc.items.map((it) => {
+                const isRet = !!(it.isReturn || it.is_return || (Number(it.qty) < 0));
+                const baseName = (isRet ? '[RET] ' : '') + it.name;
+                const itemLine = baseName.length > cols - 16 ? baseName.slice(0, cols - 16) : baseName;
+                const calc = `${isRet ? '-' : ''}${Math.abs(it.qty)} ${it.unit || ''} x ${it.rate} = ${isRet && Number(it.total) > 0 ? '-' : ''}${it.total}`;
+                return `${itemLine}\n` + row('  ', calc);
+              })
+            ])
+      : (isLq50
+          ? [
+              line,
+              row('Item Description', 'HSN   Qty  Rate  GST%    Total'),
+              line,
+              ...doc.items.map((it) => {
+                const isRet = !!(it.isReturn || it.is_return || (Number(it.qty) < 0));
+                const baseName = (isRet ? '[RET] ' : '') + it.name;
+                const name = baseName.length > 20 ? baseName.slice(0, 20) : baseName.padEnd(20, ' ');
+                const hsn = (it.hsn || '-').slice(0, 5).padEnd(5, ' ');
+                const qty = `${isRet ? '-' : ''}${Math.abs(it.qty)} ${it.unit || ''}`.slice(0, 5).padStart(5, ' ');
+                const rate = `${it.rate}`.slice(0, 6).padStart(6, ' ');
+                const gst = `${it.gstRate}%`.slice(0, 4).padStart(4, ' ');
+                const tot = `${isRet && Number(it.total) > 0 ? '-' : ''}${it.total}`.slice(0, 8).padStart(8, ' ');
+                return `${name} ${hsn} ${qty} ${rate} ${gst} ${tot}`;
+              })
+            ]
+          : [
+              line,
+              row('Item', 'Qty x Rate   Total'),
+              line,
+              ...doc.items.map((it) => {
+                const isRet = !!(it.isReturn || it.is_return || (Number(it.qty) < 0));
+                const baseName = (isRet ? '[RET] ' : '') + it.name;
+                const itemLine = baseName.length > cols - 16 ? baseName.slice(0, cols - 16) : baseName;
+                const calc = `${isRet ? '-' : ''}${Math.abs(it.qty)} ${it.unit || ''} x ${it.rate} = ${isRet && Number(it.total) > 0 ? '-' : ''}${it.total}`;
+                return `${itemLine}\n` + row(`  GST ${it.gstRate}%`, calc);
+              })
+            ]);
+
+    const text = isEstimate
       ? [
+          double,
+          center(isLq50 ? '--- ESTIMATE BILL · EPSON LQ-50 6" SLIP ---' : 'ESTIMATE BILL'),
+          center('Retail Cash Memo / Non-GST Estimate'),
           line,
-          row('Item Description', 'HSN   Qty  Rate  GST%    Total'),
+          row(`Estimate No: ${doc.number}`, fmtDate(doc.date)),
+          row('Standard Time (IST):', fmtDateTime(doc.created_at || doc.date)),
+          row(`Customer: ${doc.party_name || 'Walk-in'}`, doc.payment_mode ? `Mode: ${doc.payment_mode.toUpperCase()}` : ''),
+          ...itemLines,
           line,
-          ...doc.items.map((it) => {
-            const isRet = !!(it.isReturn || it.is_return || (Number(it.qty) < 0));
-            const baseName = (isRet ? '[RET] ' : '') + it.name;
-            const name = baseName.length > 20 ? baseName.slice(0, 20) : baseName.padEnd(20, ' ');
-            const hsn = (it.hsn || '-').slice(0, 5).padEnd(5, ' ');
-            const qty = `${isRet ? '-' : ''}${Math.abs(it.qty)} ${it.unit || ''}`.slice(0, 5).padStart(5, ' ');
-            const rate = `${it.rate}`.slice(0, 6).padStart(6, ' ');
-            const gst = `${it.gstRate}%`.slice(0, 4).padStart(4, ' ');
-            const tot = `${isRet && Number(it.total) > 0 ? '-' : ''}${it.total}`.slice(0, 8).padStart(8, ' ');
-            return `${name} ${hsn} ${qty} ${rate} ${gst} ${tot}`;
-          })
-        ]
+          row('Subtotal:', money(doc.subtotal)),
+          doc.discount_amount > 0 ? row('Discount:', `-${money(doc.discount_amount)}`) : '',
+          Number(doc.transportation) > 0 ? row('Transportation:', money(doc.transportation)) : '',
+          Number(doc.loading_charges) > 0 ? row('Loading Charges:', money(doc.loading_charges)) : '',
+          Number(doc.bag_charges) > 0 ? row('Bag Charges:', money(doc.bag_charges)) : '',
+          doc.round_off ? row('Round Off:', money(doc.round_off)) : '',
+          double,
+          row('CURRENT BILL TOTAL:', money(doc.total)),
+          Math.abs(prevBal) > 0.01 ? row(prevBal > 0 ? 'Previous Due:' : 'Previous Advance:', money(Math.abs(prevBal))) : '',
+          row('Amount Received:', money(doc.paid_amount || 0)),
+          line,
+          row(netBal > 0 ? 'NET BALANCE DUE:' : (netBal < 0 ? 'NET ADVANCE:' : 'NET BALANCE:'), money(Math.abs(netBal))),
+          double,
+          center('Thank you! Visit again.'),
+          double
+        ].filter(Boolean).join('\n')
       : [
+          double,
+          center(business.name.toUpperCase()),
+          business.legal_name && business.legal_name !== business.name ? center(business.legal_name) : '',
+          business.gstin ? center(`GSTIN: ${business.gstin}`) : '',
+          business.address ? center(business.address) : '',
+          business.city ? center(`${business.city}${business.pincode ? ' - ' + business.pincode : ''}`) : '',
+          business.phone ? center(`Tel: ${business.phone}`) : '',
           line,
-          row('Item', 'Qty x Rate   Total'),
+          row(`Tax Invoice: ${doc.number}`, fmtDate(doc.date)),
+          row('Standard Time (IST):', fmtDateTime(doc.created_at || doc.date)),
+          row(`Customer: ${doc.party_name || 'Walk-in'}`, doc.payment_mode ? `Mode: ${doc.payment_mode.toUpperCase()}` : ''),
+          ...(doc.party_gstin ? [row(`Party GSTIN: ${doc.party_gstin}`, '')] : []),
+          ...itemLines,
           line,
-          ...doc.items.map((it) => {
-            const isRet = !!(it.isReturn || it.is_return || (Number(it.qty) < 0));
-            const baseName = (isRet ? '[RET] ' : '') + it.name;
-            const itemLine = baseName.length > cols - 16 ? baseName.slice(0, cols - 16) : baseName;
-            const calc = `${isRet ? '-' : ''}${Math.abs(it.qty)} ${it.unit || ''} x ${it.rate} = ${isRet && Number(it.total) > 0 ? '-' : ''}${it.total}`;
-            return `${itemLine}\n` + row(`  GST ${it.gstRate}%`, calc);
-          })
-        ];
-
-    const text = [
-      double,
-      center(business.name.toUpperCase()),
-      business.legal_name && business.legal_name !== business.name ? center(business.legal_name) : '',
-      business.gstin ? center(`GSTIN: ${business.gstin}`) : '',
-      business.address ? center(business.address) : '',
-      business.city ? center(`${business.city}${business.pincode ? ' - ' + business.pincode : ''}`) : '',
-      business.phone ? center(`Tel: ${business.phone}`) : '',
-      line,
-      row(`Tax Invoice: ${doc.number}`, fmtDate(doc.date)),
-      row('Standard Time (IST):', fmtDateTime(doc.created_at || doc.date)),
-      row(`Customer: ${doc.party_name || 'Walk-in'}`, doc.payment_mode ? `Mode: ${doc.payment_mode.toUpperCase()}` : ''),
-      ...(doc.party_gstin ? [row(`Party GSTIN: ${doc.party_gstin}`, '')] : []),
-      ...itemLines,
-      line,
-      row('Subtotal:', money(doc.subtotal)),
-      doc.discount_amount > 0 ? row('Discount:', `-${money(doc.discount_amount)}`) : '',
-      row('Taxable Value:', money(doc.taxable_value)),
-      doc.supply_type === 'inter'
-        ? row('IGST:', money(doc.igst))
-        : [row('CGST:', money(doc.cgst)), row('SGST:', money(doc.sgst))].join('\n'),
-      Number(doc.transportation) > 0 ? row('Transportation:', money(doc.transportation)) : '',
-      Number(doc.loading_charges) > 0 ? row('Loading Charges:', money(doc.loading_charges)) : '',
-      Number(doc.bag_charges) > 0 ? row('Bag Charges:', money(doc.bag_charges)) : '',
-      doc.round_off ? row('Round Off:', money(doc.round_off)) : '',
-      double,
-      row('CURRENT BILL TOTAL:', money(doc.total)),
-      Math.abs(prevBal) > 0.01 ? row(prevBal > 0 ? 'Previous Due:' : 'Previous Advance:', money(Math.abs(prevBal))) : '',
-      row('Amount Received:', money(doc.paid_amount || 0)),
-      line,
-      row(netBal > 0 ? 'NET BALANCE DUE:' : (netBal < 0 ? 'NET ADVANCE:' : 'NET BALANCE:'), money(Math.abs(netBal))),
-      double,
-      business.upi_id ? center(`UPI ID: ${business.upi_id}`) : '',
-      center('Thank you! Visit again.'),
-      business.terms ? center(business.terms) : '',
-      double
-    ].filter(Boolean).join('\n');
+          row('Subtotal:', money(doc.subtotal)),
+          doc.discount_amount > 0 ? row('Discount:', `-${money(doc.discount_amount)}`) : '',
+          row('Taxable Value:', money(doc.taxable_value)),
+          doc.supply_type === 'inter'
+            ? row('IGST:', money(doc.igst))
+            : [row('CGST:', money(doc.cgst)), row('SGST:', money(doc.sgst))].join('\n'),
+          Number(doc.transportation) > 0 ? row('Transportation:', money(doc.transportation)) : '',
+          Number(doc.loading_charges) > 0 ? row('Loading Charges:', money(doc.loading_charges)) : '',
+          Number(doc.bag_charges) > 0 ? row('Bag Charges:', money(doc.bag_charges)) : '',
+          doc.round_off ? row('Round Off:', money(doc.round_off)) : '',
+          double,
+          row('CURRENT BILL TOTAL:', money(doc.total)),
+          Math.abs(prevBal) > 0.01 ? row(prevBal > 0 ? 'Previous Due:' : 'Previous Advance:', money(Math.abs(prevBal))) : '',
+          row('Amount Received:', money(doc.paid_amount || 0)),
+          line,
+          row(netBal > 0 ? 'NET BALANCE DUE:' : (netBal < 0 ? 'NET ADVANCE:' : 'NET BALANCE:'), money(Math.abs(netBal))),
+          double,
+          business.upi_id ? center(`UPI ID: ${business.upi_id}`) : '',
+          center('Thank you! Visit again.'),
+          business.terms ? center(business.terms) : '',
+          double
+        ].filter(Boolean).join('\n');
 
     try {
       await navigator.clipboard.writeText(text);
@@ -238,33 +295,47 @@ export default function ThermalReceiptModal({ doc, party, business, initialWidth
       {/* Visual roll/slip preview */}
       <div className="thermal-wrapper">
         <div id="thermal-receipt-printable" className={`thermal-receipt w-${width}`}>
-          {isLq50 && (
-            <div className="center muted" style={{ fontSize: '0.8em', marginBottom: 4, letterSpacing: '0.8px' }}>
-              --- TAX INVOICE · EPSON LQ-50 6" SLIP ---
-            </div>
+          {isEstimate ? (
+            <>
+              {isLq50 && (
+                <div className="center muted" style={{ fontSize: '0.8em', marginBottom: 4, letterSpacing: '0.8px' }}>
+                  --- ESTIMATE BILL · EPSON LQ-50 6" SLIP ---
+                </div>
+              )}
+              <h2 style={{ letterSpacing: '1px' }}>ESTIMATE BILL</h2>
+              <div className="center muted" style={{ fontSize: '0.9em' }}>Retail Cash Memo / Non-GST Estimate</div>
+            </>
+          ) : (
+            <>
+              {isLq50 && (
+                <div className="center muted" style={{ fontSize: '0.8em', marginBottom: 4, letterSpacing: '0.8px' }}>
+                  --- TAX INVOICE · EPSON LQ-50 6" SLIP ---
+                </div>
+              )}
+              {business.logo_url && (
+                <div style={{ textAlign: 'center', marginBottom: 6 }}>
+                  <img src={business.logo_url} alt="Logo" style={{ maxHeight: 44, maxWidth: 140, objectFit: 'contain', filter: 'grayscale(100%)' }} />
+                </div>
+              )}
+              <h2>{business.name}</h2>
+              {business.legal_name && business.legal_name !== business.name && (
+                <div className="center muted" style={{ fontSize: '0.9em' }}>{business.legal_name}</div>
+              )}
+              {business.gstin && (
+                <div className="center"><b>GSTIN:</b> {business.gstin}</div>
+              )}
+              {business.address && <div className="center">{business.address}</div>}
+              {business.city && (
+                <div className="center">{business.city} {business.pincode ? `- ${business.pincode}` : ''}</div>
+              )}
+              {business.phone && <div className="center">Tel: {business.phone}</div>}
+            </>
           )}
-          {business.logo_url && (
-            <div style={{ textAlign: 'center', marginBottom: 6 }}>
-              <img src={business.logo_url} alt="Logo" style={{ maxHeight: 44, maxWidth: 140, objectFit: 'contain', filter: 'grayscale(100%)' }} />
-            </div>
-          )}
-          <h2>{business.name}</h2>
-          {business.legal_name && business.legal_name !== business.name && (
-            <div className="center muted" style={{ fontSize: '0.9em' }}>{business.legal_name}</div>
-          )}
-          {business.gstin && (
-            <div className="center"><b>GSTIN:</b> {business.gstin}</div>
-          )}
-          {business.address && <div className="center">{business.address}</div>}
-          {business.city && (
-            <div className="center">{business.city} {business.pincode ? `- ${business.pincode}` : ''}</div>
-          )}
-          {business.phone && <div className="center">Tel: {business.phone}</div>}
 
           <div className="dashed" />
 
           <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-            <span><b>Bill:</b> {doc.number}</span>
+            <span><b>{isEstimate ? 'Estimate No:' : 'Bill:'}</b> {doc.number}</span>
             <span>{fmtDate(doc.date)}</span>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#64748b', marginTop: 1 }}>
@@ -275,7 +346,7 @@ export default function ThermalReceiptModal({ doc, party, business, initialWidth
             <span><b>Party:</b> {doc.party_name || 'Walk-in Customer'}</span>
             <span>{doc.payment_mode ? doc.payment_mode.toUpperCase() : 'CASH'}</span>
           </div>
-          {doc.party_gstin && (
+          {!isEstimate && doc.party_gstin && (
             <div><b>Party GSTIN:</b> {doc.party_gstin}</div>
           )}
           {doc.bags_count ? (
@@ -292,10 +363,10 @@ export default function ThermalReceiptModal({ doc, party, business, initialWidth
             <thead>
               <tr>
                 <th style={{ textAlign: 'left' }}>Item Description</th>
-                <th style={{ textAlign: 'center', width: isLq50 ? 55 : 45 }}>HSN</th>
+                {!isEstimate && <th style={{ textAlign: 'center', width: isLq50 ? 55 : 45 }}>HSN</th>}
                 <th className="num" style={{ width: isLq50 ? 65 : 45 }}>Qty</th>
                 <th className="num" style={{ width: isLq50 ? 70 : 55 }}>Rate</th>
-                {isLq50 && <th className="num" style={{ width: 55 }}>GST%</th>}
+                {!isEstimate && isLq50 && <th className="num" style={{ width: 55 }}>GST%</th>}
                 <th className="num" style={{ width: isLq50 ? 80 : 65 }}>Total</th>
               </tr>
             </thead>
@@ -309,18 +380,18 @@ export default function ThermalReceiptModal({ doc, party, business, initialWidth
                         {isRet && <span style={{ color: '#dc2626', fontWeight: 700, fontSize: '0.85em', marginRight: 4 }}>[RET]</span>}
                         <b>{it.name}</b>
                       </div>
-                      {!isLq50 && (
+                      {!isEstimate && !isLq50 && (
                         <div style={{ fontSize: '0.85em', color: '#555' }}>
                           HSN:{it.hsn || '-'} · GST {it.gstRate}%
                         </div>
                       )}
                     </td>
-                    <td style={{ textAlign: 'center', verticalAlign: 'top' }}>{it.hsn || '-'}</td>
+                    {!isEstimate && <td style={{ textAlign: 'center', verticalAlign: 'top' }}>{it.hsn || '-'}</td>}
                     <td className="num" style={{ verticalAlign: 'top', color: isRet ? '#dc2626' : 'inherit' }}>
                       {isRet ? '-' : ''}{Math.abs(it.qty)} {it.unit || ''}
                     </td>
                     <td className="num" style={{ verticalAlign: 'top' }}>{it.rate}</td>
-                    {isLq50 && <td className="num" style={{ verticalAlign: 'top' }}>{it.gstRate}%</td>}
+                    {!isEstimate && isLq50 && <td className="num" style={{ verticalAlign: 'top' }}>{it.gstRate}%</td>}
                     <td className="num" style={{ verticalAlign: 'top', color: isRet ? '#dc2626' : 'inherit' }}>
                       <b>{isRet && Number(it.total) > 0 ? '-' : ''}{it.total}</b>
                     </td>
@@ -343,26 +414,31 @@ export default function ThermalReceiptModal({ doc, party, business, initialWidth
               <span>-{money(doc.discount_amount)}</span>
             </div>
           )}
-          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-            <span>Taxable:</span>
-            <span>{money(doc.taxable_value)}</span>
-          </div>
 
-          {doc.supply_type === 'inter' ? (
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span>IGST:</span>
-              <span>{money(doc.igst)}</span>
-            </div>
-          ) : (
+          {!isEstimate && (
             <>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span>CGST:</span>
-                <span>{money(doc.cgst)}</span>
+                <span>Taxable:</span>
+                <span>{money(doc.taxable_value)}</span>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span>SGST:</span>
-                <span>{money(doc.sgst)}</span>
-              </div>
+
+              {doc.supply_type === 'inter' ? (
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span>IGST:</span>
+                  <span>{money(doc.igst)}</span>
+                </div>
+              ) : (
+                <>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span>CGST:</span>
+                    <span>{money(doc.cgst)}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span>SGST:</span>
+                    <span>{money(doc.sgst)}</span>
+                  </div>
+                </>
+              )}
             </>
           )}
 

@@ -52,9 +52,15 @@ function refreshPaymentStatus(docId, paidOverride) {
 }
 
 /** Reserve the next number for a document type, incrementing the business counter. */
-function takeNumber(businessId, type) {
+function takeNumber(businessId, type, isEstimate = false) {
   const biz = db.prepare('SELECT * FROM businesses WHERE id = ?').get(businessId);
   const fy = istFinancialYear();
+  if (isEstimate || type === 'estimate') {
+    const n = (biz.estimate_counter || 0) + 1;
+    db.prepare('UPDATE businesses SET estimate_counter = ? WHERE id = ?').run(n, businessId);
+    const pfx = (biz.estimate_prefix || 'EST').replace(/-+$/, '');
+    return `${pfx}-${n}`;
+  }
   if (type === 'quotation') {
     const n = biz.quoter_counter + 1;
     db.prepare('UPDATE businesses SET quoter_counter = ? WHERE id = ?').run(n, businessId);
@@ -101,6 +107,14 @@ function unwindStock(businessId, doc) {
 function buildDocument(business, body, type, existing = null) {
   const supplyType = body.supplyType === 'inter' ? 'inter' : (body.supplyType === 'intra' ? 'intra' : inferSupply(business, body));
 
+  const isEstimate = body.isEstimate !== undefined
+    ? Boolean(body.isEstimate)
+    : (body.is_estimate !== undefined
+      ? (Number(body.is_estimate) === 1 || body.is_estimate === true || body.is_estimate === '1' || body.is_estimate === 'true')
+      : (existing
+        ? Boolean(existing.is_estimate)
+        : (type === 'sale' && !body.partyGstin && !body.party_gstin && (business.default_bill_mode || 'estimate') === 'estimate')));
+
   const transportation = Number(body.transportation !== undefined ? body.transportation : (existing ? existing.transportation : 0)) || 0;
   const loadingCharges = Number(body.loadingCharges !== undefined ? body.loadingCharges : (body.loading_charges !== undefined ? body.loading_charges : (existing ? existing.loading_charges : 0))) || 0;
   const bagCharges = Number(body.bagCharges !== undefined ? body.bagCharges : (body.bag_charges !== undefined ? body.bag_charges : (body.bags_charges !== undefined ? body.bags_charges : (existing ? existing.bag_charges : 0)))) || 0;
@@ -117,13 +131,15 @@ function buildDocument(business, body, type, existing = null) {
     bagCharges,
     extraCharges,
     bagsCount,
-    supplyType
+    supplyType,
+    isEstimate
   });
   const paid = round2(Number(body.paidAmount !== undefined ? body.paidAmount : (body.paid_amount !== undefined ? body.paid_amount : (existing ? existing.paid_amount : 0))));
   return {
     business_id: business.id,
     type,
-    number: existing ? existing.number : (body.number || takeNumber(business.id, type)),
+    is_estimate: isEstimate ? 1 : 0,
+    number: body.number || (existing ? existing.number : takeNumber(business.id, type, isEstimate)),
     party_id: body.partyId !== undefined ? body.partyId : (body.party_id !== undefined ? body.party_id : (existing ? existing.party_id : null)),
     party_name: body.partyName || body.party_name || (existing ? existing.party_name : 'Walk-in Customer'),
     party_gstin: body.partyGstin !== undefined ? body.partyGstin : (body.party_gstin !== undefined ? body.party_gstin : (existing ? existing.party_gstin : null)),
@@ -180,7 +196,7 @@ function inferSupply(business, body) {
 
 const DOC_COLS = `business_id, type, number, party_id, party_name, party_gstin, party_state_code, date, due_date,
   place_of_supply, supply_type, currency, items, subtotal, discount_type, discount_value, discount_amount,
-  taxable_value, cgst, sgst, igst, cess, transportation, loading_charges, bag_charges, bags_count, extra_charges, round_off, total, amount_in_words, paid_amount, due_amount,
+  taxable_value, cgst, sgst, igst, cess, transportation, loading_charges, bag_charges, bags_count, extra_charges, is_estimate, round_off, total, amount_in_words, paid_amount, due_amount,
   payment_status, payment_mode, status, notes, transport_doc_no, vehicle_no, ewaybill_no, ewaybill_date,
   ewaybill_valid_upto, irn, ack_no, ack_date, signed_by, created_by`;
 
@@ -190,7 +206,7 @@ function docValues(d) {
   return [
     d.business_id ?? null, d.type ?? null, d.number ?? null, d.party_id ?? null, d.party_name ?? null, d.party_gstin ?? null, d.party_state_code ?? null, d.date ?? null, d.due_date ?? null,
     d.place_of_supply ?? null, d.supply_type ?? null, d.currency ?? 'INR', d.items ?? '[]', d.subtotal ?? 0, d.discount_type ?? 'flat', d.discount_value ?? 0, d.discount_amount ?? 0,
-    d.taxable_value ?? 0, d.cgst ?? 0, d.sgst ?? 0, d.igst ?? 0, d.cess ?? 0, d.transportation ?? 0, d.loading_charges ?? 0, d.bag_charges ?? 0, d.bags_count ?? null, d.extra_charges ?? 0, d.round_off ?? 0, d.total ?? 0, d.amount_in_words ?? '', d.paid_amount ?? 0, d.due_amount ?? 0,
+    d.taxable_value ?? 0, d.cgst ?? 0, d.sgst ?? 0, d.igst ?? 0, d.cess ?? 0, d.transportation ?? 0, d.loading_charges ?? 0, d.bag_charges ?? 0, d.bags_count ?? null, d.extra_charges ?? 0, d.is_estimate ? 1 : 0, d.round_off ?? 0, d.total ?? 0, d.amount_in_words ?? '', d.paid_amount ?? 0, d.due_amount ?? 0,
     d.payment_status ?? 'unpaid', d.payment_mode ?? null, d.status ?? 'active', d.notes ?? '', d.transport_doc_no ?? null, d.vehicle_no ?? null, d.ewaybill_no ?? null, d.ewaybill_date ?? null,
     d.ewaybill_valid_upto ?? null, d.irn ?? null, d.ack_no ?? null, d.ack_date ?? null, d.signed_by ?? null, d.created_by ?? null
   ];

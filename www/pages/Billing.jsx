@@ -19,6 +19,7 @@ export default function Billing({ business, user, initialType, initialDocId, got
   const [totals, setTotals] = useState(null);
   const [q, setQ] = useState('');
   const [status, setStatus] = useState('');
+  const [billMode, setBillMode] = useState('');
   const [range, setRange] = useState({ from: '2000-01-01', to: '2999-12-31' });
   const [editor, setEditor] = useState(null);
   const [view, setView] = useState(null);
@@ -35,12 +36,13 @@ export default function Billing({ business, user, initialType, initialDocId, got
   const load = async () => {
     setLoading(true);
     try {
-      const r = await api.documents({ type, q, status, from: range.from, to: range.to });
+      const isEstParam = billMode === 'estimate' ? 1 : (billMode === 'gst' ? 0 : undefined);
+      const r = await api.documents({ type, q, status, from: range.from, to: range.to, is_estimate: isEstParam });
       setRows(r.documents);
       setTotals(r.totals);
     } catch (e) { toast(e.message, 'err'); } finally { setLoading(false); }
   };
-  useEffect(() => { load(); }, [type, q, status, range.from, range.to, business.id]);
+  useEffect(() => { load(); }, [type, q, status, billMode, range.from, range.to, business.id]);
 
   useEffect(() => {
     if (initialDocId && initialDocId !== 'new' && !view) {
@@ -48,6 +50,20 @@ export default function Billing({ business, user, initialType, initialDocId, got
     }
     if (initialDocId === 'new' && !editor) setEditor({ type });
   }, [initialDocId]);
+
+  const convertToGst = async (doc) => {
+    try {
+      const res = await api.convertToGst(doc.id);
+      toast(`Converted ${doc.number} to Official GST Invoice ${res.document.number}!`, 'ok');
+      load();
+      if (view && view.document && view.document.id === doc.id) {
+        const fresh = await api.document(doc.id);
+        setView(fresh);
+      }
+    } catch (e) {
+      toast(e.message, 'err');
+    }
+  };
 
   const remove = async (doc) => {
     try {
@@ -71,13 +87,20 @@ export default function Billing({ business, user, initialType, initialDocId, got
           <Icon.search size={15} />
           <input className="input" placeholder="Search by number, party or GSTIN…" value={q} onChange={(e) => setQ(e.target.value)} />
         </div>
+        {type === 'sale' && (
+          <select className="input" style={{ width: 160, fontWeight: 600 }} value={billMode} onChange={(e) => setBillMode(e.target.value)}>
+            <option value="">All Bills</option>
+            <option value="estimate">📋 Estimates (~80%)</option>
+            <option value="gst">🏛️ GST Invoices (~20%)</option>
+          </select>
+        )}
         {type !== 'expense' && (
-          <select className="input" style={{ width: 140 }} value={status} onChange={(e) => setStatus(e.target.value)}>
+          <select className="input" style={{ width: 135 }} value={status} onChange={(e) => setStatus(e.target.value)}>
             <option value="">All statuses</option><option value="paid">Paid</option><option value="partial">Partial</option><option value="unpaid">Unpaid</option>
           </select>
         )}
         <DateRange from={range.from === '2000-01-01' ? '' : range.from} to={range.to === '2999-12-31' ? '' : range.to} onChange={(r) => setRange({ from: r.from || '2000-01-01', to: r.to || '2999-12-31' })} />
-        <button className="btn primary" onClick={() => setEditor({ type })}><Icon.plus size={15} /> New {TYPE_LABEL[type].toLowerCase()}</button>
+        <button className="btn primary" onClick={() => setEditor({ type })}><Icon.plus size={15} /> New {type === 'sale' && business.default_bill_mode !== 'gst' ? 'Estimate Bill' : TYPE_LABEL[type].toLowerCase()}</button>
       </div>
 
       {totals && rows.length > 0 && (
@@ -108,6 +131,15 @@ export default function Billing({ business, user, initialType, initialDocId, got
                     <div className="mic-header">
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                         <span className="mic-number">{r.number}</span>
+                        {r.is_estimate ? (
+                          <span className="pill sm" style={{ background: '#f1f5f9', color: '#475569', border: '1px solid #cbd5e1', fontWeight: 650 }}>
+                            📋 Estimate
+                          </span>
+                        ) : type === 'sale' ? (
+                          <span className="pill sm" style={{ background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe', fontWeight: 650 }}>
+                            🏛️ GST
+                          </span>
+                        ) : null}
                         {r.status === 'cancelled' ? (
                           <span className="pill sm red">Cancelled</span>
                         ) : type === 'expense' ? (
@@ -129,6 +161,17 @@ export default function Billing({ business, user, initialType, initialDocId, got
                       </div>
                     )}
                     <div className="mic-actions" onClick={(e) => e.stopPropagation()}>
+                      {Boolean(r.is_estimate) && (
+                        <button
+                          type="button"
+                          className="btn xs"
+                          style={{ color: '#1d4ed8', borderColor: '#bfdbfe', background: '#eff6ff', fontWeight: 650 }}
+                          onClick={() => convertToGst(r)}
+                          title="Convert this estimate to official GST invoice"
+                        >
+                          🏛️ To GST
+                        </button>
+                      )}
                       <button
                         type="button"
                         className="btn xs"
@@ -180,9 +223,20 @@ export default function Billing({ business, user, initialType, initialDocId, got
                     <tr key={r.id} className="clickable" onClick={() => api.document(r.id).then(setView)}>
                       <td>
                         <div className="strong">{r.number}</div>
-                        {r.ewaybill_no && <span className="pill blue" style={{ marginTop: 3 }}>EWB {r.ewaybill_no}</span>}
-                        {r.irn && <span className="pill brand" style={{ marginTop: 3, marginLeft: 4 }}>e-Invoice</span>}
-                        {r.status === 'cancelled' && <span className="pill red" style={{ marginTop: 3, marginLeft: 4 }}>Cancelled</span>}
+                        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 3 }}>
+                          {r.is_estimate ? (
+                            <span className="pill sm" style={{ background: '#f1f5f9', color: '#475569', border: '1px solid #cbd5e1', fontWeight: 650 }}>
+                              📋 Estimate
+                            </span>
+                          ) : r.type === 'sale' ? (
+                            <span className="pill sm" style={{ background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe', fontWeight: 650 }}>
+                              🏛️ GST
+                            </span>
+                          ) : null}
+                          {r.ewaybill_no && <span className="pill blue">EWB {r.ewaybill_no}</span>}
+                          {r.irn && <span className="pill brand">e-Invoice</span>}
+                          {r.status === 'cancelled' && <span className="pill red">Cancelled</span>}
+                        </div>
                       </td>
                       <td>
                         <div>{r.party_display || r.party_name}</div>
@@ -196,6 +250,16 @@ export default function Billing({ business, user, initialType, initialDocId, got
                       <td>{r.status === 'cancelled' ? <span className="pill grey">Cancelled</span> : type === 'expense' ? <span className="pill grey">—</span> : <PayPill status={r.payment_status} />}</td>
                       <td onClick={(e) => e.stopPropagation()}>
                         <div className="row-actions">
+                          {Boolean(r.is_estimate) && (
+                            <button
+                              className="icon-btn"
+                              style={{ color: '#1d4ed8' }}
+                              title="Convert to Official GST Invoice (Series INV-...)"
+                              onClick={() => convertToGst(r)}
+                            >
+                              <Icon.check size={14} />
+                            </button>
+                          )}
                           <button
                             className="icon-btn"
                             style={{ color: '#059669' }}
@@ -257,6 +321,7 @@ export default function Billing({ business, user, initialType, initialDocId, got
           setThermalParty(p || view?.party || null);
           setThermalWidth(w || localStorage.getItem('billpro.receipt_width') || '80');
         }}
+        onConvertToGst={convertToGst}
         onPaid={async (d, amount, mode) => { try { await api.payDocument(d.id, { amount, mode }); toast('Payment recorded', 'ok'); const fresh = await api.document(d.id); setView(fresh); load(); } catch (e) { toast(e.message, 'err'); } }}
         onEwb={async (d, body) => { try { const r = await api.ewaybill(d.id, body); toast(`E-Way Bill ${r.ewaybillNo} generated`, 'ok'); setView(await api.document(d.id)); } catch (e) { toast(e.message, 'err'); } }}
         onEinv={async (d) => { try { const r = await api.einvoice(d.id); toast(`e-Invoice IRN generated: ${r.ackNo}`, 'ok'); setView(await api.document(d.id)); } catch (e) { toast(e.message, 'err'); } }}
@@ -305,25 +370,39 @@ function MiniStat({ label, value, tone }) {
 }
 
 /* ---------------- invoice viewer ---------------- */
-function DocViewer({ doc, party, payments, business, onClose, onEdit, onShare, onWhatsApp, onThermal, onPaid, onEwb, onEinv, onDuplicate, toast }) {
+function DocViewer({ doc, party, payments, business, onClose, onEdit, onShare, onWhatsApp, onThermal, onPaid, onEwb, onEinv, onDuplicate, onConvertToGst, toast }) {
   const [payOpen, setPayOpen] = useState(false);
   const [ewbOpen, setEwbOpen] = useState(false);
   const [payAmt, setPayAmt] = useState(doc.due_amount || 0);
   const [payMode, setPayMode] = useState('upi');
   const [ewb, setEwb] = useState({ vehicleNo: doc.vehicle_no || '', transportDocNo: doc.transport_doc_no || '', validDays: 4 });
   const isSale = doc.type === 'sale';
+  const isEstimate = Boolean(doc.is_estimate);
 
   return (
     <>
       <Modal
-        title={`${TYPE_LABEL[doc.type]} ${doc.number}`}
-        sub={`${doc.party_name}${party && party.gstin ? ' · ' + party.gstin : ''}`}
+        title={isEstimate ? `📋 Estimate Bill ${doc.number}` : `${TYPE_LABEL[doc.type]} ${doc.number}`}
+        sub={isEstimate
+          ? `${doc.party_name || 'Walk-in Customer'} · Retail Cash Memo / Non-GST Estimate`
+          : `${doc.party_name}${party && party.gstin ? ' · ' + party.gstin : ''}`}
         size="wide" onClose={onClose}
         footer={
           <>
             <button className="btn" onClick={onClose} style={{ fontWeight: 650, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
               <Icon.arrowLeft size={14} /> Back to Invoices
             </button>
+            {isEstimate && (
+              <button
+                type="button"
+                className="btn primary"
+                style={{ fontWeight: 700 }}
+                onClick={() => onConvertToGst && onConvertToGst(doc)}
+                title="Convert this estimate to official GST invoice (Series INV-...)"
+              >
+                🏛️ Convert to GST Invoice
+              </button>
+            )}
             {isSale && doc.due_amount > 0 && doc.status === 'active' && <button className="btn green" onClick={() => setPayOpen(true)}><Icon.rupee size={14} /> Receive payment</button>}
             <button className="btn" onClick={() => onDuplicate(doc)}><Icon.copy size={14} /> Duplicate</button>
             <button className="btn" onClick={() => onEdit(doc)}><Icon.edit size={14} /> Edit</button>
@@ -364,7 +443,7 @@ function DocViewer({ doc, party, payments, business, onClose, onEdit, onShare, o
           </button>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span style={{ fontSize: 12, color: 'var(--ink-2)', fontWeight: 600 }}>
-              Viewing {TYPE_LABEL[doc.type] || 'Invoice'} #{doc.number}
+              Viewing {isEstimate ? 'Estimate Bill' : (TYPE_LABEL[doc.type] || 'Invoice')} #{doc.number}
             </span>
             <button
               type="button"
@@ -377,60 +456,93 @@ function DocViewer({ doc, party, payments, business, onClose, onEdit, onShare, o
           </div>
         </div>
 
-        {/* Business Branding Banner */}
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          background: 'var(--surface)',
-          border: '1px solid var(--line)',
-          borderRadius: 10,
-          padding: '11px 15px',
-          marginBottom: 14,
-          flexWrap: 'wrap',
-          gap: 12
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            {business.logo_url ? (
-              <div style={{
-                width: 48, height: 48, borderRadius: 8, background: '#fff',
-                border: '1px solid var(--line)', display: 'flex', alignItems: 'center',
-                justifyContent: 'center', padding: 3, flexShrink: 0
-              }}>
-                <img src={business.logo_url} alt="Logo" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
-              </div>
-            ) : (
-              <div style={{
-                width: 44, height: 44, borderRadius: 8, background: business.color || '#4f46e5',
-                color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: 18, fontWeight: 700, flexShrink: 0
-              }}>
-                {(business.name || 'B').slice(0, 1).toUpperCase()}
-              </div>
-            )}
+        {/* Business Branding Banner / Estimate Banner */}
+        {isEstimate ? (
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            background: '#f8fafc',
+            border: '1.5px solid #cbd5e1',
+            borderRadius: 10,
+            padding: '12px 16px',
+            marginBottom: 14,
+            flexWrap: 'wrap',
+            gap: 12
+          }}>
             <div>
-              <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ink)' }}>{business.legal_name || business.name}</div>
-              <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 1 }}>
-                {[business.address, business.city, business.state].filter(Boolean).join(', ')}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span className="badge" style={{ background: '#334155', color: '#fff', fontWeight: 700, fontSize: 12.5, padding: '3px 8px' }}>
+                  📋 ESTIMATE BILL
+                </span>
+                <span style={{ fontSize: 13, color: '#475569', fontWeight: 600 }}>Retail Cash Memo · Non-GST</span>
               </div>
-              <div style={{ fontSize: 11.5, color: 'var(--ink-2)', marginTop: 1, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                {business.gstin && <span><b>GSTIN:</b> {business.gstin}</span>}
-                {business.phone && <span><b>Ph:</b> {business.phone}</span>}
+              <div style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>
+                ℹ️ Clean print format active: Business legal header, GSTIN, and tax splits are omitted on printed slips and PDFs. Stock and customer Khata are fully updated.
               </div>
             </div>
-          </div>
-          <div style={{ textAlign: 'right' }}>
-            <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: business.color || 'var(--brand)' }}>
-              {TYPE_LABEL[doc.type] || 'TAX INVOICE'}
+            <div style={{ textAlign: 'right' }}>
+              <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', color: '#64748b' }}>Estimate No</div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: '#0f172a' }}>{doc.number}</div>
+              <div style={{ fontSize: 12, color: 'var(--muted)' }}>Date: {fmtDate(doc.date)}</div>
+              {doc.bags_count ? <div style={{ fontSize: 11.5, fontWeight: 650, color: 'var(--brand)', marginTop: 2 }}>📦 Bags: {doc.bags_count}</div> : null}
             </div>
-            <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ink)' }}>{doc.number}</div>
-            <div style={{ fontSize: 12, color: 'var(--muted)' }}>Date: {fmtDate(doc.date)}</div>
-            {doc.bags_count ? <div style={{ fontSize: 11.5, fontWeight: 650, color: 'var(--brand)', marginTop: 2 }}>📦 Bags: {doc.bags_count}</div> : null}
           </div>
-        </div>
+        ) : (
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            background: 'var(--surface)',
+            border: '1px solid var(--line)',
+            borderRadius: 10,
+            padding: '11px 15px',
+            marginBottom: 14,
+            flexWrap: 'wrap',
+            gap: 12
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              {business.logo_url ? (
+                <div style={{
+                  width: 48, height: 48, borderRadius: 8, background: '#fff',
+                  border: '1px solid var(--line)', display: 'flex', alignItems: 'center',
+                  justifyContent: 'center', padding: 3, flexShrink: 0
+                }}>
+                  <img src={business.logo_url} alt="Logo" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
+                </div>
+              ) : (
+                <div style={{
+                  width: 44, height: 44, borderRadius: 8, background: business.color || '#4f46e5',
+                  color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 18, fontWeight: 700, flexShrink: 0
+                }}>
+                  {(business.name || 'B').slice(0, 1).toUpperCase()}
+                </div>
+              )}
+              <div>
+                <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ink)' }}>{business.legal_name || business.name}</div>
+                <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 1 }}>
+                  {[business.address, business.city, business.state].filter(Boolean).join(', ')}
+                </div>
+                <div style={{ fontSize: 11.5, color: 'var(--ink-2)', marginTop: 1, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                  {business.gstin && <span><b>GSTIN:</b> {business.gstin}</span>}
+                  {business.phone && <span><b>Ph:</b> {business.phone}</span>}
+                </div>
+              </div>
+            </div>
+            <div style={{ textAlign: 'right' }}>
+              <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: business.color || 'var(--brand)' }}>
+                {TYPE_LABEL[doc.type] || 'TAX INVOICE'}
+              </div>
+              <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ink)' }}>{doc.number}</div>
+              <div style={{ fontSize: 12, color: 'var(--muted)' }}>Date: {fmtDate(doc.date)}</div>
+              {doc.bags_count ? <div style={{ fontSize: 11.5, fontWeight: 650, color: 'var(--brand)', marginTop: 2 }}>📦 Bags: {doc.bags_count}</div> : null}
+            </div>
+          </div>
+        )}
 
         <div className="grid g4" style={{ marginBottom: 14 }}>
-          <MiniStat label="Invoice total" value={money(doc.total)} />
+          <MiniStat label="Bill total" value={money(doc.total)} />
           <MiniStat label="Paid" value={money(doc.paid_amount)} tone="pos" />
           <MiniStat label="Balance" value={money(doc.due_amount)} tone={doc.due_amount > 0 ? 'neg' : ''} />
           <MiniStat label="Status" value={<PayPill status={doc.payment_status} />} />
@@ -470,13 +582,23 @@ function DocViewer({ doc, party, payments, business, onClose, onEdit, onShare, o
         )}
 
         <div className="btn-row" style={{ marginBottom: 12, flexWrap: 'wrap' }}>
+          {isEstimate && (
+            <button
+              className="btn sm primary"
+              style={{ fontWeight: 700 }}
+              onClick={() => onConvertToGst && onConvertToGst(doc)}
+              title="Convert this Estimate to official sequential GST Invoice"
+            >
+              🏛️ Convert to GST Invoice
+            </button>
+          )}
           <button className="btn sm" style={{ color: '#059669', fontWeight: 600, borderColor: '#a7f3d0' }} onClick={() => (onWhatsApp ? onWhatsApp(doc, party) : onShare(doc))}><Icon.whatsapp size={14} /> Send on WhatsApp</button>
           <button className="btn sm" style={{ fontWeight: 650, color: '#4338ca', borderColor: '#c7d2fe', background: '#eef2ff' }} onClick={() => onThermal && onThermal(doc, party, '150')} title="Print formatted for 6-inch Epson LQ-50 Dot Matrix printer"><Icon.print size={14} /> 🖨️ Epson LQ-50 (6" Print)</button>
           <button className="btn sm" style={{ fontWeight: 600 }} onClick={() => onThermal && onThermal(doc, party, '80')}><Icon.print size={14} /> 🧾 Thermal (58/80mm)</button>
-          {isSale && (doc.irn
+          {!isEstimate && isSale && (doc.irn
             ? <span className="pill brand"><Icon.stamp size={12} /> IRN {String(doc.irn).slice(0, 16)}…</span>
             : <button className="btn sm" onClick={() => onEinv(doc)}><Icon.stamp size={14} /> Generate e-Invoice (IRN)</button>)}
-          {isSale && (doc.ewaybill_no
+          {!isEstimate && isSale && (doc.ewaybill_no
             ? <span className="pill blue"><Icon.truck size={12} /> EWB {doc.ewaybill_no} valid to {fmtDate(doc.ewaybill_valid_upto)}</span>
             : <button className="btn sm" onClick={() => setEwbOpen(true)}><Icon.truck size={14} /> Generate E-Way Bill</button>)}
           {party && party.id && <button className="btn sm" onClick={() => { onClose(); }}><Icon.khata size={14} /> Open khata</button>}
@@ -485,7 +607,14 @@ function DocViewer({ doc, party, payments, business, onClose, onEdit, onShare, o
         <div className="card" style={{ boxShadow: 'none' }}>
           <div className="card-b tight tbl-wrap">
             <table className="tbl">
-              <thead><tr><th>#</th><th>Item</th><th className="num">Qty</th><th className="num">Rate</th><th className="num">Taxable</th><th className="num">GST</th><th className="num">Amount</th></tr></thead>
+              <thead>
+                <tr>
+                  <th>#</th><th>Item</th><th className="num">Qty</th><th className="num">Rate</th>
+                  {!isEstimate && <th className="num">Taxable</th>}
+                  {!isEstimate && <th className="num">GST</th>}
+                  <th className="num">Amount</th>
+                </tr>
+              </thead>
               <tbody>
                 {doc.items.map((l, i) => {
                   const isRet = !!(l.isReturn || l.is_return || (Number(l.qty) < 0));
@@ -497,12 +626,12 @@ function DocViewer({ doc, party, payments, business, onClose, onEdit, onShare, o
                           {isRet && <span className="badge sm danger" style={{ fontSize: 10, padding: '1px 5px' }}>↩ RETURN / LESS</span>}
                           {l.name}
                         </div>
-                        <div className="muted">HSN {l.hsn || '-'}</div>
+                        {!isEstimate && <div className="muted">HSN {l.hsn || '-'}</div>}
                       </td>
                       <td className="num" style={isRet ? { color: '#dc2626' } : {}}>{isRet ? '-' : ''}{Math.abs(l.qty)} {l.unit}</td>
                       <td className="num">{money(l.rate)}</td>
-                      <td className="num" style={isRet ? { color: '#dc2626' } : {}}>{money(l.taxable)}</td>
-                      <td className="num muted">{l.gstRate}% · {money(l.cgst + l.sgst + l.igst)}</td>
+                      {!isEstimate && <td className="num" style={isRet ? { color: '#dc2626' } : {}}>{money(l.taxable)}</td>}
+                      {!isEstimate && <td className="num muted">{l.gstRate}% · {money(l.cgst + l.sgst + l.igst)}</td>}
                       <td className="num strong" style={isRet ? { color: '#dc2626' } : {}}>{isRet && Number(l.total) > 0 ? '-' : ''}{money(l.total)}</td>
                     </tr>
                   );
@@ -516,13 +645,27 @@ function DocViewer({ doc, party, payments, business, onClose, onEdit, onShare, o
           <div className="tot-box">
             <div className="kv"><span className="k">Subtotal</span><span className="v">{money(doc.subtotal)}</span></div>
             {doc.discount_amount > 0 && <div className="kv"><span className="k">Discount</span><span className="v neg">-{money(doc.discount_amount)}</span></div>}
-            <div className="kv"><span className="k">Taxable value</span><span className="v">{money(doc.taxable_value)}</span></div>
-            {doc.supply_type === 'inter'
-              ? <div className="kv"><span className="k">IGST</span><span className="v">{money(doc.igst)}</span></div>
-              : <>
-                <div className="kv"><span className="k">CGST</span><span className="v">{money(doc.cgst)}</span></div>
-                <div className="kv"><span className="k">SGST</span><span className="v">{money(doc.sgst)}</span></div>
-              </>}
+            {!isEstimate ? (
+              <>
+                <div className="kv"><span className="k">Taxable value</span><span className="v">{money(doc.taxable_value)}</span></div>
+                {doc.supply_type === 'inter'
+                  ? <div className="kv"><span className="k">IGST</span><span className="v">{money(doc.igst)}</span></div>
+                  : <>
+                    <div className="kv"><span className="k">CGST</span><span className="v">{money(doc.cgst)}</span></div>
+                    <div className="kv"><span className="k">SGST</span><span className="v">{money(doc.sgst)}</span></div>
+                  </>}
+              </>
+            ) : (
+              <div className="kv" style={{ color: '#64748b' }}>
+                <span className="k">GST (0% Non-GST Estimate)</span>
+                <span className="v">₹0.00</span>
+              </div>
+            )}
+            {Number(doc.transportation) > 0 && <div className="kv"><span className="k">Transportation</span><span className="v">{money(doc.transportation)}</span></div>}
+            {Number(doc.loading_charges) > 0 && <div className="kv"><span className="k">Loading charges</span><span className="v">{money(doc.loading_charges)}</span></div>}
+            {Number(doc.bag_charges) > 0 && <div className="kv"><span className="k">Bag charges</span><span className="v">{money(doc.bag_charges)}</span></div>}
+            <div className="grand"><span style={{ fontWeight: 700 }}>Current Bill Total</span><span className="v">{money(doc.total)}</span></div>
+            <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 6 }}>{doc.amount_in_words}</div>
             {Number(doc.transportation) > 0 && <div className="kv"><span className="k">Transportation</span><span className="v">{money(doc.transportation)}</span></div>}
             {Number(doc.loading_charges) > 0 && <div className="kv"><span className="k">Loading charges</span><span className="v">{money(doc.loading_charges)}</span></div>}
             {Number(doc.bag_charges) > 0 && <div className="kv"><span className="k">Bag charges</span><span className="v">{money(doc.bag_charges)}</span></div>}

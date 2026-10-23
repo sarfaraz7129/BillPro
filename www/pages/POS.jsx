@@ -16,6 +16,7 @@ export default function POS({ business, toast }) {
   const [barcode, setBarcode] = useState('');
   const [paid, setPaid] = useState(0);
   const [mode, setMode] = useState('upi');
+  const [isEstimate, setIsEstimate] = useState(business.default_bill_mode !== 'gst');
   const [saving, setSaving] = useState(false);
   const [lastDoc, setLastDoc] = useState(null);
   const [thermalDoc, setThermalDoc] = useState(null);
@@ -29,7 +30,7 @@ export default function POS({ business, toast }) {
   }, [business.id]);
 
   const supplyType = party && party.state_code && String(party.state_code).padStart(2, '0') !== String(business.state_code || '').padStart(2, '0') ? 'inter' : 'intra';
-  const t = useMemo(() => totals(lines, { discountValue: 0, discountType: 'flat', roundOff: true, supplyType }), [lines, supplyType]);
+  const t = useMemo(() => totals(lines, { discountValue: 0, discountType: 'flat', roundOff: true, supplyType, isEstimate }), [lines, supplyType, isEstimate]);
 
   const add = (p) => {
     setLines((old) => {
@@ -65,6 +66,7 @@ export default function POS({ business, toast }) {
     try {
       const res = await api.createDocument({
         type: 'sale',
+        is_estimate: isEstimate ? 1 : 0,
         partyId: party ? party.id : null,
         partyName: party ? party.name : 'Walk-in Customer',
         partyGstin: party ? party.gstin : '',
@@ -145,6 +147,57 @@ export default function POS({ business, toast }) {
             {lines.length > 0 && <button className="btn sm ghost" onClick={() => { setLines([]); setPaid(0); }}>Clear</button>}
           </div>
           <div className="card-b">
+            {/* Dual Billing Mode Selector */}
+            <div style={{
+              marginBottom: 10,
+              padding: '6px 8px',
+              borderRadius: 8,
+              background: isEstimate ? '#f8fafc' : '#eff6ff',
+              border: `1.5px solid ${isEstimate ? '#cbd5e1' : '#3b82f6'}`
+            }}>
+              <div style={{ display: 'inline-flex', borderRadius: 6, padding: 2, background: '#e2e8f0', width: '100%' }}>
+                <button
+                  type="button"
+                  onClick={() => setIsEstimate(true)}
+                  style={{
+                    flex: 1,
+                    padding: '5px 8px',
+                    fontSize: 11.5,
+                    fontWeight: 700,
+                    borderRadius: 5,
+                    border: 'none',
+                    cursor: 'pointer',
+                    background: isEstimate ? '#ffffff' : 'transparent',
+                    color: isEstimate ? '#0f172a' : '#64748b',
+                    boxShadow: isEstimate ? '0 1px 3px rgba(0,0,0,0.1)' : 'none'
+                  }}
+                >
+                  📋 Estimate (~80%)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsEstimate(false)}
+                  style={{
+                    flex: 1,
+                    padding: '5px 8px',
+                    fontSize: 11.5,
+                    fontWeight: 700,
+                    borderRadius: 5,
+                    border: 'none',
+                    cursor: 'pointer',
+                    background: !isEstimate ? '#2563eb' : 'transparent',
+                    color: !isEstimate ? '#ffffff' : '#64748b',
+                    boxShadow: !isEstimate ? '0 1px 3px rgba(0,0,0,0.1)' : 'none'
+                  }}
+                >
+                  🏛️ GST Bill (~20%)
+                </button>
+              </div>
+              <div style={{ fontSize: 11, color: isEstimate ? '#64748b' : '#1d4ed8', marginTop: 4, textAlign: 'center', fontWeight: 500 }}>
+                {isEstimate ? 'Series EST-1... · Clean slip' : `Series ${business.invoice_prefix || 'INV-'}... · Official GST`}
+              </div>
+            </div>
+
             <Field label="Customer">
               <select className="input" value={party ? party.id : ''} onChange={(e) => setParty(parties.find((p) => String(p.id) === e.target.value) || null)}>
                 <option value="">Walk-in customer</option>
@@ -220,7 +273,7 @@ export default function POS({ business, toast }) {
                           <input className="input" style={{ padding: '4px 6px', fontSize: 12 }} type="number" value={l.qty} onChange={(e) => setQty(i, e.target.value)} />
                         </td>
                         <td className="num strong" style={{ width: 84, verticalAlign: 'top', paddingTop: 10 }}>
-                          {money(l.qty * l.rate * (1 + l.gstRate / 100))}
+                          {money(l.qty * l.rate * (isEstimate ? 1 : (1 + l.gstRate / 100)))}
                         </td>
                       </tr>
                     ))}
@@ -230,13 +283,19 @@ export default function POS({ business, toast }) {
             </div>
 
             <div className="pos-sum">
-              <div className="kv"><span className="k">Taxable</span><span className="v">{money(t.taxableValue)}</span></div>
-              {supplyType === 'inter'
-                ? <div className="kv"><span className="k">IGST</span><span className="v">{money(t.igst)}</span></div>
-                : <>
-                  <div className="kv"><span className="k">CGST</span><span className="v">{money(t.cgst)}</span></div>
-                  <div className="kv"><span className="k">SGST</span><span className="v">{money(t.sgst)}</span></div>
-                </>}
+              {!isEstimate ? (
+                <>
+                  <div className="kv"><span className="k">Taxable</span><span className="v">{money(t.taxableValue)}</span></div>
+                  {supplyType === 'inter'
+                    ? <div className="kv"><span className="k">IGST</span><span className="v">{money(t.igst)}</span></div>
+                    : <>
+                      <div className="kv"><span className="k">CGST</span><span className="v">{money(t.cgst)}</span></div>
+                      <div className="kv"><span className="k">SGST</span><span className="v">{money(t.sgst)}</span></div>
+                    </>}
+                </>
+              ) : (
+                <div className="kv" style={{ color: '#64748b' }}><span className="k">GST (0% Non-GST Estimate)</span><span className="v">₹0.00</span></div>
+              )}
               <div className="pos-total"><span style={{ fontWeight: 650 }}>Payable</span><span className="v">{money(t.total)}</span></div>
             </div>
 
@@ -308,7 +367,7 @@ export default function POS({ business, toast }) {
 
       {lastDoc && (
         <Modal
-          title={`Bill saved · ${lastDoc.number}`}
+          title={`${lastDoc.is_estimate ? 'Estimate Bill saved' : 'Bill saved'} · ${lastDoc.number}`}
           sub={`${money(lastDoc.total)} · ${lastDoc.party_name}`}
           onClose={() => setLastDoc(null)}
           footer={

@@ -73,6 +73,7 @@ function computeTotals(items, opts = {}) {
     discountValue = 0,
     roundOff = false,
     cessRate = 0,
+    isEstimate = false
   } = opts;
 
   let returnTotal = 0;
@@ -81,8 +82,8 @@ function computeTotals(items, opts = {}) {
     const rawQty = Number(raw.qty) || 0;
     const qty = isReturn ? Math.abs(rawQty) : rawQty;
     const grossRate = Number(raw.rate) || 0;
-    const gstRate = Number(raw.gstRate || 0);
-    const taxInclusive = !!raw.taxInclusive;
+    const gstRate = isEstimate ? 0 : Number(raw.gstRate || 0);
+    const taxInclusive = isEstimate ? false : !!raw.taxInclusive;
     // strip tax out of an inclusive rate so the taxable value is correct
     const rate = taxInclusive ? grossRate / (1 + gstRate / 100) : grossRate;
     const lineSign = isReturn ? -1 : 1;
@@ -93,8 +94,8 @@ function computeTotals(items, opts = {}) {
     const disc = isReturn ? 0 : round2(lineDiscFlat + (absGross * lineDiscPct) / 100);
     const taxable = round2(isReturn ? -absGross : Math.max(0, gross - disc));
     const isInter = opts.supplyType === 'inter';
-    const half = round2((taxable * gstRate) / 200);
-    const igstVal = isInter ? round2((taxable * gstRate) / 100) : 0;
+    const half = isEstimate ? 0 : round2((taxable * gstRate) / 200);
+    const igstVal = (isEstimate || !isInter) ? 0 : round2((taxable * gstRate) / 100);
     const lineTotal = round2(taxable + (isInter ? igstVal : 2 * half));
     if (isReturn) {
       returnTotal = round2(returnTotal + Math.abs(lineTotal));
@@ -115,10 +116,10 @@ function computeTotals(items, opts = {}) {
       discount: disc,
       taxable,
       gstRate,
-      cgst: isInter ? 0 : half,
-      sgst: isInter ? 0 : half,
+      cgst: isEstimate ? 0 : (isInter ? 0 : half),
+      sgst: isEstimate ? 0 : (isInter ? 0 : half),
       igst: igstVal,
-      cess: round2((taxable * cessRate) / 100),
+      cess: isEstimate ? 0 : round2((taxable * cessRate) / 100),
       total: lineTotal,
     };
   });
@@ -142,11 +143,11 @@ function computeTotals(items, opts = {}) {
       l.docDiscount = d;
       l.taxable = t;
       const isInter = opts.supplyType === 'inter';
-      const half = round2((t * l.gstRate) / 200);
-      l.cgst = isInter ? 0 : half;
-      l.sgst = isInter ? 0 : half;
-      l.igst = isInter ? round2((t * l.gstRate) / 100) : 0;
-      l.cess = round2((t * cessRate) / 100);
+      const half = isEstimate ? 0 : round2((t * l.gstRate) / 200);
+      l.cgst = isEstimate ? 0 : (isInter ? 0 : half);
+      l.sgst = isEstimate ? 0 : (isInter ? 0 : half);
+      l.igst = (isEstimate || !isInter) ? 0 : round2((t * l.gstRate) / 100);
+      l.cess = isEstimate ? 0 : round2((t * cessRate) / 100);
       l.total = round2(t + l.cgst + l.sgst + l.igst + l.cess);
     }
   });

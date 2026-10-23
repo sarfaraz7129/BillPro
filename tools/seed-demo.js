@@ -16,6 +16,8 @@ function reset() {
   if (u) db.prepare('DELETE FROM users WHERE id = ?').run(u.id);
   const demoUser = db.prepare("SELECT id FROM users WHERE email = 'demo.user@billpro.in'").get();
   if (demoUser) db.prepare('DELETE FROM users WHERE id = ?').run(demoUser.id);
+  db.prepare("DELETE FROM users WHERE email IN ('priya@sharmafashion.in', 'ramesh@pateltraders.com', 'cashier@test.in', 'newclient@freshbiz.com')").run();
+  db.prepare("DELETE FROM inquiries WHERE email IN ('ramesh@pateltraders.com', 'vikram@sharmaenterprises.in')").run();
 }
 
 function insert(table, obj) {

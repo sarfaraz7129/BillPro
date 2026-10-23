@@ -291,6 +291,7 @@ export const api = {
   deleteDocument: (id) => request('DELETE', `/api/documents/${id}`),
   cancelDocument: (id) => request('POST', `/api/documents/${id}/cancel`),
   duplicateDocument: (id) => request('POST', `/api/documents/${id}/duplicate`),
+  convertToGst: (id) => request('POST', `/api/documents/${id}/convert-to-gst`),
   payDocument: (id, b) => request('POST', `/api/documents/${id}/payment`, b),
   ewaybill: (id, b) => request('POST', `/api/documents/${id}/ewaybill`, b),
   einvoice: (id) => request('POST', `/api/documents/${id}/einvoice`),

@@ -172,8 +172,13 @@ router.post('/change-password', auth, (req, res) => {
 
 /** Switch the business that the app is currently operating on. */
 router.post('/active-business/:id', auth, (req, res) => {
-  const list = getUserBusinesses(req.user.id, req.user.email);
-  const biz = list.find((b) => b.id === Number(req.params.id));
+  let biz;
+  if (req.user.is_superadmin) {
+    biz = db.prepare('SELECT * FROM businesses WHERE id = ?').get(Number(req.params.id));
+  } else {
+    const list = getUserBusinesses(req.user.id, req.user.email);
+    biz = list.find((b) => b.id === Number(req.params.id));
+  }
   if (!biz) return res.status(404).json({ error: 'Business not found' });
   db.prepare('UPDATE users SET active_business_id = ? WHERE id = ?').run(biz.id, req.user.id);
   res.json({ ok: true, business: biz });

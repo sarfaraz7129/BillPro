@@ -280,11 +280,23 @@ export default function Settings({ business, user, onBusinessSaved, onAddBusines
 
         {tab === 'invoice' && (
           <>
-            <div className="card-h"><Icon.invoice size={16} /><div><h3>Invoice numbering & GST</h3><div className="sub">GST requires sequential, non-repeating invoice numbers</div></div></div>
+            <div className="card-h"><Icon.invoice size={16} /><div><h3>Invoice numbering & Dual Billing Mode</h3><div className="sub">Manage Estimate Bills (~80%), official GST invoices (~20%), and numbering series</div></div></div>
             <div className="card-b">
               <div className="form-grid">
-                <Field label="Invoice prefix" hint="e.g. CT gives CT-2025-26-1007"><input className="input" value={form.invoice_prefix || ''} onChange={(e) => set('invoice_prefix', e.target.value.toUpperCase())} /></Field>
-                <Field label="Next invoice number" hint="Only change this with your accountant's advice"><input className="input" type="number" value={form.invoice_counter || 0} onChange={(e) => set('invoice_counter', Number(e.target.value))} /></Field>
+                <Field label="Default Billing Mode" hint="Default mode for new bills in Invoicing & POS">
+                  <select className="input" value={form.default_bill_mode || 'estimate'} onChange={(e) => set('default_bill_mode', e.target.value)}>
+                    <option value="estimate">📋 Estimate Bill (Default ~80% retail, clean slip)</option>
+                    <option value="gst">🏛️ Official GST Tax Invoice (~20% with GSTIN)</option>
+                  </select>
+                </Field>
+                <Field label="Estimate series prefix" hint="e.g. EST- gives EST-1, EST-2...">
+                  <input className="input" value={form.estimate_prefix || 'EST-'} onChange={(e) => set('estimate_prefix', e.target.value.toUpperCase())} />
+                </Field>
+                <Field label="Next estimate number" hint="Sequential counter for estimates">
+                  <input className="input" type="number" value={form.estimate_counter || 1} onChange={(e) => set('estimate_counter', Number(e.target.value))} />
+                </Field>
+                <Field label="Official GST Invoice prefix" hint="e.g. CT gives CT-2025-26-1007"><input className="input" value={form.invoice_prefix || ''} onChange={(e) => set('invoice_prefix', e.target.value.toUpperCase())} /></Field>
+                <Field label="Next GST invoice number" hint="Only change this with your accountant's advice"><input className="input" type="number" value={form.invoice_counter || 0} onChange={(e) => set('invoice_counter', Number(e.target.value))} /></Field>
                 <Field label="Quotation prefix"><input className="input" value={form.quoter_prefix || ''} onChange={(e) => set('quoter_prefix', e.target.value.toUpperCase())} /></Field>
                 <Field label="Default GST rate" hint="Standard slab or custom percentage">
                   <GstRateInput value={form.default_gst_rate} onChange={(r) => set('default_gst_rate', r)} />

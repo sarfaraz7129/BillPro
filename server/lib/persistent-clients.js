@@ -103,8 +103,9 @@ function syncPersistentClients(db) {
         const bizInsert = db.prepare(`
           INSERT INTO businesses (
             owner_id, name, legal_name, gstin, pan, phone, city, state, state_code, pincode,
-            invoice_prefix, quoter_prefix, default_gst_rate, credit_days, color
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'QT', ?, ?, '#4f46e5')
+            invoice_prefix, quoter_prefix, estimate_prefix, estimate_counter, default_bill_mode,
+            default_gst_rate, credit_days, color
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'QT', ?, ?, ?, ?, ?, '#4f46e5')
         `).run(
           user.id,
           b.name || `${c.name}'s Business`,
@@ -117,6 +118,9 @@ function syncPersistentClients(db) {
           b.state_code || '29',
           b.pincode || '576101',
           b.invoice_prefix || 'INV',
+          b.estimate_prefix || 'EST-',
+          b.estimate_counter || 1,
+          b.default_bill_mode || 'estimate',
           b.default_gst_rate || 18,
           b.credit_days || 30
         );
@@ -128,13 +132,17 @@ function syncPersistentClients(db) {
             name = COALESCE(?, name),
             legal_name = COALESCE(?, legal_name),
             phone = COALESCE(?, phone),
-            gstin = COALESCE(?, gstin)
+            gstin = COALESCE(?, gstin),
+            default_bill_mode = COALESCE(?, default_bill_mode),
+            estimate_prefix = COALESCE(?, estimate_prefix)
           WHERE id = ?
         `).run(
           b.name || null,
           b.legal_name || b.name || null,
           b.phone || c.phone || null,
           b.gstin || null,
+          b.default_bill_mode || null,
+          b.estimate_prefix || null,
           biz.id
         );
       }

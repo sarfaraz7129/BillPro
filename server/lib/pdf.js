@@ -37,15 +37,18 @@ function render(doc, business, party, accent) {
     pdf.on('end', () => resolve(Buffer.concat(chunks)));
     pdf.on('error', reject);
 
-    const title = TITLE[doc.type] || 'INVOICE';
+    const isEstimate = Boolean(doc.is_estimate);
+    const title = isEstimate ? 'ESTIMATE BILL' : (TITLE[doc.type] || 'INVOICE');
     const lines = Array.isArray(doc.items) ? doc.items : JSON.parse(doc.items || '[]');
 
     // ---------- header band ----------
-    pdf.rect(0, 0, pdf.page.width, 92).fill(accent);
+    const headerBg = isEstimate ? '#334155' : accent;
+    const headerH = isEstimate ? 76 : 92;
+    pdf.rect(0, 0, pdf.page.width, headerH).fill(headerBg);
     pdf.fillColor('#ffffff');
     const leftX = 40;
     let logoImg = null;
-    if (business.logo_url) {
+    if (!isEstimate && business.logo_url) {
       try {
         let imgBuffer = null;
         if (/^data:image\/(png|jpeg|jpg);base64,/i.test(business.logo_url)) {
@@ -63,7 +66,7 @@ function render(doc, business, party, accent) {
       }
     }
 
-    const hasLogo = !!logoImg;
+    const hasLogo = !isEstimate && !!logoImg;
     const textX = hasLogo ? 114 : leftX;
 
     if (hasLogo && logoImg) {
@@ -74,21 +77,32 @@ function render(doc, business, party, accent) {
     }
 
     pdf.fillColor('#ffffff');
-    pdf.font('Helvetica-Bold').fontSize(18).text(business.legal_name || business.name, textX, 22, { width: 380 - (hasLogo ? 74 : 0) });
-    pdf.font('Helvetica').fontSize(9);
-    const addr = [business.address, business.city, business.state, business.pincode].filter(Boolean).join(', ');
-    if (addr) pdf.text(addr, textX, 44, { width: 380 - (hasLogo ? 74 : 0) });
-    const ids = [];
-    if (business.gstin) ids.push(`GSTIN: ${business.gstin}`);
-    if (business.pan) ids.push(`PAN: ${business.pan}`);
-    if (business.phone) ids.push(`Ph: ${business.phone}`);
-    if (ids.length) pdf.text(ids.join('   |   '), textX, 64, { width: 390 - (hasLogo ? 74 : 0) });
+    if (isEstimate) {
+      // Clean Estimate Bill header: no business name, no GSTIN, no PAN
+      pdf.font('Helvetica-Bold').fontSize(22).text('ESTIMATE BILL', leftX, 20);
+      pdf.font('Helvetica').fontSize(9.5).text('Retail Cash Memo / Non-GST Estimate', leftX, 46);
 
-    pdf.text(title, 400, 26, { width: 175, align: 'right' });
-    pdf.font('Helvetica').fontSize(9);
-    pdf.text(`${doc.number}`, 400, 44, { width: 175, align: 'right' });
-    pdf.text(`Date: ${doc.date}`, 400, 56, { width: 175, align: 'right' });
-    if (doc.due_date) pdf.text(`Due date: ${doc.due_date}`, 400, 68, { width: 175, align: 'right' });
+      pdf.font('Helvetica-Bold').fontSize(14).text(`${doc.number}`, 400, 22, { width: 175, align: 'right' });
+      pdf.font('Helvetica').fontSize(9.5).text(`Date: ${doc.date}`, 400, 42, { width: 175, align: 'right' });
+      if (doc.due_date) pdf.text(`Due date: ${doc.due_date}`, 400, 56, { width: 175, align: 'right' });
+    } else {
+      // Full official Tax Invoice header
+      pdf.font('Helvetica-Bold').fontSize(18).text(business.legal_name || business.name, textX, 22, { width: 380 - (hasLogo ? 74 : 0) });
+      pdf.font('Helvetica').fontSize(9);
+      const addr = [business.address, business.city, business.state, business.pincode].filter(Boolean).join(', ');
+      if (addr) pdf.text(addr, textX, 44, { width: 380 - (hasLogo ? 74 : 0) });
+      const ids = [];
+      if (business.gstin) ids.push(`GSTIN: ${business.gstin}`);
+      if (business.pan) ids.push(`PAN: ${business.pan}`);
+      if (business.phone) ids.push(`Ph: ${business.phone}`);
+      if (ids.length) pdf.text(ids.join('   |   '), textX, 64, { width: 390 - (hasLogo ? 74 : 0) });
+
+      pdf.text(title, 400, 26, { width: 175, align: 'right' });
+      pdf.font('Helvetica').fontSize(9);
+      pdf.text(`${doc.number}`, 400, 44, { width: 175, align: 'right' });
+      pdf.text(`Date: ${doc.date}`, 400, 56, { width: 175, align: 'right' });
+      if (doc.due_date) pdf.text(`Due date: ${doc.due_date}`, 400, 68, { width: 175, align: 'right' });
+    }
     if (doc.status === 'cancelled') {
       pdf.rect(470, 70, 105, 16).fill('#dc2626');
       pdf.fillColor('#ffffff').font('Helvetica-Bold').fontSize(9).text('CANCELLED', 470, 74, { width: 105, align: 'center' });
@@ -149,7 +163,16 @@ function render(doc, business, party, accent) {
 
     // ---------- line items ----------
     const tableTop = y;
-    const cols = [
+    const isInter = doc.supply_type === 'inter';
+    const cols = isEstimate ? [
+      { label: '#', x: 40, w: 22, align: 'left' },
+      { label: 'ITEM / SERVICE DESCRIPTION', x: 64, w: 236, align: 'left' },
+      { label: 'QTY', x: 304, w: 50, align: 'right' },
+      { label: 'UNIT', x: 358, w: 42, align: 'left' },
+      { label: 'RATE (₹)', x: 404, w: 56, align: 'right' },
+      { label: 'DISC', x: 464, w: 42, align: 'right' },
+      { label: 'AMOUNT (₹)', x: 510, w: 66, align: 'right' }
+    ] : [
       { label: '#', x: 40, w: 18, align: 'left' },
       { label: 'ITEM / SERVICE', x: 60, w: 148, align: 'left' },
       { label: 'HSN/SAC', x: 212, w: 46, align: 'left' },
@@ -161,8 +184,7 @@ function render(doc, business, party, accent) {
       { label: 'CGST', x: 498, w: 38, align: 'right' },
       { label: 'SGST', x: 538, w: 38, align: 'right' }
     ];
-    const isInter = doc.supply_type === 'inter';
-    if (isInter) {
+    if (!isEstimate && isInter) {
       cols[8].label = 'IGST';
       cols[8].w = 78;
       cols.pop();
@@ -191,19 +213,30 @@ function render(doc, business, party, accent) {
         pdf.font('Helvetica').fontSize(8);
       }
 
-      pdf.fillColor(MUTED).text(String(i + 1), cols[0].x, rowY, { width: cols[0].w });
-      pdf.fillColor(isRet ? '#dc2626' : INK).font('Helvetica-Bold').text(itemName, cols[1].x, rowY, { width: cols[1].w });
-      pdf.font('Helvetica');
-      pdf.text(l.hsn || '-', cols[2].x, rowY, { width: cols[2].w });
-      pdf.text(`${isRet ? '-' : ''}${l.qty} ${l.unit || ''}`.trim(), cols[3].x, rowY, { width: cols[3].w, align: 'right' });
-      pdf.text(fmt(l.rate), cols[4].x, rowY, { width: cols[4].w, align: 'right' });
-      pdf.text(l.discount ? '-' + fmt(l.discount) : '-', cols[5].x, rowY, { width: cols[5].w, align: 'right' });
-      pdf.text(fmt(l.taxable), cols[6].x, rowY, { width: cols[6].w, align: 'right' });
-      pdf.text(`${l.gstRate}%`, cols[7].x, rowY, { width: cols[7].w, align: 'right' });
-      if (isInter) pdf.text(fmt(l.igst), cols[8].x, rowY, { width: cols[8].w, align: 'right' });
-      else {
-        pdf.text(fmt(l.cgst), cols[8].x, rowY, { width: cols[8].w, align: 'right' });
-        pdf.text(fmt(l.sgst), cols[9].x, rowY, { width: cols[9].w, align: 'right' });
+      if (isEstimate) {
+        pdf.fillColor(MUTED).text(String(i + 1), cols[0].x, rowY, { width: cols[0].w });
+        pdf.fillColor(isRet ? '#dc2626' : INK).font('Helvetica-Bold').text(itemName, cols[1].x, rowY, { width: cols[1].w });
+        pdf.font('Helvetica');
+        pdf.text(`${isRet ? '-' : ''}${l.qty}`, cols[2].x, rowY, { width: cols[2].w, align: 'right' });
+        pdf.text(l.unit || 'PCS', cols[3].x, rowY, { width: cols[3].w, align: 'left' });
+        pdf.text(fmt(l.rate), cols[4].x, rowY, { width: cols[4].w, align: 'right' });
+        pdf.text(l.discount ? '-' + fmt(l.discount) : '-', cols[5].x, rowY, { width: cols[5].w, align: 'right' });
+        pdf.text(fmt(l.total || l.taxable), cols[6].x, rowY, { width: cols[6].w, align: 'right' });
+      } else {
+        pdf.fillColor(MUTED).text(String(i + 1), cols[0].x, rowY, { width: cols[0].w });
+        pdf.fillColor(isRet ? '#dc2626' : INK).font('Helvetica-Bold').text(itemName, cols[1].x, rowY, { width: cols[1].w });
+        pdf.font('Helvetica');
+        pdf.text(l.hsn || '-', cols[2].x, rowY, { width: cols[2].w });
+        pdf.text(`${isRet ? '-' : ''}${l.qty} ${l.unit || ''}`.trim(), cols[3].x, rowY, { width: cols[3].w, align: 'right' });
+        pdf.text(fmt(l.rate), cols[4].x, rowY, { width: cols[4].w, align: 'right' });
+        pdf.text(l.discount ? '-' + fmt(l.discount) : '-', cols[5].x, rowY, { width: cols[5].w, align: 'right' });
+        pdf.text(fmt(l.taxable), cols[6].x, rowY, { width: cols[6].w, align: 'right' });
+        pdf.text(`${l.gstRate}%`, cols[7].x, rowY, { width: cols[7].w, align: 'right' });
+        if (isInter) pdf.text(fmt(l.igst), cols[8].x, rowY, { width: cols[8].w, align: 'right' });
+        else {
+          pdf.text(fmt(l.cgst), cols[8].x, rowY, { width: cols[8].w, align: 'right' });
+          pdf.text(fmt(l.sgst), cols[9].x, rowY, { width: cols[9].w, align: 'right' });
+        }
       }
       rowY += cellH;
       pdf.moveTo(40, rowY - 3).lineTo(576, rowY - 3).strokeColor(LINE).lineWidth(0.5).stroke();
@@ -227,15 +260,17 @@ function render(doc, business, party, accent) {
     };
     row('Subtotal', doc.subtotal);
     if (doc.discount_amount) row(`Discount (${doc.discount_type === 'pct' ? doc.discount_value + '%' : 'flat'})`, -doc.discount_amount);
-    row('Taxable value', doc.taxable_value);
-    if (isInter) row(`IGST`, doc.igst);
-    else { row('CGST', doc.cgst); row('SGST / UTGST', doc.sgst); }
-    if (doc.cess) row('Cess', doc.cess);
+    if (!isEstimate) {
+      row('Taxable value', doc.taxable_value);
+      if (isInter) row(`IGST`, doc.igst);
+      else { row('CGST', doc.cgst); row('SGST / UTGST', doc.sgst); }
+      if (doc.cess) row('Cess', doc.cess);
+    }
     if (Number(doc.transportation) > 0) row('Transportation', doc.transportation);
     if (Number(doc.loading_charges) > 0) row('Loading charges', doc.loading_charges);
     if (Number(doc.bag_charges) > 0) row('Bag charges', doc.bag_charges);
     if (doc.round_off) row('Round off', doc.round_off);
-    pdf.moveTo(totalsX, totalsY - 2).lineTo(576, totalsY - 2).strokeColor(accent).lineWidth(1).stroke();
+    pdf.moveTo(totalsX, totalsY - 2).lineTo(576, totalsY - 2).strokeColor(isEstimate ? '#334155' : accent).lineWidth(1).stroke();
     row('CURRENT BILL TOTAL', doc.total, true);
 
     // If sale or purchase: display Current Bill Total, Previous Due, Amount Received, Net Balance
@@ -293,16 +328,18 @@ function render(doc, business, party, accent) {
       ly += wordsH + 10;
     }
 
-    const hsn = hsnSummary(lines, doc.supply_type);
-    if (hsn.length) {
-      pdf.font('Helvetica-Bold').fontSize(8).fillColor(INK).text('HSN SUMMARY', 40, ly);
-      ly += 11;
-      pdf.font('Helvetica').fontSize(7.5).fillColor(MUTED);
-      hsn.slice(0, 5).forEach((h) => {
-        pdf.text(`${h.hsn}  |  ${h.gstRate}%  |  Qty ${h.qty}  |  Taxable ${fmt(h.taxable)}  |  Tax ${fmt(h.cgst + h.sgst + h.igst + h.cess)}`, 40, ly, { width: leftWidth });
-        ly += 10;
-      });
-      ly += 6;
+    if (!isEstimate) {
+      const hsn = hsnSummary(lines, doc.supply_type);
+      if (hsn.length) {
+        pdf.font('Helvetica-Bold').fontSize(8).fillColor(INK).text('HSN SUMMARY', 40, ly);
+        ly += 11;
+        pdf.font('Helvetica').fontSize(7.5).fillColor(MUTED);
+        hsn.slice(0, 5).forEach((h) => {
+          pdf.text(`${h.hsn}  |  ${h.gstRate}%  |  Qty ${h.qty}  |  Taxable ${fmt(h.taxable)}  |  Tax ${fmt(h.cgst + h.sgst + h.igst + h.cess)}`, 40, ly, { width: leftWidth });
+          ly += 10;
+        });
+        ly += 6;
+      }
     }
 
     if (business.bank_account_no || business.upi_id) {

@@ -137,7 +137,7 @@ router.get('/gstr1', (req, res) => {
   const { from, to } = period(req);
   const rows = db.prepare(`SELECT d.*, p.name AS party_display, p.gstin AS party_gstin_db, p.state_code AS party_state_code_db
     FROM documents d LEFT JOIN parties p ON p.id = d.party_id
-    WHERE d.business_id = ? AND d.type='sale' AND d.status='active' AND d.date BETWEEN ? AND ? ORDER BY d.date`).all(req.business.id, from, to);
+    WHERE d.business_id = ? AND d.type='sale' AND (d.is_estimate = 0 OR d.is_estimate IS NULL) AND d.status='active' AND d.date BETWEEN ? AND ? ORDER BY d.date`).all(req.business.id, from, to);
 
   const b2b = [];
   const b2cLarge = [];
@@ -184,7 +184,7 @@ router.get('/gstr1', (req, res) => {
 /** GSTR-3B summary: outward, inward, net payable, ITC available. */
 router.get('/gstr3b', (req, res) => {
   const { from, to } = period(req);
-  const sum = (type, field) => round2(db.prepare(`SELECT COALESCE(SUM(${field}),0) s FROM documents WHERE business_id=? AND type=? AND status='active' AND date BETWEEN ? AND ?`).get(req.business.id, type, from, to).s);
+  const sum = (type, field) => round2(db.prepare(`SELECT COALESCE(SUM(${field}),0) s FROM documents WHERE business_id=? AND type=? AND (is_estimate = 0 OR is_estimate IS NULL) AND status='active' AND date BETWEEN ? AND ?`).get(req.business.id, type, from, to).s);
 
   const outward = {
     taxable: sum('sale', 'taxable_value'),
@@ -464,12 +464,12 @@ function gstr1Rows(businessId, from, to) {
 }
 
 function b2cBreakdown(businessId, from, to) {
-  const rows = db.prepare("SELECT place_of_supply, SUM(taxable_value) txval, SUM(igst) iamt, SUM(cgst) camt, SUM(sgst) samt FROM documents WHERE business_id=? AND type='sale' AND status='active' AND date BETWEEN ? AND ? AND (party_gstin IS NULL OR party_gstin='URP') GROUP BY place_of_supply").all(businessId, from, to);
+  const rows = db.prepare("SELECT place_of_supply, SUM(taxable_value) txval, SUM(igst) iamt, SUM(cgst) camt, SUM(sgst) samt FROM documents WHERE business_id=? AND type='sale' AND (is_estimate = 0 OR is_estimate IS NULL) AND status='active' AND date BETWEEN ? AND ? AND (party_gstin IS NULL OR party_gstin='URP') GROUP BY place_of_supply").all(businessId, from, to);
   return rows.map((r) => ({ pos: r.place_of_supply, state: stateName(r.place_of_supply), txval: round2(r.txval), iamt: round2(r.iamt), camt: round2(r.camt), samt: round2(r.samt) }));
 }
 
 function docSeries(businessId, from, to) {
-  return db.prepare("SELECT type, MIN(number) from_no, MAX(number) to_no, COUNT(*) n FROM documents WHERE business_id=? AND status='active' AND date BETWEEN ? AND ? GROUP BY type").all(businessId, from, to);
+  return db.prepare("SELECT type, MIN(number) from_no, MAX(number) to_no, COUNT(*) n FROM documents WHERE business_id=? AND (is_estimate = 0 OR is_estimate IS NULL) AND status='active' AND date BETWEEN ? AND ? GROUP BY type").all(businessId, from, to);
 }
 
 function partyRunningBalance(partyId) {

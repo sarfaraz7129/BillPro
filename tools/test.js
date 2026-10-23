@@ -5,7 +5,12 @@
  * -> reports -> PDF). Fails loudly on any mismatch.
  */
 // The test DB is pointed at by BILLPRO_DB (set in package.json "test"); wipe it here.
-if (process.env.BILLPRO_DB) require('fs').rmSync(process.env.BILLPRO_DB, { force: true });
+if (process.env.BILLPRO_DB) {
+  const fs = require('fs');
+  fs.rmSync(process.env.BILLPRO_DB, { force: true });
+  fs.rmSync(process.env.BILLPRO_DB + '-wal', { force: true });
+  fs.rmSync(process.env.BILLPRO_DB + '-shm', { force: true });
+}
 
 const { seed, EMAIL, PASSWORD } = require('./seed-demo');
 seed();
@@ -379,6 +384,62 @@ async function run() {
     headers: { 'Authorization': 'Bearer ' + demoUserData.token }
   });
   ok('demo merchant is blocked from super admin endpoints (403)', demoAdminDeny.status === 403);
+
+  console.log('\n--- dual billing mode (estimate bills vs official GST) ---');
+  // 1. Create an Estimate Bill
+  const estParty = parties.body.parties[0];
+  const estProd = products.body.products[0];
+  const initialEstStock = (await call('GET', '/api/products')).body.products.find((p) => p.id === estProd.id).stock;
+  const initialEstPartyBal = (await call('GET', `/api/parties/${estParty.id}`)).body.party.balance;
+
+  const estCreate = await call('POST', '/api/documents', {
+    type: 'sale',
+    is_estimate: 1,
+    partyId: estParty.id,
+    partyName: estParty.name,
+    items: [{ product_id: estProd.id, name: estProd.name, qty: 3, rate: 200, gstRate: 18 }],
+    paidAmount: 200,
+    paymentMode: 'cash',
+    bagCharges: 15
+  });
+  ok('creates an Estimate Bill', estCreate.status === 201 && estCreate.body.document.is_estimate === 1, estCreate.status);
+  const estDocData = estCreate.body.document;
+  ok('estimate bill uses EST-n series number', /^EST-\d+$/.test(estDocData.number), estDocData.number);
+  ok('estimate bill has 0 GST taxes', estDocData.cgst === 0 && estDocData.sgst === 0 && estDocData.igst === 0, { cgst: estDocData.cgst, sgst: estDocData.sgst });
+  ok('estimate bill total matches subtotal + bag charges (615)', estDocData.total === 615, estDocData.total);
+  ok('estimate bill reduces inventory stock', (await call('GET', '/api/products')).body.products.find((p) => p.id === estProd.id).stock === initialEstStock - 3);
+  ok('estimate bill updates customer khata (+415 due)', near((await call('GET', `/api/parties/${estParty.id}`)).body.party.balance, initialEstPartyBal + 415));
+
+  // 2. Estimate excluded from GSTR-1 & GSTR-3B
+  const gstr1EstCheck = await call('GET', '/api/reports/gstr1?from=2000-01-01&to=2099-12-31');
+  const foundInGstr1 = (gstr1EstCheck.body.b2cs || []).some((b) => b.number === estDocData.number);
+  ok('estimate bill is excluded from GSTR-1', !foundInGstr1);
+
+  // 3. Document filter by is_estimate
+  const estFilterList = await call('GET', '/api/documents?type=sale&is_estimate=1');
+  ok('filter is_estimate=1 returns only estimate documents', estFilterList.body.documents.every((d) => d.is_estimate === 1) && estFilterList.body.documents.some((d) => d.id === estDocData.id));
+
+  // 4. Convert Estimate to Official GST Invoice
+  const convertAction = await call('POST', `/api/documents/${estDocData.id}/convert-to-gst`);
+  ok('converts estimate to GST invoice', convertAction.status === 200, convertAction.status);
+  const convertedGst = convertAction.body.document;
+  ok('converted invoice has is_estimate=0', convertedGst.is_estimate === 0);
+  ok('converted invoice gets sequential GST series number', !convertedGst.number.startsWith('EST-'), convertedGst.number);
+  ok('converted invoice computes real GST splits (108 tax)', near(convertedGst.cgst + convertedGst.sgst + convertedGst.igst, 108), { cgst: convertedGst.cgst, sgst: convertedGst.sgst });
+  ok('converted invoice total matches taxable + GST + charges (723)', convertedGst.total === 723, convertedGst.total);
+  ok('converted invoice does not duplicate stock deduction', (await call('GET', '/api/products')).body.products.find((p) => p.id === estProd.id).stock === initialEstStock - 3);
+
+  // 5. Clean PDF generation for estimate bills
+  const estBill2 = await call('POST', '/api/documents', {
+    type: 'sale',
+    is_estimate: 1,
+    partyName: 'Retail Walk-in Buyer',
+    items: [{ name: 'Loose Dry Fruits 1kg', qty: 2, rate: 450, gstRate: 12 }]
+  });
+  const estPdfRes = await fetch(`${base}/api/pdf/invoice/${estBill2.body.document.id}`, {
+    headers: { 'Authorization': 'Bearer ' + token }
+  });
+  ok('generates clean Estimate Bill PDF', estPdfRes.status === 200 && Number(estPdfRes.headers.get('content-length') || 0) > 1000);
 
   server.close();
   console.log(`\n${passed} passed, ${failed} failed\n`);

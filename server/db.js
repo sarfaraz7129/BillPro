@@ -56,6 +56,9 @@ CREATE TABLE IF NOT EXISTS businesses (
   upi_id            TEXT,
   invoice_prefix    TEXT DEFAULT 'INV',
   invoice_counter   INTEGER NOT NULL DEFAULT 1000,
+  estimate_prefix   TEXT DEFAULT 'EST',
+  estimate_counter  INTEGER NOT NULL DEFAULT 0,
+  default_bill_mode TEXT DEFAULT 'estimate',
   quoter_prefix     TEXT DEFAULT 'QT',
   quoter_counter    INTEGER NOT NULL DEFAULT 100,
   default_gst_rate  REAL NOT NULL DEFAULT 18,
@@ -159,6 +162,7 @@ CREATE TABLE IF NOT EXISTS documents (
   bag_charges   REAL NOT NULL DEFAULT 0,
   bags_count    TEXT,
   extra_charges REAL NOT NULL DEFAULT 0,
+  is_estimate   INTEGER NOT NULL DEFAULT 0,
   transport_doc_no TEXT,
   vehicle_no    TEXT,
   ewaybill_no   TEXT,
@@ -288,6 +292,21 @@ try {
   }
   if (!docCols.includes('extra_charges')) {
     db.exec('ALTER TABLE documents ADD COLUMN extra_charges REAL NOT NULL DEFAULT 0');
+  }
+  if (!docCols.includes('is_estimate')) {
+    db.exec('ALTER TABLE documents ADD COLUMN is_estimate INTEGER NOT NULL DEFAULT 0');
+  }
+
+  // Migration: Ensure businesses table has estimate_prefix, estimate_counter, default_bill_mode
+  const bizCols = db.prepare('PRAGMA table_info(businesses)').all().map((c) => c.name);
+  if (!bizCols.includes('estimate_prefix')) {
+    db.exec("ALTER TABLE businesses ADD COLUMN estimate_prefix TEXT DEFAULT 'EST'");
+  }
+  if (!bizCols.includes('estimate_counter')) {
+    db.exec("ALTER TABLE businesses ADD COLUMN estimate_counter INTEGER NOT NULL DEFAULT 0");
+  }
+  if (!bizCols.includes('default_bill_mode')) {
+    db.exec("ALTER TABLE businesses ADD COLUMN default_bill_mode TEXT DEFAULT 'estimate'");
   }
 
   const bcrypt = require('bcryptjs');

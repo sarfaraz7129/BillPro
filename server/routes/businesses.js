@@ -14,7 +14,7 @@ router.use(auth);
 /** All businesses for this account + headline numbers for the consolidated view. */
 router.get('/', auth, (req, res) => {
   let businesses;
-  if (req.user.is_superadmin) {
+  if (req.user.is_superadmin && req.query.all === '1') {
     businesses = db.prepare(`
       SELECT b.*, u.name AS owner_name, u.email AS owner_email, u.phone AS owner_phone
       FROM businesses b
@@ -37,10 +37,13 @@ router.post('/', auth, (req, res) => {
   const info = db.prepare(`INSERT INTO businesses
     (owner_id, name, legal_name, gstin, pan, address, city, state, state_code, pincode, phone, email, website,
      logo_url, bank_name, bank_account_no, bank_ifsc, bank_branch, upi_id, invoice_prefix, quoter_prefix,
+     estimate_prefix, estimate_counter, default_bill_mode,
      default_gst_rate, composition_scheme, invoice_theme, invoice_footer, terms, credit_days, color)
     VALUES (@owner_id, @name, @legal_name, @gstin, @pan, @address, @city, @state, @state_code, @pincode, @phone,
             @email, @website, @logo_url, @bank_name, @bank_account_no, @bank_ifsc, @bank_branch, @upi_id,
-            @invoice_prefix, @quoter_prefix, @default_gst_rate, @composition_scheme, @invoice_theme, @invoice_footer,
+            @invoice_prefix, @quoter_prefix,
+            @estimate_prefix, @estimate_counter, @default_bill_mode,
+            @default_gst_rate, @composition_scheme, @invoice_theme, @invoice_footer,
             @terms, @credit_days, @color)`)
     .run({
       owner_id: ownerId,
@@ -64,6 +67,9 @@ router.post('/', auth, (req, res) => {
       upi_id: b.upi_id || null,
       invoice_prefix: b.invoice_prefix || 'INV',
       quoter_prefix: b.quoter_prefix || 'QT',
+      estimate_prefix: b.estimate_prefix || 'EST-',
+      estimate_counter: Number(b.estimate_counter) || 1,
+      default_bill_mode: b.default_bill_mode || 'estimate',
       default_gst_rate: Number(b.default_gst_rate) || 18,
       composition_scheme: b.composition_scheme ? 1 : 0,
       invoice_theme: b.invoice_theme || 'classic',
@@ -133,6 +139,7 @@ router.put('/:id', auth, (req, res) => {
     city=@city, state=@state, state_code=@state_code, pincode=@pincode, phone=@phone, email=@email, website=@website,
     logo_url=@logo_url, bank_name=@bank_name, bank_account_no=@bank_account_no, bank_ifsc=@bank_ifsc,
     bank_branch=@bank_branch, upi_id=@upi_id, invoice_prefix=@invoice_prefix, quoter_prefix=@quoter_prefix,
+    estimate_prefix=@estimate_prefix, estimate_counter=@estimate_counter, default_bill_mode=@default_bill_mode,
     default_gst_rate=@default_gst_rate, composition_scheme=@composition_scheme, invoice_theme=@invoice_theme,
     invoice_footer=@invoice_footer, terms=@terms, credit_days=@credit_days, color=@color WHERE id=@id`)
     .run({
@@ -157,6 +164,9 @@ router.put('/:id', auth, (req, res) => {
       upi_id: b.upi_id ?? biz.upi_id,
       invoice_prefix: b.invoice_prefix ?? biz.invoice_prefix,
       quoter_prefix: b.quoter_prefix ?? biz.quoter_prefix,
+      estimate_prefix: b.estimate_prefix ?? (biz.estimate_prefix || 'EST-'),
+      estimate_counter: b.estimate_counter !== undefined ? Number(b.estimate_counter) : (biz.estimate_counter || 1),
+      default_bill_mode: b.default_bill_mode ?? (biz.default_bill_mode || 'estimate'),
       default_gst_rate: b.default_gst_rate !== undefined ? Number(b.default_gst_rate) : biz.default_gst_rate,
       composition_scheme: b.composition_scheme !== undefined ? (b.composition_scheme ? 1 : 0) : biz.composition_scheme,
       invoice_theme: b.invoice_theme ?? biz.invoice_theme,
@@ -165,6 +175,9 @@ router.put('/:id', auth, (req, res) => {
       credit_days: b.credit_days !== undefined ? Number(b.credit_days) : biz.credit_days,
       color: b.color ?? biz.color
     });
+  if (b.invoice_counter !== undefined && Number(b.invoice_counter) >= 0) {
+    db.prepare('UPDATE businesses SET invoice_counter = ? WHERE id = ?').run(Number(b.invoice_counter), biz.id);
+  }
   logActivity(biz.id, req.user.id, 'business.updated', biz.name);
   res.json({ business: db.prepare('SELECT * FROM businesses WHERE id = ?').get(biz.id) });
 });

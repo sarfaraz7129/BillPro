@@ -3,7 +3,7 @@ const express = require('express');
 const QRCode = require('qrcode');
 const { db } = require('../db');
 const { auth, loadBusiness } = require('../middleware');
-const { buildDocument, DOC_COLS, DOC_PLACEHOLDERS, docValues, postStock, unwindStock, logActivity, partyBalance } = require('../lib/service');
+const { buildDocument, DOC_COLS, DOC_PLACEHOLDERS, docValues, postStock, unwindStock, logActivity, partyBalance, takeNumber } = require('../lib/service');
 const { buildEinvoicePayload, buildEwayBillPayload, round2, hsnSummary } = require('../lib/gst');
 const { istToday, istTime, istIso, istAddDays, formatIstDateTime } = require('../lib/time');
 
@@ -55,6 +55,10 @@ router.get('/', (req, res) => {
     ORDER BY d.date DESC, d.id DESC`).all(req.business.id, type, from, to);
   if (status) rows = rows.filter((r) => r.payment_status === status || r.status === status);
   if (partyId) rows = rows.filter((r) => String(r.party_id) === String(partyId));
+  if (req.query.is_estimate !== undefined && req.query.is_estimate !== '') {
+    const isEst = Number(req.query.is_estimate);
+    rows = rows.filter((r) => Number(r.is_estimate || 0) === isEst);
+  }
   if (q) rows = rows.filter((r) => [r.number, r.party_name, r.party_display, r.party_gstin].some((f) => String(f || '').toLowerCase().includes(q)));
 
   const totals = rows.reduce((a, r) => {
@@ -250,6 +254,58 @@ router.post('/:id/payment', (req, res) => {
   });
   tx();
   res.json({ document: getDoc(req, doc.id) });
+});
+
+/** Convert an Estimate Bill into an official GST Tax Invoice. */
+router.post('/:id/convert-to-gst', (req, res) => {
+  const doc = getDoc(req, req.params.id);
+  if (!doc) return res.status(404).json({ error: 'Document not found' });
+  if (!doc.is_estimate) return res.status(400).json({ error: 'Document is already an official GST invoice.' });
+
+  const invNumber = takeNumber(req.business.id, 'sale', false);
+  const defaultGstRate = req.business.default_gst_rate !== undefined ? Number(req.business.default_gst_rate) : 18;
+  const items = Array.isArray(doc.items) ? doc.items : JSON.parse(doc.items || '[]');
+  const updatedItems = items.map((it) => ({
+    ...it,
+    gstRate: (it.gstRate && Number(it.gstRate) > 0) ? Number(it.gstRate) : defaultGstRate
+  }));
+
+  const convertedDoc = buildDocument(req.business, {
+    ...doc,
+    items: updatedItems,
+    isEstimate: false,
+    number: invNumber,
+    supplyType: doc.supply_type
+  }, 'sale', doc);
+
+  db.prepare(`UPDATE documents SET
+    number = ?, is_estimate = 0, items = ?, subtotal = ?, discount_amount = ?,
+    taxable_value = ?, cgst = ?, sgst = ?, igst = ?, cess = ?, round_off = ?,
+    total = ?, amount_in_words = ?, due_amount = ?, payment_status = ?
+    WHERE id = ?
+  `).run(
+    convertedDoc.number,
+    convertedDoc.items,
+    convertedDoc.subtotal,
+    convertedDoc.discount_amount,
+    convertedDoc.taxable_value,
+    convertedDoc.cgst,
+    convertedDoc.sgst,
+    convertedDoc.igst,
+    convertedDoc.cess,
+    convertedDoc.round_off,
+    convertedDoc.total,
+    convertedDoc.amount_in_words,
+    convertedDoc.due_amount,
+    convertedDoc.payment_status,
+    doc.id
+  );
+
+  logActivity(req.business.id, req.user.id, 'estimate.converted_to_gst', `${doc.number} -> ${invNumber}`);
+  const freshDoc = getDoc(req, doc.id);
+  const party = freshDoc.party_id ? db.prepare('SELECT * FROM parties WHERE id = ?').get(freshDoc.party_id) : null;
+  const payments = db.prepare('SELECT * FROM transactions WHERE document_id = ? ORDER BY date').all(doc.id);
+  res.json({ ok: true, document: freshDoc, party, payments });
 });
 
 /** Generate an E-Way Bill (Part-A/Part-B) for this consignment. */
