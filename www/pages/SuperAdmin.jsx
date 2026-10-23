@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { api, money, isSuperAdmin } from '../src/api.js';
+import { api, money, isSuperAdmin, getToken } from '../src/api.js';
 import { Icon, initials, colorFor } from '../src/ui.jsx';
 import { Modal, Confirm, Field } from '../src/components.jsx';
 
@@ -19,6 +19,7 @@ export default function SuperAdmin({ user, toast }) {
   const [loading, setLoading] = useState(true);
   const [persistenceInfo, setPersistenceInfo] = useState(null);
   const [restoreBusy, setRestoreBusy] = useState(false);
+  const [backupBusy, setBackupBusy] = useState('');
 
   // Search & filters
   const [search, setSearch] = useState('');
@@ -85,6 +86,39 @@ export default function SuperAdmin({ user, toast }) {
     }
   };
 
+  const handleDownloadBackup = async (format) => {
+    setBackupBusy(format);
+    try {
+      const token = getToken();
+      if (!token) throw new Error('Your session has expired. Sign in again, then retry the backup.');
+      const response = await fetch(`/api/admin/backup?format=${encodeURIComponent(format)}`, {
+        headers: { Authorization: `Bearer ${token}`, 'X-BillPro-Token': token }
+      });
+      if (!response.ok) {
+        let message = `Backup download failed (${response.status}).`;
+        try { message = (await response.json()).error || message; } catch (_) {}
+        throw new Error(message);
+      }
+      const blob = await response.blob();
+      const disposition = response.headers.get('Content-Disposition') || '';
+      const filename = disposition.match(/filename=\"?([^\";]+)\"?/i)?.[1]
+        || `billpro-backup-${new Date().toISOString().slice(0, 10)}.${format === 'db' ? 'db' : 'json'}`;
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = objectUrl;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 1500);
+      toast(format === 'json' ? 'JSON backup downloaded.' : 'SQLite backup downloaded.', 'ok');
+    } catch (err) {
+      toast(err.message || 'Backup download failed.', 'err');
+    } finally {
+      setBackupBusy('');
+    }
+  };
+
   const handleRestoreFile = (e) => {
     const file = e.target.files && e.target.files[0];
     if (!file) return;
@@ -94,8 +128,9 @@ export default function SuperAdmin({ user, toast }) {
       try {
         setRestoreBusy(true);
         const json = JSON.parse(evt.target.result);
-        await api.adminRestoreData(json);
-        toast('Database restored successfully!', 'ok');
+        const result = await api.adminRestoreData(json);
+        toast('Database restore completed.', 'ok');
+        if (result.persistence_warning) toast(`Storage is temporary: ${result.persistence_warning}`);
         loadAll();
       } catch (err) {
         toast('Failed to restore: ' + err.message, 'err');
@@ -121,7 +156,7 @@ export default function SuperAdmin({ user, toast }) {
     try {
       const res = await api.adminCreateUser(provForm);
       toast(`Customer account created for ${res.user.name}`, 'ok');
-      if (res.persistence_warning) toast(res.persistence_warning, 'err');
+      if (res.persistence_warning) toast(`The action succeeded, but storage is temporary: ${res.persistence_warning}`);
       setProvisionModal(false);
 
       const targetPhone = provForm.phone || (res.user && res.user.phone);
@@ -161,7 +196,7 @@ export default function SuperAdmin({ user, toast }) {
         days: renewDays ? Number(renewDays) : undefined
       });
       toast(`Renewed ${renewTarget.name}'s subscription under ${renewPlan.toUpperCase()} plan`, 'ok');
-      if (result.persistence_warning) toast(result.persistence_warning, 'err');
+      if (result.persistence_warning) toast(`The action succeeded, but storage is temporary: ${result.persistence_warning}`);
       setRenewTarget(null);
       loadAll();
     } catch (err) {
@@ -214,7 +249,7 @@ export default function SuperAdmin({ user, toast }) {
     try {
       const result = await api.adminUpdateUser(editTarget.id, editTarget);
       toast(`Saved changes for ${editTarget.name} & ${editTarget.business_name || 'business'}!`, 'ok');
-      if (result.persistence_warning) toast(result.persistence_warning, 'err');
+      if (result.persistence_warning) toast(`The action succeeded, but storage is temporary: ${result.persistence_warning}`);
       setEditTarget(null);
       loadAll();
     } catch (err) {
@@ -242,7 +277,7 @@ export default function SuperAdmin({ user, toast }) {
     try {
       const res = await api.adminConvertInquiry(convertTarget.id, convertForm);
       toast(`Inquiry converted to client account for ${res.user.name}!`, 'ok');
-      if (res.persistence_warning) toast(res.persistence_warning, 'err');
+      if (res.persistence_warning) toast(`The action succeeded, but storage is temporary: ${res.persistence_warning}`);
       const targetPhone = convertTarget.phone || (res.user && res.user.phone);
       if (res.welcome_whatsapp) {
         openWhatsApp(targetPhone, res.welcome_whatsapp);
@@ -633,7 +668,9 @@ export default function SuperAdmin({ user, toast }) {
                             )}
                             <button
                               className="btn sm"
-                              title="Lock customer into permanent registry so account is never lost on redeploys"
+                              disabled={persistenceInfo?.isPersistent !== true}
+                              style={{ opacity: persistenceInfo?.isPersistent === true ? 1 : 0.55, cursor: persistenceInfo?.isPersistent === true ? 'pointer' : 'not-allowed' }}
+                              title={persistenceInfo?.isPersistent === true ? 'Lock customer into permanent registry' : 'Unavailable: this deployment has no persistent storage'}
                               onClick={async () => {
                                 try {
                                   const res = await api.adminPersistUser(u.id);
@@ -843,8 +880,9 @@ export default function SuperAdmin({ user, toast }) {
                       <button
                         type="button"
                         className="btn sm"
-                        style={{ fontWeight: 600, justifyContent: 'center' }}
-                        title="Lock client into permanent registry"
+                        disabled={persistenceInfo?.isPersistent !== true}
+                        style={{ fontWeight: 600, justifyContent: 'center', opacity: persistenceInfo?.isPersistent === true ? 1 : 0.55, cursor: persistenceInfo?.isPersistent === true ? 'pointer' : 'not-allowed' }}
+                        title={persistenceInfo?.isPersistent === true ? 'Lock client into permanent registry' : 'Unavailable: this deployment has no persistent storage'}
                         onClick={async () => {
                           try {
                             const res = await api.adminPersistUser(u.id);
@@ -1148,7 +1186,7 @@ export default function SuperAdmin({ user, toast }) {
               <p style={{ margin: 0, fontSize: 13, color: persistenceInfo?.isPersistent ? '#14532d' : '#713f12', lineHeight: 1.5 }}>
                 {persistenceInfo?.isPersistent
                   ? 'Your database is mounted on a persistent disk. All businesses, invoices, and parties are safely retained across every code deployment and restart.'
-                  : 'Root Cause: Render cloud containers use temporary (ephemeral) disks by default. Every time code is deployed or the server sleeps, Render destroys the old container. To fix this permanently, attach a Render Persistent Disk (/var/data) or download regular backups below.'}
+                  : 'This deployment uses SQLite on Render Free, whose local filesystem is temporary. New clients can be created and used now, but accounts and billing data may disappear after a restart, idle spin-down, or redeploy. Permanent locking is disabled because saving another local file would not make it durable. Download JSON backups regularly and restore them after a reset.'}
               </p>
             </div>
 
@@ -1162,22 +1200,24 @@ export default function SuperAdmin({ user, toast }) {
                   Export all client profiles, registered businesses, customer lists, and documents into an offline file anytime.
                 </p>
                 <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                  <a
-                    href="/api/admin/backup?format=json"
-                    download
+                  <button
+                    type="button"
+                    onClick={() => handleDownloadBackup('json')}
+                    disabled={Boolean(backupBusy)}
                     className="btn primary"
-                    style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
                   >
-                    <Icon.download size={14} /> Download JSON Backup
-                  </a>
-                  <a
-                    href="/api/admin/backup?format=db"
-                    download
+                    <Icon.download size={14} /> {backupBusy === 'json' ? 'Downloading…' : 'Download JSON Backup'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDownloadBackup('db')}
+                    disabled={Boolean(backupBusy)}
                     className="btn"
-                    style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
                   >
-                    💾 Download Raw SQLite (.db)
-                  </a>
+                    💾 {backupBusy === 'db' ? 'Downloading…' : 'Download Raw SQLite (.db)'}
+                  </button>
                 </div>
               </div>
 
