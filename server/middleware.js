@@ -2,7 +2,11 @@
 const jwt = require('jsonwebtoken');
 const { db } = require('./db');
 
-const JWT_SECRET = process.env.BILLPRO_JWT_SECRET || 'billpro-dev-secret-change-me-in-production';
+const JWT_SECRET = process.env.BILLPRO_JWT_SECRET || process.env.JWT_SECRET ||
+  (process.env.NODE_ENV === 'production' ? '' : 'billpro-dev-secret-change-me-in-production');
+if (!JWT_SECRET) {
+  throw new Error('Missing JWT signing secret. Configure JWT_SECRET or BILLPRO_JWT_SECRET before starting in production.');
+}
 
 function sign(user) {
   return jwt.sign({ uid: user.id, email: user.email, role: user.role }, JWT_SECRET, { expiresIn: '30d' });
@@ -99,9 +103,13 @@ function loadBusiness(req, res, next) {
       biz = list[0] || db.prepare('SELECT * FROM businesses ORDER BY id ASC LIMIT 1').get();
     }
   } else {
-    biz = (wanted ? list.find((b) => b.id === wanted) : null)
-      || list.find((b) => b.id === req.user.active_business_id)
-      || list[0];
+    if (rawWanted !== undefined && rawWanted !== null && rawWanted !== '') {
+      const requestedBusiness = Number.isSafeInteger(wanted) ? list.find((b) => b.id === wanted) : null;
+      if (!requestedBusiness) return res.status(403).json({ error: 'You do not have access to the selected business.' });
+      biz = requestedBusiness;
+    } else {
+      biz = list.find((b) => b.id === req.user.active_business_id) || list[0];
+    }
   }
 
   if (!biz) return res.status(400).json({ error: 'No business selected. Create one first.' });

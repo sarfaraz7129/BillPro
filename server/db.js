@@ -312,37 +312,53 @@ try {
   const bcrypt = require('bcryptjs');
   const ALL_PERMS = JSON.stringify(['dashboard', 'billing', 'khata', 'inventory', 'reports', 'settings', 'staff']);
 
-  // Ensure Super Admin account demo@billpro.in ALWAYS exists with password demo1234
-  const existingSuperAdmin = db.prepare("SELECT id FROM users WHERE lower(email) = 'demo@billpro.in'").get();
-  let superAdminId;
-  if (!existingSuperAdmin) {
-    const sInfo = db.prepare(`
-      INSERT INTO users (name, email, phone, password_hash, role, permissions, is_superadmin, status, plan, expires_at)
-      VALUES (?, 'demo@billpro.in', '9845000000', ?, 'owner', ?, 1, 'active', 'lifetime', NULL)
-    `).run('Super Admin', bcrypt.hashSync('demo1234', 10), ALL_PERMS);
-    superAdminId = sInfo.lastInsertRowid;
-  } else {
-    superAdminId = existingSuperAdmin.id;
-    db.prepare(`
-      UPDATE users 
-      SET password_hash = ?, is_superadmin = 1, status = 'active', plan = 'lifetime', role = 'owner'
-      WHERE id = ?
-    `).run(bcrypt.hashSync('demo1234', 10), superAdminId);
-  }
+  // Public demo credentials must never grant platform-wide access in production.
+  // In production, preserve custom admin credentials and only retain superadmin for
+  // accounts explicitly provisioned outside these well-known demo aliases.
+  const isProduction = process.env.NODE_ENV === 'production';
+  if (isProduction) {
+    db.prepare("UPDATE users SET is_superadmin = 0 WHERE lower(email) IN ('demo@billpro.in', 'admin@billpro.in')").run();
 
-  // Also ensure admin@billpro.in exists as an alias for Super Admin (password: demo1234 or admin1234)
-  const existingAdmin = db.prepare("SELECT id FROM users WHERE lower(email) = 'admin@billpro.in'").get();
-  if (!existingAdmin) {
-    db.prepare(`
-      INSERT INTO users (name, email, phone, password_hash, role, permissions, is_superadmin, status, plan, expires_at, initial_password)
-      VALUES (?, 'admin@billpro.in', '9845000000', ?, 'owner', ?, 1, 'active', 'lifetime', NULL, 'demo1234')
-    `).run('Super Admin', bcrypt.hashSync('demo1234', 10), ALL_PERMS);
+    const configuredAdminEmail = String(process.env.BILLPRO_SUPERADMIN_EMAIL || process.env.SUPERADMIN_EMAIL || '').trim().toLowerCase();
+    if (configuredAdminEmail) {
+      const configuredAdmin = db.prepare('SELECT id FROM users WHERE lower(email) = ?').get(configuredAdminEmail);
+      if (configuredAdmin) {
+        db.prepare("UPDATE users SET is_superadmin = 1, role = 'owner' WHERE id = ?").run(configuredAdmin.id);
+      } else {
+        console.warn('[BillPro Security] BILLPRO_SUPERADMIN_EMAIL does not match an existing user; no new platform admin was created.');
+      }
+    }
+    console.warn('[BillPro Security] Public demo/admin aliases are isolated from platform-wide access in production.');
   } else {
-    db.prepare(`
-      UPDATE users 
-      SET password_hash = ?, is_superadmin = 1, status = 'active', plan = 'lifetime', role = 'owner', initial_password = 'demo1234'
-      WHERE id = ?
-    `).run(bcrypt.hashSync('demo1234', 10), existingAdmin.id);
+    // Local development/demo only. These known credentials must never be enabled in production.
+    const existingSuperAdmin = db.prepare("SELECT id FROM users WHERE lower(email) = 'demo@billpro.in'").get();
+    let superAdminId;
+    if (!existingSuperAdmin) {
+      const sInfo = db.prepare(`
+        INSERT INTO users (name, email, phone, password_hash, role, permissions, is_superadmin, status, plan, expires_at)
+        VALUES (?, 'demo@billpro.in', '9845000000', ?, 'owner', ?, 1, 'active', 'lifetime', NULL)
+      `).run('Super Admin', bcrypt.hashSync('demo1234', 10), ALL_PERMS);
+      superAdminId = sInfo.lastInsertRowid;
+    } else {
+      superAdminId = existingSuperAdmin.id;
+      db.prepare(`
+        UPDATE users SET password_hash = ?, is_superadmin = 1, status = 'active', plan = 'lifetime', role = 'owner'
+        WHERE id = ?
+      `).run(bcrypt.hashSync('demo1234', 10), superAdminId);
+    }
+
+    const existingAdmin = db.prepare("SELECT id FROM users WHERE lower(email) = 'admin@billpro.in'").get();
+    if (!existingAdmin) {
+      db.prepare(`
+        INSERT INTO users (name, email, phone, password_hash, role, permissions, is_superadmin, status, plan, expires_at, initial_password)
+        VALUES (?, 'admin@billpro.in', '9845000000', ?, 'owner', ?, 1, 'active', 'lifetime', NULL, 'demo1234')
+      `).run('Super Admin', bcrypt.hashSync('demo1234', 10), ALL_PERMS);
+    } else {
+      db.prepare(`
+        UPDATE users SET password_hash = ?, is_superadmin = 1, status = 'active', plan = 'lifetime', role = 'owner', initial_password = 'demo1234'
+        WHERE id = ?
+      `).run(bcrypt.hashSync('demo1234', 10), existingAdmin.id);
+    }
   }
 
   // Ensure dedicated demo merchant user exists (is_superadmin = 0) for public 1-click feature exploration

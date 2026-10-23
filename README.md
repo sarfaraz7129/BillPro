@@ -67,7 +67,7 @@ When you connect your GitHub repository to Render, **Auto-Deploy is enabled by d
 BillPro uses a high-performance, embedded SQLite database (`better-sqlite3` with WAL mode).
 
 * **On Render Free Tier:**
-  Files are ephemeral. If the instance restarts, it re-seeds the demo businesses (`demo@billpro.in` / `demo1234`) automatically so the app is always functional.
+  Files are ephemeral. If the instance restarts, demo/sample data may be re-seeded; production customer data must use a persistent disk. The public demo merchant is isolated from all customer businesses.
 * **For Persistent Production Data (Render Starter Plan + Disk):**
   1. In your Render Web Service dashboard, go to the **Disks** tab.
   2. Click **Add Disk**:
@@ -102,11 +102,11 @@ npm start
 ```
 
 ### Demo Credentials
-* **Email:** `demo@billpro.in`
+* **Email:** `demo.user@billpro.in`
 * **Password:** `demo1234`
-* **Pre-seeded Businesses:**
-  - Coastal Traders (`29AAECC1234F1Z5`)
-  - Udupi Tiffin Supply (`29AAEFU5678K1Z2`)
+* **Sample Business:** Bharat Retail Mart (fictional sample customers, products, and bills)
+
+The public demo account is never a platform Super Admin. `demo@billpro.in` and `admin@billpro.in` are local-development aliases only and are explicitly denied platform-wide access in production. Custom production Super Admin accounts retain their own credentials; `BILLPRO_SUPERADMIN_EMAIL` can designate an existing user without resetting its password.
 
 ---
 

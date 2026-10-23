@@ -336,6 +336,11 @@ async function run() {
   });
   const clientData = await clientLogin.json();
   ok('provisioned client logs in successfully with primary business', clientLogin.status === 200 && clientData.businesses.length >= 1 && clientData.user.plan === 'yearly');
+  const foreignBusiness = (await call('GET', '/api/businesses?all=1')).body.businesses.find((b) => b.owner_id !== clientData.user.id);
+  const crossTenantAttempt = await fetch(base + '/api/parties?type=customer', {
+    headers: { Authorization: `Bearer ${clientData.token}`, 'X-Business-Id': String(foreignBusiness.id) }
+  });
+  ok('client cannot operate another account by supplying its business ID (403)', crossTenantAttempt.status === 403, crossTenantAttempt.status);
 
   // 6. Super Admin direct provisioning of Monthly client
   const directProvision = await call('POST', '/api/admin/users', {
