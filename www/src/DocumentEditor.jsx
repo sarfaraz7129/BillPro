@@ -308,17 +308,10 @@ export default function DocumentEditor({ business, type, doc, user, onClose, onS
             title={!isUserAdmin ? 'Only Admin can edit or backdate bill date. Region: Indian Standard Time (+5:30).' : 'Indian Standard Time (+5:30)'}
           />
         </Field>
-        {type !== 'expense' && <Field label="Due date"><input type="date" className="input" value={form.dueDate} onChange={(e) => set('dueDate', e.target.value)} /></Field>}
         {type !== 'expense' && (
-          <>
-            <Field label="GSTIN (party)"><input className="input" value={form.partyGstin} onChange={(e) => set('partyGstin', e.target.value.toUpperCase())} placeholder="29AAAAA1111A1Z1" /></Field>
-            <Field label="Place of supply"><input className="input" value={form.partyStateCode} onChange={(e) => set('partyStateCode', e.target.value.replace(/\D/g, '').slice(0, 2))} placeholder="29 (State code)" title="Different from your state triggers IGST" /></Field>
-            <Field label="Payment mode">
-              <select className="input" value={form.paymentMode} onChange={(e) => set('paymentMode', e.target.value)}>
-                {['upi', 'cash', 'bank', 'card', 'cheque', 'credit'].map((m) => <option key={m} value={m}>{m.toUpperCase()}</option>)}
-              </select>
-            </Field>
-          </>
+          <Field label="GSTIN (party)" hint="Optional for B2B invoices">
+            <input className="input" value={form.partyGstin} onChange={(e) => set('partyGstin', e.target.value.toUpperCase())} placeholder="29AAAAA1111A1Z1" />
+          </Field>
         )}
       </div>
 
@@ -401,14 +394,16 @@ export default function DocumentEditor({ business, type, doc, user, onClose, onS
             </Field>
           </div>
 
-          <button className="btn sm" style={{ marginTop: 8 }} onClick={() => setShowEwb(!showEwb)}>
-            <Icon.truck size={14} /> E-Way Bill / transport details
+          <button type="button" className="btn sm" style={{ marginTop: 8 }} onClick={() => setShowEwb(!showEwb)}>
+            <Icon.truck size={14} /> {showEwb ? 'Hide additional / transport options' : 'Additional options (E-Way Bill, Transport, Due date, State code)'}
           </button>
           {showEwb && (
             <div className="form-grid c3" style={{ marginTop: 8 }}>
               <Field label="E-Way Bill no"><input className="input" value={form.ewaybillNo} onChange={(e) => set('ewaybillNo', e.target.value)} placeholder="Leave blank to generate after saving" /></Field>
               <Field label="Vehicle no"><input className="input" value={form.vehicleNo} onChange={(e) => set('vehicleNo', e.target.value)} placeholder="KA19AB1234" /></Field>
               <Field label="LR / transport doc no"><input className="input" value={form.transportDocNo} onChange={(e) => set('transportDocNo', e.target.value)} /></Field>
+              {type !== 'expense' && <Field label="Due date"><input type="date" className="input" value={form.dueDate} onChange={(e) => set('dueDate', e.target.value)} /></Field>}
+              {type !== 'expense' && <Field label="Place of supply (State code)"><input className="input" value={form.partyStateCode} onChange={(e) => set('partyStateCode', e.target.value.replace(/\D/g, '').slice(0, 2))} placeholder="Auto-detected" title="Auto-detected from customer GSTIN or state" /></Field>}
             </div>
           )}
         </div>
@@ -475,18 +470,38 @@ export default function DocumentEditor({ business, type, doc, user, onClose, onS
                 )}
               </div>
             </div>
-            <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-              <span style={{ position: 'absolute', left: 8, fontWeight: 700, color: 'var(--muted)', fontSize: 13 }}>₹</span>
-              <input
-                className="input"
-                type="number"
-                min="0"
-                step="any"
-                style={{ paddingLeft: 22, height: 30, fontWeight: 700, fontSize: 13, color: 'var(--ink)', width: '100%' }}
-                value={form.paidAmount === 0 && form.paidAmount !== '' ? '0' : (form.paidAmount ?? '')}
-                onChange={(e) => set('paidAmount', e.target.value === '' ? '' : Number(e.target.value))}
-                placeholder="0.00"
-              />
+            {/* Amount received and Payment Type placed right beside each other near Total */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: 6, alignItems: 'center' }}>
+              <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                <span style={{ position: 'absolute', left: 8, fontWeight: 700, color: 'var(--muted)', fontSize: 13 }}>₹</span>
+                <input
+                  className="input"
+                  type="number"
+                  min="0"
+                  step="any"
+                  style={{ paddingLeft: 22, height: 30, fontWeight: 700, fontSize: 13, color: 'var(--ink)', width: '100%' }}
+                  value={form.paidAmount === 0 && form.paidAmount !== '' ? '0' : (form.paidAmount ?? '')}
+                  onChange={(e) => set('paidAmount', e.target.value === '' ? '' : Number(e.target.value))}
+                  placeholder="0.00"
+                />
+              </div>
+
+              <div>
+                <select
+                  className="input"
+                  style={{ height: 30, fontSize: 11.5, fontWeight: 600, padding: '2px 6px', width: '100%' }}
+                  value={form.paymentMode}
+                  onChange={(e) => set('paymentMode', e.target.value)}
+                  title="Payment Type"
+                >
+                  <option value="upi">UPI / QR</option>
+                  <option value="cash">CASH</option>
+                  <option value="bank">NET BANKING</option>
+                  <option value="card">CARD</option>
+                  <option value="cheque">CHEQUE</option>
+                  <option value="credit">CREDIT</option>
+                </select>
+              </div>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4, fontSize: 11.5, paddingTop: 4, borderTop: '1px dashed var(--line)' }}>
               <span style={{ color: 'var(--muted)', fontWeight: 600 }}>This bill due:</span>
