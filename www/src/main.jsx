@@ -397,7 +397,7 @@ export default function App() {
               {page === 'billing' && <Billing business={active} user={user} initialType={nav.type} initialDocId={nav.docId} goto={goto} toast={toast} />}
               {page === 'khata' && <Khata business={active} initialType={nav.type} initialPartyId={nav.partyId} toast={toast} />}
               {page === 'inventory' && <Inventory business={active} toast={toast} />}
-              {page === 'reports' && <Reports business={active} toast={toast} />}
+              {page === 'reports' && <Reports business={active} toast={toast} initialTab={nav.tab} />}
               {page === 'group' && <Group businesses={businesses} onSwitch={switchBusiness} goto={goto} toast={toast} />}
               {page === 'settings' && (
                 <Settings business={active} user={user} toast={toast} onAddBusiness={() => setBizModal(true)}

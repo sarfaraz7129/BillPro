@@ -102,7 +102,7 @@ export default function POS({ business, toast }) {
 
   return (
     <>
-      <div className="pos">
+      <div className="pos-layout">
         <div>
           <div className="card" style={{ marginBottom: 14 }}>
             <div className="card-b">

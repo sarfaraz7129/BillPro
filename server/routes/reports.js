@@ -8,6 +8,57 @@ const { istToday, istFinancialYear, istAddDays } = require('../lib/time');
 const router = express.Router();
 router.use(auth, loadBusiness);
 
+/**
+ * Unified receipts from both party Khata transactions (you_got)
+ * and direct walk-in/POS cash/UPI invoice payments.
+ */
+function getUnifiedReceipts(businessId, from, to) {
+  // 1. All party receipts in transactions (you_got)
+  let txQuery = `
+    SELECT t.id, t.date, LOWER(COALESCE(t.mode, 'cash')) AS mode, t.amount, t.reference,
+           t.notes, 'khata' AS source, COALESCE(p.name, 'Customer') AS party_name,
+           t.document_id, d.number AS doc_number
+    FROM transactions t
+    LEFT JOIN parties p ON p.id = t.party_id
+    LEFT JOIN documents d ON d.id = t.document_id
+    WHERE t.business_id = ? AND t.type = 'you_got'
+  `;
+  const txParams = [businessId];
+  if (from && to) {
+    txQuery += ' AND t.date BETWEEN ? AND ?';
+    txParams.push(from, to);
+  } else if (from) {
+    txQuery += ' AND t.date >= ?';
+    txParams.push(from);
+  }
+  const txReceipts = db.prepare(txQuery).all(...txParams);
+
+  // 2. Direct walk-in / POS sale receipts on documents not already in transactions
+  let docQuery = `
+    SELECT d.id, d.date, LOWER(COALESCE(d.payment_mode, 'cash')) AS mode, d.paid_amount AS amount,
+           d.number AS reference, 'Direct Sale / POS' AS notes, 'sale' AS source,
+           COALESCE(d.party_name, 'Walk-in Customer') AS party_name, d.id AS document_id,
+           d.number AS doc_number
+    FROM documents d
+    WHERE d.business_id = ? AND d.type = 'sale' AND d.status = 'active' AND d.paid_amount > 0
+      AND (d.party_id IS NULL OR d.id NOT IN (SELECT COALESCE(document_id, 0) FROM transactions WHERE document_id IS NOT NULL))
+  `;
+  const docParams = [businessId];
+  if (from && to) {
+    docQuery += ' AND d.date BETWEEN ? AND ?';
+    docParams.push(from, to);
+  } else if (from) {
+    docQuery += ' AND d.date >= ?';
+    docParams.push(from);
+  }
+  const docReceipts = db.prepare(docQuery).all(...docParams);
+
+  return [...txReceipts, ...docReceipts].sort((a, b) => {
+    if (b.date !== a.date) return b.date.localeCompare(a.date);
+    return b.id - a.id;
+  });
+}
+
 /** Home dashboard numbers for the active business. */
 router.get('/dashboard', (req, res) => {
   const biz = req.business.id;
@@ -64,7 +115,13 @@ router.get('/dashboard', (req, res) => {
     topProducts: [...productSales.values()].sort((a, b) => b.value - a.value).slice(0, 5),
     topCustomers: topCustomers.map((c) => ({ ...c, s: round2(c.s) })),
     taxByRate: [...rateMap.values()].sort((a, b) => a.rate - b.rate),
-    productCount: topProducts.length
+    productCount: topProducts.length,
+    todayCash: round2(getUnifiedReceipts(biz, today, today).filter(r => (r.mode || '').toLowerCase() === 'cash').reduce((s, r) => s + r.amount, 0)),
+    todayUpi: round2(getUnifiedReceipts(biz, today, today).filter(r => (r.mode || '').toLowerCase() === 'upi').reduce((s, r) => s + r.amount, 0)),
+    todayCollected: round2(getUnifiedReceipts(biz, today, today).reduce((s, r) => s + r.amount, 0)),
+    monthCash: round2(getUnifiedReceipts(biz, monthStart, today).filter(r => (r.mode || '').toLowerCase() === 'cash').reduce((s, r) => s + r.amount, 0)),
+    monthUpi: round2(getUnifiedReceipts(biz, monthStart, today).filter(r => (r.mode || '').toLowerCase() === 'upi').reduce((s, r) => s + r.amount, 0)),
+    monthCollected: round2(getUnifiedReceipts(biz, monthStart, today).reduce((s, r) => s + r.amount, 0))
   });
 });
 
@@ -209,20 +266,121 @@ router.get('/aging', (req, res) => {
   res.json({ items, buckets, total: round2(rows.reduce((s, r) => s + r.due_amount, 0)) });
 });
 
+/** Payments & collections report (Cash vs UPI vs Bank vs other). */
+router.get('/payments', (req, res) => {
+  const { from, to } = period(req);
+  const receipts = getUnifiedReceipts(req.business.id, from, to);
+
+  let cashTotal = 0;
+  let upiTotal = 0;
+  let bankTotal = 0;
+  let cardTotal = 0;
+  let chequeTotal = 0;
+  let otherTotal = 0;
+  let grandTotal = 0;
+
+  const dailyMap = new Map();
+  const monthlyMap = new Map();
+
+  receipts.forEach((r) => {
+    const amt = round2(Number(r.amount) || 0);
+    grandTotal += amt;
+    const m = (r.mode || '').toLowerCase();
+    let norm = 'other';
+    if (m === 'cash') {
+      cashTotal += amt;
+      norm = 'cash';
+    } else if (m === 'upi') {
+      upiTotal += amt;
+      norm = 'upi';
+    } else if (['bank', 'neft', 'rtgs', 'imps', 'transfer'].includes(m)) {
+      bankTotal += amt;
+      norm = 'bank';
+    } else if (m === 'card') {
+      cardTotal += amt;
+      norm = 'card';
+    } else if (m === 'cheque') {
+      chequeTotal += amt;
+      norm = 'cheque';
+    } else {
+      otherTotal += amt;
+      norm = 'other';
+    }
+    r.normalized_mode = norm;
+
+    // Daily
+    const dKey = r.date;
+    const dCur = dailyMap.get(dKey) || { date: dKey, cash: 0, upi: 0, bank: 0, card: 0, cheque: 0, other: 0, total: 0, count: 0 };
+    dCur[norm] = round2(dCur[norm] + amt);
+    dCur.total = round2(dCur.total + amt);
+    dCur.count += 1;
+    dailyMap.set(dKey, dCur);
+
+    // Monthly
+    const mKey = r.date.slice(0, 7);
+    const mCur = monthlyMap.get(mKey) || { month: mKey, cash: 0, upi: 0, bank: 0, card: 0, cheque: 0, other: 0, total: 0, count: 0 };
+    mCur[norm] = round2(mCur[norm] + amt);
+    mCur.total = round2(mCur.total + amt);
+    mCur.count += 1;
+    monthlyMap.set(mKey, mCur);
+  });
+
+  res.json({
+    period: { from, to, financialYear: financialYear(from) },
+    business: { name: req.business.name, gstin: req.business.gstin },
+    totals: {
+      total: round2(grandTotal),
+      cash: round2(cashTotal),
+      upi: round2(upiTotal),
+      bank: round2(bankTotal),
+      card: round2(cardTotal),
+      cheque: round2(chequeTotal),
+      other: round2(otherTotal),
+      count: receipts.length
+    },
+    daily: [...dailyMap.values()].sort((a, b) => b.date.localeCompare(a.date)),
+    monthly: [...monthlyMap.values()].sort((a, b) => b.month.localeCompare(a.month)),
+    receipts
+  });
+});
+
 /** Day book: everything that happened on one date. */
 router.get('/daybook', (req, res) => {
   const date = req.query.date || istToday();
-  const docs = db.prepare('SELECT id, type, number, party_name, date, total, payment_status FROM documents WHERE business_id=? AND date=? AND status=? ORDER BY id').all(req.business.id, date, 'active');
+  const docs = db.prepare('SELECT id, type, number, party_name, date, total, paid_amount, payment_mode, payment_status FROM documents WHERE business_id=? AND date=? AND status=? ORDER BY id').all(req.business.id, date, 'active');
   const txns = db.prepare(`SELECT t.*, p.name AS party_name FROM transactions t LEFT JOIN parties p ON p.id=t.party_id WHERE t.business_id=? AND t.date=? ORDER BY t.id`).all(req.business.id, date);
   const moves = db.prepare(`SELECT s.*, p.name AS product_name FROM stock_moves s LEFT JOIN products p ON p.id=s.product_id WHERE s.business_id=? AND s.date=? ORDER BY s.id`).all(req.business.id, date);
+
+  const dayReceipts = getUnifiedReceipts(req.business.id, date, date);
+  let cashReceived = 0;
+  let upiReceived = 0;
+  let bankReceived = 0;
+  let otherReceived = 0;
+  let totalReceived = 0;
+
+  dayReceipts.forEach((r) => {
+    const amt = Number(r.amount) || 0;
+    totalReceived += amt;
+    const m = (r.mode || '').toLowerCase();
+    if (m === 'cash') cashReceived += amt;
+    else if (m === 'upi') upiReceived += amt;
+    else if (['bank', 'neft', 'rtgs', 'imps', 'transfer'].includes(m)) bankReceived += amt;
+    else otherReceived += amt;
+  });
+
   res.json({
     date,
     docs, txns, moves,
+    receipts: dayReceipts,
     totals: {
       billing: round2(docs.filter((d) => d.type === 'sale').reduce((s, d) => s + d.total, 0)),
       purchases: round2(docs.filter((d) => d.type === 'purchase').reduce((s, d) => s + d.total, 0)),
       expenses: round2(docs.filter((d) => d.type === 'expense').reduce((s, d) => s + d.total, 0)),
-      received: round2(txns.filter((t) => t.type === 'you_got').reduce((s, t) => s + t.amount, 0)),
+      received: round2(totalReceived),
+      cashReceived: round2(cashReceived),
+      upiReceived: round2(upiReceived),
+      bankReceived: round2(bankReceived),
+      otherReceived: round2(otherReceived),
       paid: round2(txns.filter((t) => t.type === 'you_gave').reduce((s, t) => s + t.amount, 0))
     }
   });
@@ -262,8 +420,23 @@ router.get('/export/:report', (req, res) => {
       const bal = partyRunningBalance(p.id);
       rows.push([p.name, p.type, p.phone || '', p.gstin || '', p.city || '', Math.abs(bal), bal >= 0 ? 'DR' : 'CR', p.credit_limit]);
     });
+  } else if (report === 'payments') {
+    rows = [['Receipt ID', 'Date', 'Party / Customer', 'Payment Mode', 'Amount', 'Source', 'Document / Ref', 'Notes']];
+    const receipts = getUnifiedReceipts(req.business.id, from, to);
+    receipts.forEach((r) => {
+      rows.push([
+        r.id,
+        r.date,
+        r.party_name,
+        (r.mode || 'cash').toUpperCase(),
+        r.amount,
+        r.source === 'khata' ? 'Khata Collection' : 'Direct Sale / POS',
+        r.doc_number || r.reference || '',
+        r.notes || ''
+      ]);
+    });
   } else {
-    return res.status(400).json({ error: 'Unknown report. Use gstr1, sales, purchases, hsn, stock or parties.' });
+    return res.status(400).json({ error: 'Unknown report. Use gstr1, sales, purchases, hsn, stock, parties or payments.' });
   }
   const csv = rows.map((r) => r.map((c) => `"${String(c ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');

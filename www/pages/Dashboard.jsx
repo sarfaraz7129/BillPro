@@ -67,6 +67,10 @@ export default function Dashboard({ business, goto, toast }) {
             <span className="moc-stat-k">Today's Sales</span>
             <b className="moc-stat-v">{money(d.todaySales)}</b>
           </div>
+          <div className="moc-stat" onClick={() => goto('reports', { tab: 'payments' })}>
+            <span className="moc-stat-k">Today Collected</span>
+            <b className="moc-stat-v" style={{ color: '#16a34a' }}>{money(d.todayCollected || 0)}</b>
+          </div>
           <div className="moc-stat" onClick={() => goto('billing')}>
             <span className="moc-stat-k">This Month</span>
             <b className="moc-stat-v">{money(d.monthSales)}</b>
@@ -80,8 +84,24 @@ export default function Dashboard({ business, goto, toast }) {
 
       {/* Desktop 5-Grid Stats */}
       <div className="grid g5 desktop-only" style={{ marginBottom: 14 }}>
-        <Stat label="Today's sales" value={money(d.todaySales)} foot={`${d.invoiceCount} invoices total`} icon={Icon.rupee} color="#4f46e5" soft="var(--brand-soft)" onClick={() => goto('billing')} />
-        <Stat label="This month" value={money(d.monthSales)} foot="Sales billed" icon={Icon.chart} color="#0891b2" soft="var(--blue-soft)" onClick={() => goto('billing')} />
+        <Stat
+          label="Today's sales"
+          value={money(d.todaySales)}
+          foot={d.todayCollected > 0 ? `Collected: ${money(d.todayCollected)} (${moneyShort(d.todayCash)} Cash · ${moneyShort(d.todayUpi)} UPI)` : `${d.invoiceCount} invoices total`}
+          icon={Icon.rupee}
+          color="#4f46e5"
+          soft="var(--brand-soft)"
+          onClick={() => goto('billing')}
+        />
+        <Stat
+          label="This month"
+          value={money(d.monthSales)}
+          foot={d.monthCollected > 0 ? `Collected: ${moneyShort(d.monthCollected)} (${moneyShort(d.monthCash)} Cash · ${moneyShort(d.monthUpi)} UPI)` : 'Sales billed'}
+          icon={Icon.chart}
+          color="#0891b2"
+          soft="var(--blue-soft)"
+          onClick={() => goto('billing')}
+        />
         <Stat label="To collect" value={money(d.receivable)} foot={`${d.overdueCount} overdue (${moneyShort(d.overdueAmount)})`} icon={Icon.wallet} color="#dc2626" soft="var(--red-soft)" onClick={() => goto('khata')} warn={d.overdueCount > 0} />
         <Stat label="To pay" value={money(d.payable)} foot="Supplier bills pending" icon={Icon.arrowUp} color="#d97706" soft="var(--amber-soft)" onClick={() => goto('billing', { type: 'purchase' })} />
         <Stat label="Net GST payable" value={money(d.netTax)} foot="Output tax less ITC" icon={Icon.shield} color="#059669" soft="var(--green-soft)" onClick={() => goto('reports')} />

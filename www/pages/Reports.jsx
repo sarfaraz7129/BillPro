@@ -12,22 +12,24 @@ const fyEnd = () => {
   return n.getMonth() >= 3 ? `${n.getFullYear() + 1}-03-31` : `${n.getFullYear()}-03-31`;
 };
 
-export default function Reports({ business, toast }) {
-  const [tab, setTab] = useState('gstr3b');
+export default function Reports({ business, toast, initialTab }) {
+  const [tab, setTab] = useState(initialTab || 'payments');
   const [range, setRange] = useState({ from: fyStart(), to: fyEnd() });
+  const [dayDate, setDayDate] = useState(new Date().toISOString().slice(0, 10));
   const [data, setData] = useState(null);
   const [err, setErr] = useState('');
 
   useEffect(() => {
     let live = true;
     setData(null); setErr('');
-    const fn = { gstr1: api.gstr1, gstr3b: api.gstr3b, purchases: api.purchasesReport, profit: api.profit }[tab];
-    const load = tab === 'aging' ? api.aging() : tab === 'daybook' ? api.daybook(range.to) : fn(range);
+    const fn = { payments: api.paymentsReport, gstr1: api.gstr1, gstr3b: api.gstr3b, purchases: api.purchasesReport, profit: api.profit }[tab];
+    const load = tab === 'aging' ? api.aging() : tab === 'daybook' ? api.daybook(dayDate) : fn(range);
     Promise.resolve(load).then((r) => { if (live) setData(r); }).catch((e) => { if (live) setErr(e.message); });
     return () => { live = false; };
-  }, [tab, range.from, range.to, business.id]);
+  }, [tab, range.from, range.to, dayDate, business.id]);
 
   const TABS = [
+    { id: 'payments', label: 'Cash & UPI Collections', icon: 'wallet' },
     { id: 'gstr3b', label: 'GSTR-3B', icon: 'shield' },
     { id: 'gstr1', label: 'GSTR-1', icon: 'file' },
     { id: 'purchases', label: 'Purchases / ITC', icon: 'bill' },
@@ -44,7 +46,15 @@ export default function Reports({ business, toast }) {
         </div>
         <div className="grow" />
         {tab !== 'aging' && tab !== 'daybook' && <DateRange from={range.from} to={range.to} onChange={setRange} />}
+        {tab === 'daybook' && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--muted)' }}>Select Date:</span>
+            <input type="date" className="input" style={{ width: 145 }} value={dayDate} onChange={(e) => setDayDate(e.target.value)} />
+          </div>
+        )}
         <div className="spacer" />
+        {tab === 'payments' && <a className="btn" href={csvUrl('payments', range)}><Icon.download size={15} /> Collections CSV</a>}
+        {tab === 'payments' && <button className="btn" onClick={() => window.print()}><Icon.print size={15} /> Print</button>}
         {tab === 'gstr1' && <a className="btn" href={csvUrl('gstr1', range)}><Icon.download size={15} /> GSTR-1 CSV</a>}
         {tab === 'gstr1' && <button className="btn" onClick={() => window.open(pdfUrl(`gstr1?from=${range.from}&to=${range.to}`), '_blank')}><Icon.print size={15} /> PDF</button>}
         {tab === 'purchases' && <a className="btn" href={csvUrl('purchases', range)}><Icon.download size={15} /> CSV</a>}
@@ -54,6 +64,7 @@ export default function Reports({ business, toast }) {
       {err && <div className="banner err"><Icon.alert size={15} />{err}</div>}
       {!data && !err && <div className="empty">Loading {TABS.find((t) => t.id === tab).label}…</div>}
 
+      {data && tab === 'payments' && <PaymentsReport d={data} />}
       {data && tab === 'gstr3b' && <Gstr3b d={data} business={business} />}
       {data && tab === 'gstr1' && <Gstr1 d={data} />}
       {data && tab === 'purchases' && <Purchases d={data} />}
@@ -317,22 +328,64 @@ function Daybook({ d }) {
         <Kpi label="Billing" value={money(d.totals.billing)} foot={`${d.docs.filter((x) => x.type === 'sale').length} invoices`} />
         <Kpi label="Purchases" value={money(d.totals.purchases)} foot={`${d.docs.filter((x) => x.type === 'purchase').length} bills`} />
         <Kpi label="Expenses" value={money(d.totals.expenses)} foot={`${d.docs.filter((x) => x.type === 'expense').length} entries`} tone="neg" />
-        <Kpi label="Money received" value={money(d.totals.received)} foot={`${d.txns.filter((x) => x.type === 'you_got').length} receipts`} tone="pos" />
+        <Kpi label="Money received" value={money(d.totals.received)} foot={`${d.totals.cashReceived ? money(d.totals.cashReceived) + ' Cash' : ''}${d.totals.upiReceived ? ' · ' + money(d.totals.upiReceived) + ' UPI' : ''}`} tone="pos" />
         <Kpi label="Money paid out" value={money(d.totals.paid)} foot={`${d.txns.filter((x) => x.type === 'you_gave').length} payments`} tone="neg" />
       </div>
+
+      {/* Daily Mode Breakdown Banner */}
+      <div className="banner info" style={{ marginBottom: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <Icon.wallet size={16} />
+          <b>Day's Collections Split:</b>
+          <span className="pill sm green" style={{ fontWeight: 700 }}>💵 Cash: {money(d.totals.cashReceived || 0)}</span>
+          <span className="pill sm" style={{ background: '#eef2ff', color: '#4f46e5', fontWeight: 700 }}>📱 UPI: {money(d.totals.upiReceived || 0)}</span>
+          {(d.totals.bankReceived > 0) && <span className="pill sm blue" style={{ fontWeight: 700 }}>🏦 Bank: {money(d.totals.bankReceived)}</span>}
+        </div>
+        <div style={{ fontSize: 13, fontWeight: 700 }}>
+          Total Day Received: <span style={{ color: 'var(--green)' }}>{money(d.totals.received || 0)}</span>
+        </div>
+      </div>
+
       <div className="grid g2">
         <Card title="Documents" sub={fmtDate(d.date)}>
           {d.docs.length === 0 ? <Empty title="No documents" /> : d.docs.map((r) => (
-            <div className="kv" key={r.id}><span className="k">{r.number} · {r.party_name}</span><span className="v">{money(r.total)}</span></div>
+            <div className="kv" key={r.id}>
+              <span className="k">{r.number} · {r.party_name}</span>
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                {r.paid_amount > 0 && (
+                  <span className={`pill sm ${(r.payment_mode || '').toLowerCase() === 'cash' ? 'green' : 'indigo'}`}>
+                    {(r.payment_mode || 'cash').toUpperCase()}
+                  </span>
+                )}
+                <span className="v">{money(r.total)}</span>
+              </div>
+            </div>
           ))}
         </Card>
-        <Card title="Ledger entries & stock moves" sub={fmtDate(d.date)}>
-          {d.txns.length === 0 && d.moves.length === 0 ? <Empty title="No entries" /> : (
+        <Card title="Collections & ledger entries" sub={fmtDate(d.date)}>
+          {(!d.receipts || d.receipts.length === 0) && d.txns.length === 0 && d.moves.length === 0 ? <Empty title="No entries" /> : (
             <>
-              {d.txns.map((t) => (
-                <div className="kv" key={'t' + t.id}><span className="k">{t.type === 'you_got' ? 'Received from' : 'Paid to'} {t.party_name} · {String(t.mode).toUpperCase()}</span>
-                  <span className={`v ${t.type === 'you_got' ? 'pos' : 'neg'}`}>{money(t.amount)}</span></div>
-              ))}
+              {d.receipts && d.receipts.length > 0 ? (
+                d.receipts.map((t, idx) => {
+                  const m = (t.mode || 'cash').toLowerCase();
+                  return (
+                    <div className="kv" key={'rec' + idx}>
+                      <span className="k">
+                        Received from <b>{t.party_name}</b> · <span className={`pill sm ${m === 'cash' ? 'green' : 'indigo'}`} style={{ textTransform: 'uppercase' }}>{t.mode || 'CASH'}</span>
+                        {t.reference ? ` (${t.reference})` : ''}
+                      </span>
+                      <span className="v pos">{money(t.amount)}</span>
+                    </div>
+                  );
+                })
+              ) : (
+                d.txns.map((t) => (
+                  <div className="kv" key={'t' + t.id}>
+                    <span className="k">{t.type === 'you_got' ? 'Received from' : 'Paid to'} {t.party_name} · {String(t.mode).toUpperCase()}</span>
+                    <span className={`v ${t.type === 'you_got' ? 'pos' : 'neg'}`}>{money(t.amount)}</span>
+                  </div>
+                ))
+              )}
               {d.moves.length > 0 && <hr className="divider" />}
               {d.moves.map((m) => (
                 <div className="kv" key={'m' + m.id}><span className="k">{m.product_name} · {m.reason}</span>
@@ -342,6 +395,236 @@ function Daybook({ d }) {
           )}
         </Card>
       </div>
+    </>
+  );
+}
+
+function PaymentsReport({ d }) {
+  if (!d || !d.totals) return null;
+  const t = d.totals;
+  const [filterMode, setFilterMode] = useState('all');
+  const [search, setSearch] = useState('');
+
+  const filteredReceipts = (d.receipts || []).filter((r) => {
+    if (filterMode !== 'all' && (r.mode || '').toLowerCase() !== filterMode) return false;
+    if (search) {
+      const q = search.toLowerCase();
+      const party = (r.party_name || '').toLowerCase();
+      const ref = (r.reference || r.doc_number || '').toLowerCase();
+      const notes = (r.notes || '').toLowerCase();
+      return party.includes(q) || ref.includes(q) || notes.includes(q);
+    }
+    return true;
+  });
+
+  const segs = [
+    { label: 'Cash', value: t.cash, color: '#16a34a', display: money(t.cash) },
+    { label: 'UPI', value: t.upi, color: '#4f46e5', display: money(t.upi) },
+    { label: 'Bank', value: t.bank, color: '#0284c7', display: money(t.bank) },
+    { label: 'Card / Cheque', value: t.card + t.cheque + t.other, color: '#d97706', display: money(t.card + t.cheque + t.other) }
+  ];
+
+  return (
+    <>
+      {/* KPI Cards */}
+      <div className="grid g4" style={{ marginBottom: 14 }}>
+        <Kpi
+          label="Cash Received"
+          value={money(t.cash)}
+          foot={`${t.total > 0 ? Math.round((t.cash / t.total) * 100) : 0}% of all collections`}
+          tone="pos"
+        />
+        <Kpi
+          label="UPI Received"
+          value={money(t.upi)}
+          foot={`${t.total > 0 ? Math.round((t.upi / t.total) * 100) : 0}% of all collections`}
+        />
+        <Kpi
+          label="Bank / Transfer"
+          value={money(t.bank)}
+          foot={`${money(t.card + t.cheque + t.other)} via card/cheque`}
+        />
+        <Kpi
+          label="Total Money Collected"
+          value={money(t.total)}
+          foot={`${t.count} total payment receipts`}
+          tone="pos"
+        />
+      </div>
+
+      {/* Breakdown Donut & Daily Trend */}
+      <div className="grid g2" style={{ marginBottom: 14 }}>
+        <Card title="Collections by Payment Mode" sub="Cash vs UPI vs Bank split">
+          {t.total === 0 ? <Empty title="No collections in this period" /> : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <Donut segments={segs.filter((s) => s.value > 0)} center={moneyShort(t.total)} />
+              <table className="tbl" style={{ marginTop: 8 }}>
+                <thead>
+                  <tr>
+                    <th>Mode</th>
+                    <th className="num">Share</th>
+                    <th className="num">Amount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><span className="pill sm green">CASH</span> Cash in hand</td>
+                    <td className="num">{t.total > 0 ? `${Math.round((t.cash / t.total) * 100)}%` : '0%'}</td>
+                    <td className="num strong pos">{money(t.cash)}</td>
+                  </tr>
+                  <tr>
+                    <td><span className="pill sm" style={{ background: '#eef2ff', color: '#4f46e5' }}>UPI</span> PhonePe / GPay / QR</td>
+                    <td className="num">{t.total > 0 ? `${Math.round((t.upi / t.total) * 100)}%` : '0%'}</td>
+                    <td className="num strong" style={{ color: '#4f46e5' }}>{money(t.upi)}</td>
+                  </tr>
+                  <tr>
+                    <td><span className="pill sm" style={{ background: '#eff6ff', color: '#0284c7' }}>BANK</span> NEFT / RTGS / IMPS</td>
+                    <td className="num">{t.total > 0 ? `${Math.round((t.bank / t.total) * 100)}%` : '0%'}</td>
+                    <td className="num strong">{money(t.bank)}</td>
+                  </tr>
+                  {(t.card > 0 || t.cheque > 0 || t.other > 0) && (
+                    <tr>
+                      <td><span className="pill sm amber">OTHER</span> Card & Cheque</td>
+                      <td className="num">{t.total > 0 ? `${Math.round(((t.card + t.cheque + t.other) / t.total) * 100)}%` : '0%'}</td>
+                      <td className="num strong">{money(t.card + t.cheque + t.other)}</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Card>
+
+        <Card title="Daily Collections Breakdown" sub="Day-by-day cash & UPI summary">
+          {!d.daily || d.daily.length === 0 ? <Empty title="No daily collections" /> : (
+            <div className="tbl-wrap" style={{ maxHeight: 340, overflowY: 'auto' }}>
+              <table className="tbl">
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th className="num">Cash</th>
+                    <th className="num">UPI</th>
+                    <th className="num">Bank</th>
+                    <th className="num">Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {d.daily.map((day) => (
+                    <tr key={day.date}>
+                      <td className="strong">{fmtDate(day.date)}</td>
+                      <td className="num pos">{day.cash > 0 ? money(day.cash) : '—'}</td>
+                      <td className="num" style={{ color: day.upi > 0 ? '#4f46e5' : 'inherit' }}>
+                        {day.upi > 0 ? money(day.upi) : '—'}
+                      </td>
+                      <td className="num">{day.bank > 0 ? money(day.bank) : '—'}</td>
+                      <td className="num strong">{money(day.total)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Card>
+      </div>
+
+      {/* Monthly Summary (if 2 or more months exist) */}
+      {d.monthly && d.monthly.length > 1 && (
+        <Card title="Monthly Collections Summary" sub="Month-wise cash & UPI reconciliation" style={{ marginBottom: 14 }}>
+          <div className="tbl-wrap">
+            <table className="tbl">
+              <thead>
+                <tr>
+                  <th>Month</th>
+                  <th className="num">Cash Received</th>
+                  <th className="num">UPI Received</th>
+                  <th className="num">Bank / Other</th>
+                  <th className="num">Total Collected</th>
+                  <th className="num">Receipts</th>
+                </tr>
+              </thead>
+              <tbody>
+                {d.monthly.map((m) => (
+                  <tr key={m.month}>
+                    <td className="strong">{m.month}</td>
+                    <td className="num pos">{money(m.cash)}</td>
+                    <td className="num" style={{ color: '#4f46e5' }}>{money(m.upi)}</td>
+                    <td className="num">{money(m.bank + m.card + m.cheque + m.other)}</td>
+                    <td className="num strong">{money(m.total)}</td>
+                    <td className="num muted">{m.count}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
+
+      {/* Detailed Payment Receipts Register */}
+      <Card
+        title="Payment Receipts Register"
+        sub="All cash, UPI and bank payments received"
+        right={
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <div className="segmented-control" style={{ display: 'inline-flex' }}>
+              <button type="button" className={`btn xs ${filterMode === 'all' ? 'primary' : ''}`} onClick={() => setFilterMode('all')}>All ({t.count})</button>
+              <button type="button" className={`btn xs ${filterMode === 'cash' ? 'primary' : ''}`} onClick={() => setFilterMode('cash')}>Cash</button>
+              <button type="button" className={`btn xs ${filterMode === 'upi' ? 'primary' : ''}`} onClick={() => setFilterMode('upi')}>UPI</button>
+              <button type="button" className={`btn xs ${filterMode === 'bank' ? 'primary' : ''}`} onClick={() => setFilterMode('bank')}>Bank</button>
+            </div>
+            <input
+              type="search"
+              className="input sm"
+              placeholder="Search receipts…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              style={{ width: 140 }}
+            />
+          </div>
+        }
+      >
+        {filteredReceipts.length === 0 ? <Empty title="No payment receipts found" /> : (
+          <div className="tbl-wrap" style={{ maxHeight: 420, overflowY: 'auto' }}>
+            <table className="tbl">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Customer / Party</th>
+                  <th>Mode</th>
+                  <th>Source</th>
+                  <th>Reference / Doc</th>
+                  <th>Notes</th>
+                  <th className="num">Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredReceipts.map((r, idx) => {
+                  const m = (r.mode || 'cash').toLowerCase();
+                  const modeBadge = m === 'cash' ? 'green' : m === 'upi' ? 'indigo' : 'blue';
+                  return (
+                    <tr key={idx}>
+                      <td className="muted" style={{ whiteSpace: 'nowrap' }}>{fmtDate(r.date)}</td>
+                      <td className="strong">{r.party_name}</td>
+                      <td>
+                        <span className={`pill sm ${modeBadge}`} style={{ textTransform: 'uppercase', fontWeight: 700 }}>
+                          {r.mode || 'CASH'}
+                        </span>
+                      </td>
+                      <td className="muted" style={{ fontSize: 11.5 }}>
+                        {r.source === 'khata' ? 'Khata Ledger' : 'Direct POS Sale'}
+                      </td>
+                      <td className="muted">{r.doc_number || r.reference || '—'}</td>
+                      <td className="muted" style={{ maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {r.notes || '—'}
+                      </td>
+                      <td className="num strong pos">{money(r.amount)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
     </>
   );
 }

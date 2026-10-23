@@ -313,6 +313,7 @@ export const api = {
   profit: (p) => request('GET', `/api/reports/profit${qs(p)}`),
   aging: () => request('GET', '/api/reports/aging'),
   daybook: (date) => request('GET', `/api/reports/daybook${qs({ date })}`),
+  paymentsReport: (p) => request('GET', `/api/reports/payments${qs(p)}`),
 
   // sales & inquiry
   salesInfo: () => request('GET', '/api/auth/sales-info'),

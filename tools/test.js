@@ -155,6 +155,15 @@ async function run() {
   console.log('\n--- reports ---');
   const dash = await call('GET', '/api/reports/dashboard');
   ok('dashboard returns KPIs', typeof dash.body.monthSales === 'number' && Array.isArray(dash.body.salesSeries), Object.keys(dash.body).length);
+  ok('dashboard has cash & upi collection tracking', typeof dash.body.todayCash === 'number' && typeof dash.body.monthCash === 'number', dash.body);
+  const pmts = await call('GET', '/api/reports/payments');
+  ok('payments report returns cash and upi breakdown', pmts.status === 200 && typeof pmts.body.totals.cash === 'number' && typeof pmts.body.totals.upi === 'number', pmts.body.totals);
+  ok('payments report total matches sum of modes', near(pmts.body.totals.cash + pmts.body.totals.upi + pmts.body.totals.bank + pmts.body.totals.card + pmts.body.totals.cheque + pmts.body.totals.other, pmts.body.totals.total), pmts.body.totals);
+  const dayb = await call('GET', '/api/reports/daybook');
+  ok('daybook tracks cash and upi received', dayb.status === 200 && typeof dayb.body.totals.cashReceived === 'number' && typeof dayb.body.totals.upiReceived === 'number', dayb.body.totals);
+  const pmtCsv = await fetch(base + '/api/reports/export/payments', { headers: { Authorization: 'Bearer ' + token } });
+  const pmtCsvText = await pmtCsv.text();
+  ok('payments CSV export works', pmtCsv.status === 200 && pmtCsvText.includes('"Receipt ID"'), pmtCsvText.slice(0, 40));
   const g1 = await call('GET', '/api/reports/gstr1');
   ok('GSTR-1 has B2B rows', g1.body.b2b.length > 0, g1.body.b2b.length);
   ok('GSTR-1 HSN summary is populated', g1.body.hsn.length > 0, g1.body.hsn.length);
