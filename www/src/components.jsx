@@ -4,16 +4,20 @@ import { Icon, initials, colorFor } from './ui.jsx';
 import { money } from './api.js';
 
 /* ---------------- modal ---------------- */
+let activeModalCount = 0;
+
 export function Modal({ title, sub, children, footer, onClose, size = '' }) {
   const isClosingViaPopRef = useRef(false);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
 
   useEffect(() => {
-    // Push dummy history entry so Android/browser back gesture closes the modal instead of exiting the PWA
-    try {
-      window.history.pushState({ billproModalOpen: true }, '');
-    } catch (_) {}
+    activeModalCount++;
+    if (activeModalCount === 1) {
+      try {
+        window.history.pushState({ billproModalOpen: true }, '');
+      } catch (_) {}
+    }
 
     const onPop = () => {
       isClosingViaPopRef.current = true;
@@ -29,14 +33,19 @@ export function Modal({ title, sub, children, footer, onClose, size = '' }) {
     document.body.style.overflow = 'hidden';
 
     return () => {
+      activeModalCount = Math.max(0, activeModalCount - 1);
       window.removeEventListener('popstate', onPop);
       document.removeEventListener('keydown', onKey);
-      document.body.style.overflow = '';
-      if (!isClosingViaPopRef.current && window.history.state?.billproModalOpen) {
-        try {
-          window.history.back();
-        } catch (_) {}
+      if (activeModalCount === 0) {
+        document.body.style.overflow = '';
       }
+      setTimeout(() => {
+        if (activeModalCount === 0 && !isClosingViaPopRef.current && window.history.state?.billproModalOpen) {
+          try {
+            window.history.back();
+          } catch (_) {}
+        }
+      }, 50);
     };
   }, []);
 

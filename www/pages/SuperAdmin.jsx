@@ -96,11 +96,17 @@ export default function SuperAdmin({ user, toast }) {
       const res = await api.adminCreateUser(provForm);
       toast(`Customer account created for ${res.user.name}`, 'ok');
       setProvisionModal(false);
+
+      const targetPhone = provForm.phone || (res.user && res.user.phone);
+      if (res.welcome_whatsapp) {
+        openWhatsApp(targetPhone, res.welcome_whatsapp);
+      }
+
       setCredentialsModal({
         user: res.user,
         business: res.business,
         welcome_whatsapp: res.welcome_whatsapp,
-        phone: provForm.phone
+        phone: targetPhone
       });
       setProvForm({
         name: '',
@@ -176,12 +182,16 @@ export default function SuperAdmin({ user, toast }) {
     try {
       const res = await api.adminConvertInquiry(convertTarget.id, convertForm);
       toast(`Inquiry converted to client account for ${res.user.name}!`, 'ok');
+      const targetPhone = convertTarget.phone || (res.user && res.user.phone);
+      if (res.welcome_whatsapp) {
+        openWhatsApp(targetPhone, res.welcome_whatsapp);
+      }
       setConvertTarget(null);
       setCredentialsModal({
         user: res.user,
         business: res.business,
         welcome_whatsapp: res.welcome_whatsapp,
-        phone: convertTarget.phone
+        phone: targetPhone
       });
       loadAll();
     } catch (err) {
@@ -250,10 +260,34 @@ export default function SuperAdmin({ user, toast }) {
   }, [inquiries, inquiryFilter]);
 
   const openWhatsApp = (phone, text) => {
-    const clean = String(phone || '').replace(/[^\d]/g, '');
-    const num = clean.startsWith('91') ? clean : (clean.length === 10 ? '91' + clean : clean);
-    const url = `https://wa.me/${num}?text=${encodeURIComponent(text || '')}`;
-    window.open(url, '_blank', 'noopener,noreferrer');
+    let clean = String(phone || '').replace(/\D/g, '');
+    if (clean.startsWith('0') && clean.length === 11) clean = clean.slice(1);
+    const num = clean.length === 10 ? '91' + clean : (clean.startsWith('91') && clean.length === 12 ? clean : clean);
+    const url = num ? `https://wa.me/${num}?text=${encodeURIComponent(text || '')}` : `https://wa.me/?text=${encodeURIComponent(text || '')}`;
+
+    let opened = false;
+    try {
+      const w = window.open(url, '_blank', 'noopener,noreferrer');
+      if (w && !w.closed && typeof w.closed !== 'undefined') {
+        opened = true;
+      }
+    } catch (_) {}
+
+    if (!opened) {
+      try {
+        const a = document.createElement('a');
+        a.href = url;
+        a.target = '_blank';
+        a.rel = 'noopener noreferrer';
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(() => {
+          try { document.body.removeChild(a); } catch (_) {}
+        }, 500);
+      } catch (err) {
+        console.warn('Could not launch WhatsApp link automatically:', err);
+      }
+    }
   };
 
   if (loading) {
@@ -1066,7 +1100,7 @@ export default function SuperAdmin({ user, toast }) {
       {credentialsModal && (
         <Modal
           title="Account Provisioned Successfully! 🎉"
-          sub="Customer account and primary business have been configured"
+          sub="Client onboarded & credentials dispatched to WhatsApp"
           size="wide"
           onClose={() => setCredentialsModal(null)}
           footer={
@@ -1082,26 +1116,53 @@ export default function SuperAdmin({ user, toast }) {
               </button>
               <button
                 className="btn primary"
-                style={{ background: '#22c55e', borderColor: '#22c55e' }}
+                style={{ background: '#22c55e', borderColor: '#22c55e', fontWeight: 650, display: 'inline-flex', alignItems: 'center', gap: 6 }}
                 onClick={() => {
                   openWhatsApp(credentialsModal.phone, credentialsModal.welcome_whatsapp);
                 }}
               >
-                <Icon.whatsapp size={15} /> Send to WhatsApp
+                <Icon.whatsapp size={15} /> Resend to WhatsApp
               </button>
             </>
           }
         >
+          <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', color: '#166534', padding: '12px 16px', borderRadius: 10, marginBottom: 14, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Icon.check size={18} style={{ color: '#16a34a', flexShrink: 0 }} />
+              <span style={{ fontSize: 13, fontWeight: 600 }}>
+                {credentialsModal.phone
+                  ? `WhatsApp message dispatched to ${credentialsModal.phone} with full login credentials.`
+                  : 'Account created with login credentials below.'}
+              </span>
+            </div>
+            {credentialsModal.phone && (
+              <button
+                type="button"
+                className="btn sm"
+                style={{ background: '#22c55e', color: '#fff', border: 0, fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                onClick={() => openWhatsApp(credentialsModal.phone, credentialsModal.welcome_whatsapp)}
+              >
+                <Icon.whatsapp size={14} /> Open WhatsApp
+              </button>
+            )}
+          </div>
+
           <div style={{ background: '#f8fafc', padding: 18, borderRadius: 12, border: '1px solid var(--border)' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12, marginBottom: 14 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12, marginBottom: 14 }}>
               <div>
                 <div style={{ fontSize: 11, color: 'var(--ink-3)' }}>CLIENT NAME</div>
                 <div style={{ fontWeight: 600 }}>{credentialsModal.user.name}</div>
               </div>
               <div>
-                <div style={{ fontSize: 11, color: 'var(--ink-3)' }}>LOGIN EMAIL</div>
+                <div style={{ fontSize: 11, color: 'var(--ink-3)' }}>LOGIN EMAIL / USER</div>
                 <div style={{ fontWeight: 600 }}>{credentialsModal.user.email}</div>
               </div>
+              {credentialsModal.phone && (
+                <div>
+                  <div style={{ fontSize: 11, color: 'var(--ink-3)' }}>WHATSAPP NUMBER</div>
+                  <div style={{ fontWeight: 600, color: '#16a34a' }}>{credentialsModal.phone}</div>
+                </div>
+              )}
               <div>
                 <div style={{ fontSize: 11, color: 'var(--ink-3)' }}>PASSWORD</div>
                 <div style={{ fontWeight: 600, color: '#4f46e5' }}>{credentialsModal.user.raw_password}</div>
@@ -1113,7 +1174,7 @@ export default function SuperAdmin({ user, toast }) {
               <div>
                 <div style={{ fontSize: 11, color: 'var(--ink-3)' }}>PLAN & EXPIRY</div>
                 <div style={{ fontWeight: 600 }}>
-                  {credentialsModal.user.plan.toUpperCase()} ·{' '}
+                  {(credentialsModal.user.plan || 'YEARLY').toUpperCase()} ·{' '}
                   {credentialsModal.user.expires_at ? `Valid till ${credentialsModal.user.expires_at}` : 'Lifetime'}
                 </div>
               </div>

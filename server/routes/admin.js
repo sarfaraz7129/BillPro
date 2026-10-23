@@ -152,8 +152,9 @@ router.post('/users', (req, res) => {
 
   const origin = req.headers.origin || (req.headers.host ? `${req.protocol}://${req.headers.host}` : 'https://billpro.in');
   const expiryText = finalExpiry ? `Valid until ${finalExpiry}` : 'Lifetime Access (Never expires)';
+  const cleanPhone = (phone || '').trim();
 
-  const welcomeWhatsapp = `👋 *Welcome to BillPro Billing Suite!*\n\nYour business billing account is active:\n🌐 *Login:* ${origin}\n📧 *Email:* ${cleanEmail}\n🔑 *Password:* ${rawPassword}\n🏢 *Business:* ${cleanBizName}\n📦 *Plan:* ${plan.toUpperCase()} (${expiryText})\n\n💡 Sign in now to start issuing GST invoices, manage stock, and track Khata ledgers!`;
+  const welcomeWhatsapp = `👋 *Welcome to BillPro Billing Suite!*\n\nYour business billing account is active:\n🌐 *Login:* ${origin}\n📧 *Login User:* ${cleanEmail}${cleanPhone ? `\n📱 *Mobile:* ${cleanPhone}` : ''}\n🔑 *Password:* ${rawPassword}\n🏢 *Business:* ${cleanBizName}\n📦 *Plan:* ${plan.toUpperCase()} (${expiryText})\n\n💡 Sign in now to start issuing GST invoices, manage stock, and track Khata ledgers!`;
 
   res.json({
     ok: true,
@@ -362,7 +363,7 @@ router.post('/inquiries/:id/convert', (req, res) => {
   const origin = req.headers.origin || (req.headers.host ? `${req.protocol}://${req.headers.host}` : 'https://billpro.in');
   const expiryText = finalExpiry ? `Valid until ${finalExpiry}` : 'Lifetime Access (Never expires)';
 
-  const welcomeWhatsapp = `👋 *Welcome to BillPro Billing Suite!*\n\nYour account is now fully active:\n🌐 *Login:* ${origin}\n📧 *Email:* ${candidateEmail}\n🔑 *Password:* ${rawPassword}\n🏢 *Business:* ${cleanBizName}\n📦 *Plan:* ${plan.toUpperCase()} (${expiryText})\n\n💡 Log in today to start creating GST invoices and tracking your inventory!`;
+  const welcomeWhatsapp = `👋 *Welcome to BillPro Billing Suite!*\n\nYour business billing account is active:\n🌐 *Login:* ${origin}\n📧 *Login User:* ${candidateEmail}\n📱 *Mobile:* ${inquiry.phone}\n🔑 *Password:* ${rawPassword}\n🏢 *Business:* ${cleanBizName}\n📦 *Plan:* ${plan.toUpperCase()} (${expiryText})\n\n💡 Sign in now to start issuing GST invoices, manage stock, and track Khata ledgers!`;
 
   res.json({
     ok: true,

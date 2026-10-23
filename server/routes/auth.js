@@ -91,18 +91,28 @@ router.post('/signup', (req, res) => {
 
 router.post('/login', (req, res) => {
   const { email, password } = req.body || {};
-  const cleanEmail = String(email || '').trim().toLowerCase();
+  const cleanInput = String(email || '').trim();
+  const cleanEmail = cleanInput.toLowerCase();
   const rawPassword = String(password || '');
   const trimmedPassword = rawPassword.trim();
 
-  const user = db.prepare('SELECT * FROM users WHERE lower(email) = ?').get(cleanEmail);
+  const digitsOnly = cleanInput.replace(/\D/g, '');
+  const phone10 = digitsOnly.length === 10 ? digitsOnly : (digitsOnly.length === 12 && digitsOnly.startsWith('91') ? digitsOnly.slice(2) : digitsOnly);
+  const phoneWith91 = digitsOnly.length === 10 ? '91' + digitsOnly : digitsOnly;
+
+  const user = db.prepare(`
+    SELECT * FROM users 
+    WHERE lower(email) = ? 
+       OR (phone IS NOT NULL AND phone != '' AND (phone = ? OR phone = ? OR phone = ? OR replace(replace(replace(replace(phone, ' ', ''), '-', ''), '+', ''), '(', '') = ?))
+  `).get(cleanEmail, cleanInput, phone10, phoneWith91, digitsOnly);
+
   if (!user) {
-    return res.status(401).json({ error: 'Incorrect email or password' });
+    return res.status(401).json({ error: 'Incorrect email/phone or password' });
   }
 
   const pwdMatch = bcrypt.compareSync(rawPassword, user.password_hash) || bcrypt.compareSync(trimmedPassword, user.password_hash);
   if (!pwdMatch) {
-    return res.status(401).json({ error: 'Incorrect email or password' });
+    return res.status(401).json({ error: 'Incorrect email/phone or password' });
   }
 
   if (user.status === 'suspended') {
