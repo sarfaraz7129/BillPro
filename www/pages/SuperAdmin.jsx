@@ -27,6 +27,7 @@ export default function SuperAdmin({ user, toast }) {
   const [provisionModal, setProvisionModal] = useState(false);
   const [renewTarget, setRenewTarget] = useState(null);
   const [editTarget, setEditTarget] = useState(null);
+  const [editBusy, setEditBusy] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [convertTarget, setConvertTarget] = useState(null);
   const [credentialsModal, setCredentialsModal] = useState(null);
@@ -143,24 +144,54 @@ export default function SuperAdmin({ user, toast }) {
     }
   };
 
+  const openEditModal = (u) => {
+    const primaryBiz = (u.businesses && u.businesses[0]) || {};
+    setEditTarget({
+      id: u.id,
+      name: u.name || '',
+      email: u.email || '',
+      phone: u.phone || '',
+      status: u.status || 'active',
+      plan: u.plan || 'yearly',
+      expires_at: u.expires_at || '',
+      new_password: '',
+      is_superadmin: Boolean(u.is_superadmin),
+      // Business Profile fields
+      business_id: primaryBiz.id,
+      business_name: primaryBiz.name || '',
+      legal_name: primaryBiz.legal_name || '',
+      gstin: primaryBiz.gstin || '',
+      pan: primaryBiz.pan || '',
+      business_phone: primaryBiz.phone || u.phone || '',
+      business_email: primaryBiz.email || u.email || '',
+      address: primaryBiz.address || '',
+      city: primaryBiz.city || '',
+      state: primaryBiz.state || '',
+      state_code: primaryBiz.state_code || '',
+      pincode: primaryBiz.pincode || '',
+      invoice_prefix: primaryBiz.invoice_prefix || 'INV',
+      default_gst_rate: primaryBiz.default_gst_rate !== undefined ? primaryBiz.default_gst_rate : 18,
+      credit_days: primaryBiz.credit_days !== undefined ? primaryBiz.credit_days : 30,
+      bank_name: primaryBiz.bank_name || '',
+      bank_account_no: primaryBiz.bank_account_no || '',
+      bank_ifsc: primaryBiz.bank_ifsc || '',
+      upi_id: primaryBiz.upi_id || ''
+    });
+  };
+
   const handleUpdateUser = async (e) => {
     if (e && e.preventDefault) e.preventDefault();
     if (!editTarget) return;
+    setEditBusy(true);
     try {
-      await api.adminUpdateUser(editTarget.id, {
-        name: editTarget.name,
-        phone: editTarget.phone,
-        status: editTarget.status,
-        plan: editTarget.plan,
-        expires_at: editTarget.expires_at,
-        new_password: editTarget.new_password || undefined,
-        is_superadmin: editTarget.is_superadmin
-      });
-      toast('Client details updated successfully', 'ok');
+      await api.adminUpdateUser(editTarget.id, editTarget);
+      toast(`Saved changes for ${editTarget.name} & ${editTarget.business_name || 'business'}!`, 'ok');
       setEditTarget(null);
       loadAll();
     } catch (err) {
       toast(err.message || 'Update failed', 'err');
+    } finally {
+      setEditBusy(false);
     }
   };
 
@@ -552,8 +583,8 @@ export default function SuperAdmin({ user, toast }) {
                             </button>
                             <button
                               className="btn sm"
-                              title="Edit user details or reset password"
-                              onClick={() => setEditTarget({ ...u, new_password: '' })}
+                              title="Edit user details, business profile & billing settings"
+                              onClick={() => openEditModal(u)}
                             >
                               <Icon.edit size={13} /> Edit
                             </button>
@@ -729,7 +760,7 @@ export default function SuperAdmin({ user, toast }) {
                         type="button"
                         className="btn sm"
                         style={{ fontWeight: 600, justifyContent: 'center' }}
-                        onClick={() => setEditTarget({ ...u, new_password: '' })}
+                        onClick={() => openEditModal(u)}
                       >
                         <Icon.edit size={13} /> Edit Client
                       </button>
@@ -1032,7 +1063,7 @@ export default function SuperAdmin({ user, toast }) {
               />
             </Field>
 
-            <Field label="WhatsApp / Mobile Phone">
+            <Field label="WhatsApp / Mobile Phone" hint="Can also be used directly to sign in">
               <input
                 className="input"
                 value={provForm.phone}
@@ -1047,6 +1078,43 @@ export default function SuperAdmin({ user, toast }) {
                 value={provForm.business_name}
                 onChange={(e) => setProvForm({ ...provForm, business_name: e.target.value })}
                 placeholder="Patel Supermarket"
+              />
+            </Field>
+
+            <Field label="GSTIN (Optional)" hint="15-character GSTIN">
+              <input
+                className="input"
+                value={provForm.gstin || ''}
+                onChange={(e) => setProvForm({ ...provForm, gstin: e.target.value.toUpperCase() })}
+                placeholder="29AAAAA0000A1Z5"
+                maxLength={15}
+              />
+            </Field>
+
+            <Field label="City / Location (Optional)">
+              <input
+                className="input"
+                value={provForm.city || ''}
+                onChange={(e) => setProvForm({ ...provForm, city: e.target.value })}
+                placeholder="Udupi"
+              />
+            </Field>
+
+            <Field label="State (Optional)">
+              <input
+                className="input"
+                value={provForm.state || ''}
+                onChange={(e) => setProvForm({ ...provForm, state: e.target.value })}
+                placeholder="Karnataka"
+              />
+            </Field>
+
+            <Field label="Shop Address (Optional)">
+              <input
+                className="input"
+                value={provForm.address || ''}
+                onChange={(e) => setProvForm({ ...provForm, address: e.target.value })}
+                placeholder="Main Road, Near City Bus Stand"
               />
             </Field>
 
@@ -1246,79 +1314,312 @@ export default function SuperAdmin({ user, toast }) {
         </Modal>
       )}
 
-      {/* Edit Client Modal */}
+      {/* Comprehensive Edit Client & Business Profile Modal */}
       {editTarget && (
         <Modal
-          title={`Edit Client: ${editTarget.name}`}
-          sub={editTarget.email}
+          title={`Edit Client & Business: ${editTarget.name}`}
+          sub={`${editTarget.email} · Account #${editTarget.id}`}
+          size="wide"
           onClose={() => setEditTarget(null)}
           footer={
-            <>
-              <button className="btn" onClick={() => setEditTarget(null)}>Cancel</button>
-              <button className="btn primary" onClick={handleUpdateUser}>Save Changes</button>
-            </>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, width: '100%' }}>
+              <div style={{ display: 'flex', gap: 8, width: '100%', justifyContent: 'flex-end' }}>
+                <button className="btn" style={{ flex: 1, minWidth: 80, justifyContent: 'center' }} onClick={() => setEditTarget(null)}>Cancel</button>
+                <button className="btn primary" style={{ flex: 2, minWidth: 120, justifyContent: 'center' }} onClick={handleUpdateUser} disabled={editBusy}>
+                  {editBusy ? 'Saving…' : 'Save Changes'}
+                </button>
+              </div>
+              {editTarget.phone && (
+                <button
+                  type="button"
+                  className="btn sm"
+                  style={{ background: 'rgba(34, 197, 94, 0.1)', color: '#16a34a', border: '1px solid rgba(34, 197, 94, 0.25)', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 6, width: '100%', justifyContent: 'center' }}
+                  onClick={() => {
+                    const origin = window.location.origin;
+                    const msg = `👋 *BillPro Account Update*\n\nHello ${editTarget.name},\nYour account details for *${editTarget.business_name || 'your business'}*:\n🌐 *Login:* ${origin}\n📧 *Login User:* ${editTarget.email}\n📱 *Mobile:* ${editTarget.phone}\n${editTarget.new_password ? `🔑 *New Password:* ${editTarget.new_password}\n` : ''}🏢 *Business:* ${editTarget.business_name || '—'}${editTarget.gstin ? `\n🧾 *GSTIN:* ${editTarget.gstin}` : ''}\n📦 *Plan:* ${(editTarget.plan || 'yearly').toUpperCase()} (${editTarget.expires_at ? `Valid till ${editTarget.expires_at}` : 'Lifetime Access'})\n\n💡 Log in anytime to access your billing dashboard!`;
+                    openWhatsApp(editTarget.phone, msg);
+                  }}
+                >
+                  <Icon.whatsapp size={14} /> Send WhatsApp Update to Client
+                </button>
+              )}
+            </div>
           }
         >
-          <div className="form-grid">
-            <Field label="Full Name">
-              <input
-                className="input"
-                value={editTarget.name}
-                onChange={(e) => setEditTarget({ ...editTarget, name: e.target.value })}
-              />
-            </Field>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+            {/* Section 1: User Account & Login Credentials */}
+            <div style={{ background: '#f8fafc', padding: 16, borderRadius: 12, border: '1px solid var(--border)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, borderBottom: '1px solid #e2e8f0', paddingBottom: 8 }}>
+                <Icon.users size={16} style={{ color: 'var(--brand)' }} />
+                <h4 style={{ margin: 0, fontSize: 14 }}>User Account & Login Credentials</h4>
+              </div>
 
-            <Field label="Mobile / WhatsApp Phone">
-              <input
-                className="input"
-                value={editTarget.phone || ''}
-                onChange={(e) => setEditTarget({ ...editTarget, phone: e.target.value })}
-              />
-            </Field>
+              <div className="form-grid">
+                <Field label="Customer Full Name" req>
+                  <input
+                    className="input"
+                    value={editTarget.name}
+                    onChange={(e) => setEditTarget({ ...editTarget, name: e.target.value })}
+                    required
+                  />
+                </Field>
 
-            <Field label="Account Status">
-              <select
-                className="input"
-                value={editTarget.status}
-                onChange={(e) => setEditTarget({ ...editTarget, status: e.target.value })}
-                disabled={editTarget.id === user.id}
-              >
-                <option value="active">Active (Access Granted)</option>
-                <option value="suspended">Suspended (Access Blocked)</option>
-              </select>
-            </Field>
+                <Field label="Login Email / Username" req hint="Primary sign-in credential">
+                  <input
+                    className="input"
+                    type="email"
+                    value={editTarget.email}
+                    onChange={(e) => setEditTarget({ ...editTarget, email: e.target.value })}
+                    required
+                  />
+                </Field>
 
-            <Field label="Subscription Plan">
-              <select
-                className="input"
-                value={editTarget.plan}
-                onChange={(e) => setEditTarget({ ...editTarget, plan: e.target.value })}
-              >
-                <option value="monthly">Monthly</option>
-                <option value="yearly">Yearly</option>
-                <option value="lifetime">Lifetime</option>
-              </select>
-            </Field>
+                <Field label="Mobile / WhatsApp Phone" hint="Clients can also sign in directly with this number">
+                  <input
+                    className="input"
+                    value={editTarget.phone || ''}
+                    onChange={(e) => setEditTarget({ ...editTarget, phone: e.target.value })}
+                    placeholder="9845012345"
+                  />
+                </Field>
 
-            {editTarget.plan !== 'lifetime' && (
-              <Field label="Expiration Date (YYYY-MM-DD)">
-                <input
-                  className="input"
-                  type="date"
-                  value={editTarget.expires_at || ''}
-                  onChange={(e) => setEditTarget({ ...editTarget, expires_at: e.target.value })}
-                />
-              </Field>
-            )}
+                <Field label="Account Status" req>
+                  <select
+                    className="input"
+                    value={editTarget.status}
+                    onChange={(e) => setEditTarget({ ...editTarget, status: e.target.value })}
+                    disabled={editTarget.id === user.id}
+                  >
+                    <option value="active">Active (Access Granted)</option>
+                    <option value="suspended">Suspended (Access Blocked)</option>
+                  </select>
+                </Field>
 
-            <Field label="Reset Password (Optional)" full hint="Leave blank to keep unchanged">
-              <input
-                className="input"
-                placeholder="Enter new password (min 6 chars)"
-                value={editTarget.new_password || ''}
-                onChange={(e) => setEditTarget({ ...editTarget, new_password: e.target.value })}
-              />
-            </Field>
+                <Field label="Subscription License Plan" req>
+                  <select
+                    className="input"
+                    value={editTarget.plan}
+                    onChange={(e) => setEditTarget({ ...editTarget, plan: e.target.value })}
+                  >
+                    <option value="monthly">Monthly Plan (30 Days)</option>
+                    <option value="yearly">Yearly Plan (365 Days)</option>
+                    <option value="lifetime">Lifetime License (Unlimited)</option>
+                  </select>
+                </Field>
+
+                {editTarget.plan !== 'lifetime' && (
+                  <Field label="License Expiry Date (YYYY-MM-DD)">
+                    <input
+                      className="input"
+                      type="date"
+                      value={editTarget.expires_at || ''}
+                      onChange={(e) => setEditTarget({ ...editTarget, expires_at: e.target.value })}
+                    />
+                  </Field>
+                )}
+
+                <Field label="Reset Password (Optional)" full hint="Leave blank to keep unchanged. Min 6 characters.">
+                  <input
+                    className="input"
+                    placeholder="Enter new password (e.g. BillPro@987)"
+                    value={editTarget.new_password || ''}
+                    onChange={(e) => setEditTarget({ ...editTarget, new_password: e.target.value })}
+                  />
+                </Field>
+
+                {user?.is_superadmin && editTarget.id !== user.id && (
+                  <Field label="Super Admin Privileges" full>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13, fontWeight: 500 }}>
+                      <input
+                        type="checkbox"
+                        checked={Boolean(editTarget.is_superadmin)}
+                        onChange={(e) => setEditTarget({ ...editTarget, is_superadmin: e.target.checked })}
+                      />
+                      <span>Grant Super Administrator Console Privileges</span>
+                    </label>
+                  </Field>
+                )}
+              </div>
+            </div>
+
+            {/* Section 2: Primary Business Profile & Tax Information */}
+            <div style={{ background: '#f8fafc', padding: 16, borderRadius: 12, border: '1px solid var(--border)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, borderBottom: '1px solid #e2e8f0', paddingBottom: 8 }}>
+                <Icon.building size={16} style={{ color: '#0891b2' }} />
+                <h4 style={{ margin: 0, fontSize: 14 }}>Primary Business Profile & Tax Information</h4>
+              </div>
+
+              <div className="form-grid">
+                <Field label="Business / Shop Name (Display Name)" req hint="Shown on invoices & statements">
+                  <input
+                    className="input"
+                    value={editTarget.business_name || ''}
+                    onChange={(e) => setEditTarget({ ...editTarget, business_name: e.target.value })}
+                    placeholder="Patel Supermarket"
+                  />
+                </Field>
+
+                <Field label="Legal / Trade Name" hint="Registered firm or company name">
+                  <input
+                    className="input"
+                    value={editTarget.legal_name || ''}
+                    onChange={(e) => setEditTarget({ ...editTarget, legal_name: e.target.value })}
+                    placeholder="Patel Retail Private Limited"
+                  />
+                </Field>
+
+                <Field label="GSTIN (15 Digits)" hint="e.g. 29AAAAA0000A1Z5">
+                  <input
+                    className="input"
+                    value={editTarget.gstin || ''}
+                    onChange={(e) => setEditTarget({ ...editTarget, gstin: e.target.value.toUpperCase() })}
+                    placeholder="29AAAAA0000A1Z5"
+                    maxLength={15}
+                  />
+                </Field>
+
+                <Field label="PAN (Income Tax PAN)" hint="10 characters">
+                  <input
+                    className="input"
+                    value={editTarget.pan || ''}
+                    onChange={(e) => setEditTarget({ ...editTarget, pan: e.target.value.toUpperCase() })}
+                    placeholder="AAAAA0000A"
+                    maxLength={10}
+                  />
+                </Field>
+
+                <Field label="Business Contact Phone">
+                  <input
+                    className="input"
+                    value={editTarget.business_phone || ''}
+                    onChange={(e) => setEditTarget({ ...editTarget, business_phone: e.target.value })}
+                    placeholder="0820 2520000"
+                  />
+                </Field>
+
+                <Field label="Business Email">
+                  <input
+                    className="input"
+                    type="email"
+                    value={editTarget.business_email || ''}
+                    onChange={(e) => setEditTarget({ ...editTarget, business_email: e.target.value })}
+                    placeholder="billing@patelsupermarket.in"
+                  />
+                </Field>
+
+                <Field label="Shop / Office Address" full>
+                  <input
+                    className="input"
+                    value={editTarget.address || ''}
+                    onChange={(e) => setEditTarget({ ...editTarget, address: e.target.value })}
+                    placeholder="Main Road, Near City Bus Stand"
+                  />
+                </Field>
+
+                <Field label="City">
+                  <input
+                    className="input"
+                    value={editTarget.city || ''}
+                    onChange={(e) => setEditTarget({ ...editTarget, city: e.target.value })}
+                    placeholder="Udupi"
+                  />
+                </Field>
+
+                <Field label="State">
+                  <input
+                    className="input"
+                    value={editTarget.state || ''}
+                    onChange={(e) => setEditTarget({ ...editTarget, state: e.target.value })}
+                    placeholder="Karnataka"
+                  />
+                </Field>
+
+                <Field label="Pincode">
+                  <input
+                    className="input"
+                    value={editTarget.pincode || ''}
+                    onChange={(e) => setEditTarget({ ...editTarget, pincode: e.target.value })}
+                    placeholder="576101"
+                    maxLength={6}
+                  />
+                </Field>
+
+                <Field label="Invoice Series Prefix">
+                  <input
+                    className="input"
+                    value={editTarget.invoice_prefix || 'INV'}
+                    onChange={(e) => setEditTarget({ ...editTarget, invoice_prefix: e.target.value.toUpperCase() })}
+                    placeholder="INV"
+                  />
+                </Field>
+
+                <Field label="Default GST Rate (%)">
+                  <input
+                    className="input"
+                    type="number"
+                    value={editTarget.default_gst_rate !== undefined ? editTarget.default_gst_rate : 18}
+                    onChange={(e) => setEditTarget({ ...editTarget, default_gst_rate: Number(e.target.value) })}
+                    placeholder="18"
+                  />
+                </Field>
+
+                <Field label="Credit Period (Days)">
+                  <input
+                    className="input"
+                    type="number"
+                    value={editTarget.credit_days !== undefined ? editTarget.credit_days : 30}
+                    onChange={(e) => setEditTarget({ ...editTarget, credit_days: Number(e.target.value) })}
+                    placeholder="30"
+                  />
+                </Field>
+              </div>
+            </div>
+
+            {/* Section 3: Banking & UPI Payment Setup */}
+            <div style={{ background: '#f8fafc', padding: 16, borderRadius: 12, border: '1px solid var(--border)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, borderBottom: '1px solid #e2e8f0', paddingBottom: 8 }}>
+                <Icon.rupee size={16} style={{ color: '#16a34a' }} />
+                <h4 style={{ margin: 0, fontSize: 14 }}>Banking & UPI QR Details (Printed on Invoices & Thermal Slips)</h4>
+              </div>
+
+              <div className="form-grid">
+                <Field label="Bank Name">
+                  <input
+                    className="input"
+                    value={editTarget.bank_name || ''}
+                    onChange={(e) => setEditTarget({ ...editTarget, bank_name: e.target.value })}
+                    placeholder="State Bank of India / HDFC Bank"
+                  />
+                </Field>
+
+                <Field label="Bank Account Number">
+                  <input
+                    className="input"
+                    value={editTarget.bank_account_no || ''}
+                    onChange={(e) => setEditTarget({ ...editTarget, bank_account_no: e.target.value })}
+                    placeholder="50200012345678"
+                  />
+                </Field>
+
+                <Field label="Bank IFSC Code">
+                  <input
+                    className="input"
+                    value={editTarget.bank_ifsc || ''}
+                    onChange={(e) => setEditTarget({ ...editTarget, bank_ifsc: e.target.value.toUpperCase() })}
+                    placeholder="HDFC0001234"
+                  />
+                </Field>
+
+                <Field label="Business UPI ID (for QR Code)">
+                  <input
+                    className="input"
+                    value={editTarget.upi_id || ''}
+                    onChange={(e) => setEditTarget({ ...editTarget, upi_id: e.target.value })}
+                    placeholder="patelsupermarket@okhdfcbank"
+                  />
+                </Field>
+              </div>
+            </div>
           </div>
         </Modal>
       )}

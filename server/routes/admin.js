@@ -76,7 +76,7 @@ router.get('/users', (req, res) => {
 
   const userList = users.map((u) => {
     const isExpired = Boolean(!u.is_superadmin && u.expires_at && u.expires_at < today);
-    const businesses = db.prepare('SELECT id, name, gstin, phone FROM businesses WHERE owner_id = ?').all(u.id);
+    const businesses = db.prepare('SELECT * FROM businesses WHERE owner_id = ?').all(u.id);
     const bizIds = businesses.map((b) => b.id);
     let invoiceCount = 0;
     if (bizIds.length > 0) {
@@ -112,7 +112,11 @@ function computeExpiry(plan, customDays, customDate) {
  * Provision a new customer / client account
  */
 router.post('/users', (req, res) => {
-  const { name, email, password, phone, business_name, plan = 'yearly', custom_days, expires_at } = req.body || {};
+  const {
+    name, email, password, phone,
+    business_name, legal_name, gstin, pan, city, state, pincode, address, upi_id,
+    plan = 'yearly', custom_days, expires_at
+  } = req.body || {};
   if (!name || !email) {
     return res.status(400).json({ error: 'Name and email are required.' });
   }
@@ -142,10 +146,22 @@ router.post('/users', (req, res) => {
 
   // Provision primary business
   const cleanBizName = (business_name || '').trim() || `${name.trim()}'s Business`;
+  const cleanLegal = (legal_name || '').trim() || cleanBizName;
+  const cleanGstin = (gstin || '').trim().toUpperCase() || null;
+  const cleanPan = (pan || '').trim().toUpperCase() || (cleanGstin && cleanGstin.length >= 10 ? cleanGstin.slice(2, 12) : null);
+  const cleanCity = (city || '').trim() || null;
+  const cleanState = (state || '').trim() || null;
+  const cleanPincode = (pincode || '').trim() || null;
+  const cleanAddress = (address || '').trim() || null;
+  const cleanUpi = (upi_id || '').trim() || null;
+
   const bizInsert = db.prepare(`
-    INSERT INTO businesses (owner_id, name, legal_name, invoice_prefix, quoter_prefix, default_gst_rate, credit_days, color, phone)
-    VALUES (?, ?, ?, 'INV', 'QT', 18, 30, '#4f46e5', ?)
-  `).run(newUserId, cleanBizName, cleanBizName, (phone || '').trim() || null);
+    INSERT INTO businesses (owner_id, name, legal_name, gstin, pan, phone, address, city, state, pincode, upi_id, invoice_prefix, quoter_prefix, default_gst_rate, credit_days, color)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'INV', 'QT', 18, 30, '#4f46e5')
+  `).run(
+    newUserId, cleanBizName, cleanLegal, cleanGstin, cleanPan,
+    (phone || '').trim() || null, cleanAddress, cleanCity, cleanState, cleanPincode, cleanUpi
+  );
 
   const newBizId = bizInsert.lastInsertRowid;
   db.prepare('UPDATE users SET active_business_id = ? WHERE id = ?').run(newBizId, newUserId);
@@ -177,19 +193,37 @@ router.post('/users', (req, res) => {
 });
 
 /**
- * Edit user details / credentials / plan
+ * Edit user details / credentials / plan & business profile
  */
 router.put('/users/:id', (req, res) => {
   const userId = Number(req.params.id);
   const targetUser = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
   if (!targetUser) return res.status(404).json({ error: 'User not found' });
 
-  const { name, phone, status, plan, expires_at, new_password, is_superadmin } = req.body || {};
+  const {
+    name, email, phone, status, plan, expires_at, new_password, is_superadmin,
+    business_name, legal_name, gstin, pan, business_phone, business_email,
+    address, city, state, state_code, pincode, invoice_prefix, default_gst_rate, credit_days,
+    bank_name, bank_account_no, bank_ifsc, upi_id
+  } = req.body || {};
 
   // Self safety guards
   if (req.user.id === userId) {
     if (status === 'suspended') return res.status(400).json({ error: 'You cannot suspend your own Super Admin account.' });
     if (is_superadmin === false || is_superadmin === 0) return res.status(400).json({ error: 'You cannot remove your own Super Admin privileges.' });
+  }
+
+  // Handle email update with uniqueness check
+  let updatedEmail = targetUser.email;
+  if (email !== undefined && String(email).trim()) {
+    const cleanEmail = String(email).trim().toLowerCase();
+    if (cleanEmail !== targetUser.email) {
+      const existing = db.prepare('SELECT id FROM users WHERE lower(email) = ? AND id != ?').get(cleanEmail, userId);
+      if (existing) {
+        return res.status(409).json({ error: `The email '${cleanEmail}' is already in use by another account.` });
+      }
+      updatedEmail = cleanEmail;
+    }
   }
 
   const updatedName = name !== undefined ? String(name).trim() : targetUser.name;
@@ -206,12 +240,95 @@ router.put('/users/:id', (req, res) => {
 
   db.prepare(`
     UPDATE users 
-    SET name = ?, phone = ?, status = ?, plan = ?, expires_at = ?, is_superadmin = ?, password_hash = ?
+    SET name = ?, email = ?, phone = ?, status = ?, plan = ?, expires_at = ?, is_superadmin = ?, password_hash = ?
     WHERE id = ?
-  `).run(updatedName, updatedPhone, updatedStatus, updatedPlan, updatedExpiry, updatedIsAdmin, pwdHash, userId);
+  `).run(updatedName, updatedEmail, updatedPhone, updatedStatus, updatedPlan, updatedExpiry, updatedIsAdmin, pwdHash, userId);
+
+  // Update primary business
+  let primaryBiz = null;
+  if (targetUser.active_business_id) {
+    primaryBiz = db.prepare('SELECT * FROM businesses WHERE id = ?').get(targetUser.active_business_id);
+  }
+  if (!primaryBiz) {
+    primaryBiz = db.prepare('SELECT * FROM businesses WHERE owner_id = ? ORDER BY id ASC LIMIT 1').get(userId);
+  }
+
+  if (primaryBiz) {
+    const bName = business_name !== undefined ? (String(business_name).trim() || primaryBiz.name) : primaryBiz.name;
+    const bLegal = legal_name !== undefined ? (String(legal_name).trim() || null) : primaryBiz.legal_name;
+    const bGstin = gstin !== undefined ? (String(gstin).trim().toUpperCase() || null) : primaryBiz.gstin;
+    const bPan = pan !== undefined ? (String(pan).trim().toUpperCase() || null) : primaryBiz.pan;
+    const bPhone = business_phone !== undefined ? (String(business_phone).trim() || null) : primaryBiz.phone;
+    const bEmail = business_email !== undefined ? (String(business_email).trim().toLowerCase() || null) : primaryBiz.email;
+    const bAddress = address !== undefined ? (String(address).trim() || null) : primaryBiz.address;
+    const bCity = city !== undefined ? (String(city).trim() || null) : primaryBiz.city;
+    const bState = state !== undefined ? (String(state).trim() || null) : primaryBiz.state;
+    const bStateCode = state_code !== undefined ? (String(state_code).trim() || null) : primaryBiz.state_code;
+    const bPincode = pincode !== undefined ? (String(pincode).trim() || null) : primaryBiz.pincode;
+    const bPrefix = invoice_prefix !== undefined ? (String(invoice_prefix).trim().toUpperCase() || primaryBiz.invoice_prefix) : primaryBiz.invoice_prefix;
+    const bGstRate = default_gst_rate !== undefined ? Number(default_gst_rate) : primaryBiz.default_gst_rate;
+    const bCreditDays = credit_days !== undefined ? Number(credit_days) : primaryBiz.credit_days;
+    const bBankName = bank_name !== undefined ? (String(bank_name).trim() || null) : primaryBiz.bank_name;
+    const bBankAcc = bank_account_no !== undefined ? (String(bank_account_no).trim() || null) : primaryBiz.bank_account_no;
+    const bBankIfsc = bank_ifsc !== undefined ? (String(bank_ifsc).trim().toUpperCase() || null) : primaryBiz.bank_ifsc;
+    const bUpi = upi_id !== undefined ? (String(upi_id).trim() || null) : primaryBiz.upi_id;
+
+    db.prepare(`
+      UPDATE businesses SET
+        name = ?,
+        legal_name = ?,
+        gstin = ?,
+        pan = ?,
+        phone = ?,
+        email = ?,
+        address = ?,
+        city = ?,
+        state = ?,
+        state_code = ?,
+        pincode = ?,
+        invoice_prefix = ?,
+        default_gst_rate = ?,
+        credit_days = ?,
+        bank_name = ?,
+        bank_account_no = ?,
+        bank_ifsc = ?,
+        upi_id = ?
+      WHERE id = ?
+    `).run(
+      bName, bLegal, bGstin, bPan, bPhone, bEmail, bAddress, bCity, bState, bStateCode, bPincode,
+      bPrefix, bGstRate, bCreditDays, bBankName, bBankAcc, bBankIfsc, bUpi, primaryBiz.id
+    );
+  } else if (business_name) {
+    const newBizInsert = db.prepare(`
+      INSERT INTO businesses (owner_id, name, legal_name, gstin, pan, phone, address, city, state, pincode, upi_id, invoice_prefix, default_gst_rate, credit_days, color)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'INV', 18, 30, '#4f46e5')
+    `).run(
+      userId,
+      String(business_name).trim(),
+      legal_name ? String(legal_name).trim() : String(business_name).trim(),
+      gstin ? String(gstin).trim().toUpperCase() : null,
+      pan ? String(pan).trim().toUpperCase() : null,
+      (business_phone || phone || '').trim() || null,
+      (address || '').trim() || null,
+      (city || '').trim() || null,
+      (state || '').trim() || null,
+      (pincode || '').trim() || null,
+      (upi_id || '').trim() || null
+    );
+    db.prepare('UPDATE users SET active_business_id = ? WHERE id = ?').run(newBizInsert.lastInsertRowid, userId);
+  }
 
   const updated = db.prepare('SELECT id, name, email, phone, role, is_superadmin, status, plan, expires_at FROM users WHERE id = ?').get(userId);
-  res.json({ ok: true, user: { ...updated, is_superadmin: Boolean(updated.is_superadmin) } });
+  const updatedBizList = db.prepare('SELECT * FROM businesses WHERE owner_id = ?').all(userId);
+
+  res.json({
+    ok: true,
+    user: {
+      ...updated,
+      is_superadmin: Boolean(updated.is_superadmin),
+      businesses: updatedBizList
+    }
+  });
 });
 
 /**
