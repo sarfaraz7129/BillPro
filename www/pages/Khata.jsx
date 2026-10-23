@@ -85,27 +85,28 @@ export default function Khata({ business, initialType, initialPartyId, toast }) 
               {/* Mobile App Khata Party List */}
               <div className="mobile-only mobile-cards-list">
                 {rows.map((p) => (
-                  <div key={p.id} className="mobile-trans-item" onClick={() => setOpen({ party: p })}>
-                    <div className="mti-left">
-                      <Avatar name={p.name} size={38} color={p.tag ? colorFor(p.tag) : undefined} />
-                      <div className="mti-meta">
-                        <b className="mti-party">{p.name}</b>
-                        <div className="mti-sub">{p.phone || p.city || 'No contact'} · {p.lastTransaction ? fmtDate(p.lastTransaction) : 'No txn'}</div>
+                  <div key={p.id} className="mobile-party-card" style={{ border: '1px solid var(--line)', borderRadius: 12, overflow: 'hidden', background: 'var(--surface)' }}>
+                    <div className="mobile-trans-item" role="button" tabIndex={0} onClick={() => setOpen({ party: p })} onKeyDown={(e) => { if (e.key === 'Enter') setOpen({ party: p }); }}>
+                      <div className="mti-left">
+                        <Avatar name={p.name} size={38} color={p.tag ? colorFor(p.tag) : undefined} />
+                        <div className="mti-meta">
+                          <b className="mti-party">{p.name}</b>
+                          <div className="mti-sub">{p.phone || p.city || 'No contact'} · {p.lastTransaction ? fmtDate(p.lastTransaction) : 'No txn'}</div>
+                        </div>
+                      </div>
+                      <div className="mti-right">
+                        <div className={`mti-amount ${p.balance > 0 ? 'neg' : p.balance < 0 ? 'pos' : ''}`}>
+                          {money(Math.abs(p.balance))}
+                        </div>
+                        <div className="mti-pill">
+                          {p.balance > 0 ? <span className="pill sm red">You'll get</span> : p.balance < 0 ? <span className="pill sm green">You'll give</span> : <span className="pill sm grey">Settled</span>}
+                        </div>
                       </div>
                     </div>
-                    <div className="mti-right">
-                      <div className={`mti-amount ${p.balance > 0 ? 'neg' : p.balance < 0 ? 'pos' : ''}`}>
-                        {money(Math.abs(p.balance))}
-                      </div>
-                      <div className="mti-pill">
-                        {p.balance > 0 ? (
-                          <span className="pill sm red">You'll get</span>
-                        ) : p.balance < 0 ? (
-                          <span className="pill sm green">You'll give</span>
-                        ) : (
-                          <span className="pill sm grey">Settled</span>
-                        )}
-                      </div>
+                    <div style={{ display: 'flex', gap: 8, padding: '0 12px 10px', justifyContent: 'flex-end' }}>
+                      <button className="btn sm" onClick={() => setOpen({ party: p })}><Icon.book size={14} /> Ledger</button>
+                      <button className="btn sm" onClick={() => setEditor({ type, party: p })}><Icon.edit size={14} /> Edit</button>
+                      <button className="btn sm red" onClick={() => setConfirm(p)}><Icon.trash size={14} /> Delete</button>
                     </div>
                   </div>
                 ))}
@@ -154,10 +155,10 @@ export default function Khata({ business, initialType, initialPartyId, toast }) 
         </div>
       </div>
 
-      {open && <Ledger partyId={open.party.id} business={business} onClose={() => { setOpen(null); load(); }} onChanged={load} toast={toast} />}
+      {open && <Ledger partyId={open.party.id} business={business} onClose={() => { setOpen(null); load(); }} onEdit={(party) => { setOpen(null); setEditor({ type, party }); }} onChanged={load} toast={toast} />}
       {editor && <PartyEditor business={business} type={editor.type} party={editor.party} toast={toast}
         onClose={() => setEditor(null)} onSaved={() => { setEditor(null); load(); }} />}
-      {confirm && <Confirm title={`Delete ${confirm.name}?`} message="Their ledger entries and linked invoices will be removed. This cannot be undone."
+      {confirm && <Confirm title={`Delete ${confirm.name}?`} message="This permanently deletes the party and its khata transactions. Existing invoices are retained, but will no longer be linked to this party. This cannot be undone."
         onConfirm={async () => { try { await api.deleteParty(confirm.id); toast('Deleted', 'ok'); load(); } catch (e) { toast(e.message, 'err'); } }}
         onClose={() => setConfirm(null)} />}
 
@@ -176,7 +177,7 @@ export default function Khata({ business, initialType, initialPartyId, toast }) 
 }
 
 /* ---------------- party ledger ---------------- */
-function Ledger({ partyId, business, onClose, onChanged, toast }) {
+function Ledger({ partyId, business, onClose, onEdit, onChanged, toast }) {
   const [data, setData] = useState(null);
   const [pay, setPay] = useState(null);
   const [txnEditor, setTxnEditor] = useState(null);
@@ -195,6 +196,7 @@ function Ledger({ partyId, business, onClose, onChanged, toast }) {
       sub={[p.contact_name, p.phone, p.gstin, p.city].filter(Boolean).join(' · ')}
       size="wide" onClose={onClose}
       footer={<>
+        <button className="btn" onClick={() => onEdit(p)}><Icon.edit size={14} /> Edit details</button>
         <button className="btn" onClick={() => window.open(pdfUrl(`statement/${p.id}`), '_blank')}><Icon.print size={14} /> Statement PDF</button>
         <button className="btn green" onClick={() => setPay('you_got')}><Icon.arrowDown size={14} /> You got</button>
         <button className="btn red" onClick={() => setPay('you_gave')}><Icon.arrowUp size={14} /> You gave</button>
