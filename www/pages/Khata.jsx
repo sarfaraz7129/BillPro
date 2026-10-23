@@ -158,7 +158,7 @@ export default function Khata({ business, initialType, initialPartyId, toast }) 
       {open && <Ledger partyId={open.party.id} business={business} onClose={() => { setOpen(null); load(); }} onEdit={(party) => { setOpen(null); setEditor({ type, party }); }} onChanged={load} toast={toast} />}
       {editor && <PartyEditor business={business} type={editor.type} party={editor.party} toast={toast}
         onClose={() => setEditor(null)} onSaved={() => { setEditor(null); load(); }} />}
-      {confirm && <Confirm title={`Delete ${confirm.name}?`} message="This permanently deletes the party and its khata transactions. Existing invoices are retained, but will no longer be linked to this party. This cannot be undone."
+      {confirm && <Confirm title={`Delete ${confirm.name}?`} message="A party cannot be deleted while any active invoice has an outstanding balance. Once all dues are settled (or the invoices are cancelled), deletion removes the party and its khata transactions; existing invoices are retained but unlinked."
         onConfirm={async () => { try { await api.deleteParty(confirm.id); toast('Deleted', 'ok'); load(); } catch (e) { toast(e.message, 'err'); } }}
         onClose={() => setConfirm(null)} />}
 

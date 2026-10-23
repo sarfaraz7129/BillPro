@@ -97,6 +97,9 @@ async function run() {
   ok('taxable value nets off the line discount', near(d.taxable_value, 20900), d.taxable_value);
   ok('total = taxable + IGST', near(d.total, 24662), d.total);
   ok('partial payment sets payment_status=partial', d.payment_status === 'partial' && near(d.paid_amount, 5000) && near(d.due_amount, 19662), { s: d.payment_status, paid: d.paid_amount, due: d.due_amount });
+  const blockedPartyDelete = await call('DELETE', `/api/parties/${kerala.id}`);
+  ok('prevents deleting a customer with an active invoice balance', blockedPartyDelete.status === 409 && Array.isArray(blockedPartyDelete.body.dueInvoices) && blockedPartyDelete.body.dueInvoices.some((doc) => doc.id === d.id), blockedPartyDelete.body);
+  ok('customer remains available after blocked delete', (await call('GET', `/api/parties/${kerala.id}`)).status === 200);
   ok('amount in words is filled', /Rupees.*Only/.test(d.amount_in_words), d.amount_in_words);
 
   console.log('\n--- inventory posting ---');

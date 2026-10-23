@@ -114,6 +114,20 @@ router.put('/:id', (req, res) => {
 router.delete('/:id', (req, res) => {
   const party = db.prepare('SELECT * FROM parties WHERE id = ? AND business_id = ?').get(req.params.id, req.business.id);
   if (!party) return res.status(404).json({ error: 'Party not found' });
+
+  // Preserve customers/suppliers while an active invoice or purchase still has an unpaid balance.
+  const dueInvoices = db.prepare(`SELECT id, number, type, due_amount
+    FROM documents
+    WHERE party_id = ? AND business_id = ? AND status = 'active' AND COALESCE(due_amount, 0) > 0.005
+    ORDER BY date, id`).all(party.id, req.business.id);
+  if (dueInvoices.length) {
+    const dueLabel = party.type === 'supplier' ? 'purchase bill' : 'invoice';
+    return res.status(409).json({
+      error: `Cannot delete ${party.type} while ${dueInvoices.length} active ${dueLabel}${dueInvoices.length === 1 ? '' : 's'} have an outstanding balance. Collect the dues or cancel the document first.`, 
+      dueInvoices: dueInvoices.map((doc) => ({ id: doc.id, number: doc.number, type: doc.type, due_amount: doc.due_amount }))
+    });
+  }
+
   db.prepare('DELETE FROM parties WHERE id = ?').run(party.id);
   res.json({ ok: true });
 });
