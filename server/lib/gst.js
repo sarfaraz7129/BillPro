@@ -3,7 +3,7 @@
  * Indian GST + money helpers shared by the API and the PDF generator.
  */
 
-const { istToday } = require('./time');
+const { istToday, istFinancialYear } = require('./time');
 
 const ONES = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten',
   'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
@@ -183,11 +183,8 @@ function hsnSummary(lines, supplyType) {
 
 /** Next sequential document number, e.g. INV-2025-26-1001 (financial-year aware). */
 function financialYear(dateStr) {
-  const d = new Date(dateStr);
-  const y = d.getFullYear();
-  const m = d.getMonth() + 1; // 1-12
-  const start = m >= 4 ? y : y - 1;
-  return `${start}-${String((start + 1) % 100).padStart(2, '0')}`;
+  if (dateStr) return istFinancialYear(dateStr);
+  return istFinancialYear();
 }
 
 function nextDocumentNumber(prefix, counter) {

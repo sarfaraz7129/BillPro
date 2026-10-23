@@ -4,9 +4,16 @@ const { db } = require('../db');
 const { auth, loadBusiness } = require('../middleware');
 const { round2, hsnSummary, financialYear, stateName } = require('../lib/gst');
 const { istToday, istFinancialYear, istAddDays } = require('../lib/time');
+const { partyBalance } = require('../lib/service');
 
 const router = express.Router();
 router.use(auth, loadBusiness);
+
+const safeParseItems = (val) => {
+  if (Array.isArray(val)) return val;
+  if (typeof val !== 'string') return [];
+  try { return JSON.parse(val); } catch { return []; }
+};
 
 /**
  * Unified receipts from both party Khata transactions (you_got)
@@ -226,15 +233,14 @@ router.get('/purchases', (req, res) => {
 });
 
 /** Profit & loss by month for the active business. */
-router.get('/profit', (req, res) => {
+router.get(['/profit', '/profit-loss'], (req, res) => {
   const { from, to } = period(req);
   const months = [];
-  const cursor = new Date(from + 'T00:00:00');
-  const end = new Date(to + 'T00:00:00');
+  const cursor = new Date(from.slice(0, 7) + '-01T00:00:00Z');
+  const end = new Date(to.slice(0, 7) + '-01T00:00:00Z');
   while (cursor <= end) {
-    const key = cursor.toISOString().slice(0, 7);
-    if (!months.includes(key)) months.push(key);
-    cursor.setMonth(cursor.getMonth() + 1);
+    months.push(cursor.toISOString().slice(0, 7));
+    cursor.setUTCMonth(cursor.getUTCMonth() + 1);
   }
   const rows = months.map((m) => {
     const mFrom = m + '-01';
@@ -258,7 +264,8 @@ router.get('/aging', (req, res) => {
     WHERE d.business_id=? AND d.type='sale' AND d.status='active' AND d.due_amount>0 ORDER BY d.date`).all(req.business.id);
   const buckets = { '0-30': 0, '31-60': 0, '61-90': 0, '90+': 0 };
   const items = rows.map((r) => {
-    const age = r.due_date ? Math.floor((new Date(today) - new Date(r.due_date)) / 86400000) : Math.floor((new Date(today) - new Date(r.date)) / 86400000);
+    const rawAge = r.due_date ? Math.floor((new Date(today) - new Date(r.due_date)) / 86400000) : Math.floor((new Date(today) - new Date(r.date)) / 86400000);
+    const age = Math.max(0, rawAge);
     const bucket = age <= 30 ? '0-30' : age <= 60 ? '31-60' : age <= 90 ? '61-90' : '90+';
     buckets[bucket] = round2(buckets[bucket] + r.due_amount);
     return { id: r.id, number: r.number, party: r.party, date: r.date, dueDate: r.due_date, total: r.total, due: r.due_amount, age, bucket };
@@ -417,7 +424,8 @@ router.get('/export/:report', (req, res) => {
   } else if (report === 'parties') {
     rows = [['Name', 'Type', 'Phone', 'GSTIN', 'City', 'Balance', 'Direction', 'Credit Limit']];
     db.prepare('SELECT * FROM parties WHERE business_id=? AND inactive=0 ORDER BY name').all(req.business.id).forEach((p) => {
-      const bal = partyRunningBalance(p.id);
+      const pb = partyBalance(req.business.id, p.id);
+      const bal = pb ? pb.balance : 0;
       rows.push([p.name, p.type, p.phone || '', p.gstin || '', p.city || '', Math.abs(bal), bal >= 0 ? 'DR' : 'CR', p.credit_limit]);
     });
   } else if (report === 'payments') {
@@ -465,12 +473,10 @@ function docSeries(businessId, from, to) {
 }
 
 function partyRunningBalance(partyId) {
-  const p = db.prepare('SELECT opening_balance, balance_type FROM parties WHERE id = ?').get(partyId);
-  const sign = p.balance_type === 'CR' ? -1 : 1;
-  const sales = db.prepare("SELECT COALESCE(SUM(due_amount),0) s FROM documents WHERE party_id=? AND type='sale' AND status='active'").get(partyId).s;
-  const purchases = db.prepare("SELECT COALESCE(SUM(paid_amount),0) s FROM documents WHERE party_id=? AND type='purchase' AND status='active'").get(partyId).s;
-  const txns = db.prepare("SELECT COALESCE(SUM(CASE WHEN type='you_gave' THEN amount WHEN type='you_got' THEN -amount ELSE 0 END),0) s FROM transactions WHERE party_id=?").get(partyId).s;
-  return round2(sign * p.opening_balance + sales + txns - purchases);
+  const p = db.prepare('SELECT business_id FROM parties WHERE id = ?').get(partyId);
+  if (!p) return 0;
+  const pb = partyBalance(p.business_id, partyId);
+  return pb ? pb.balance : 0;
 }
 
 function period(req) {

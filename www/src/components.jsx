@@ -221,7 +221,7 @@ export function DateRange({ from, to, onChange, presets = true }) {
 }
 
 /* ---------------- party / product autocomplete with React Portal & Mobile Sheet ---------------- */
-export function Picker({ items = [], value, onChange, placeholder, onAddNew, render, emptyText = 'Nothing found' }) {
+export function Picker({ items = [], value, onChange, onTextChange, placeholder, onAddNew, render, emptyText = 'Nothing found' }) {
   const [q, setQ] = useState('');
   const [open, setOpen] = useState(false);
   const [highlightIndex, setHighlightIndex] = useState(0);
@@ -394,18 +394,23 @@ export function Picker({ items = [], value, onChange, placeholder, onAddNew, ren
           value={open && !isMobile ? q : (value ? (value.name || '') : '')}
           onClick={() => {
             setOpen(true);
-            if (!isMobile) updateCoords();
+            if (!isMobile) {
+              if (!q && value && value.name) setQ(value.name);
+              updateCoords();
+            }
           }}
           onChange={(e) => {
-            setQ(e.target.value);
+            const val = e.target.value;
+            setQ(val);
             setOpen(true);
             if (!isMobile) updateCoords();
-            if (value) onChange(null);
+            if (onTextChange) onTextChange(val);
+            else if (value) onChange(null);
           }}
           onFocus={() => {
             setOpen(true);
             if (!isMobile) {
-              setQ('');
+              if (!q && value && value.name) setQ(value.name);
               updateCoords();
             }
           }}
@@ -422,6 +427,7 @@ export function Picker({ items = [], value, onChange, placeholder, onAddNew, ren
             onClick={(e) => {
               e.stopPropagation();
               onChange(null);
+              if (onTextChange) onTextChange('');
               setQ('');
               dismissKeyboard();
             }}
@@ -695,7 +701,11 @@ export function Picker({ items = [], value, onChange, placeholder, onAddNew, ren
                   type="search"
                   placeholder={placeholder || 'Search item name, barcode, category…'}
                   value={q}
-                  onChange={(e) => setQ(e.target.value)}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setQ(val);
+                    if (onTextChange) onTextChange(val);
+                  }}
                   style={{
                     paddingLeft: 38,
                     paddingRight: q ? 36 : 12,

@@ -144,8 +144,9 @@ router.get('/:id/statement', (req, res) => {
       running = round2(running + row.total - row.paid_amount);
       entries.push({ kind: 'invoice', id: row.id, date: row.date, label: `Invoice ${row.number}`, reference: row.number, debit: row.total, credit: row.paid_amount || 0, balance: running, payment_status: row.payment_status });
     } else if (row.type === 'purchase') {
-      running = round2(running - row.paid_amount);
-      entries.push({ kind: 'bill', id: row.id, date: row.date, label: `Purchase ${row.number}`, reference: row.number, debit: 0, credit: row.paid_amount || 0, balance: running });
+      const netDue = round2(row.total - (row.paid_amount || 0));
+      running = round2(running - netDue);
+      entries.push({ kind: 'bill', id: row.id, date: row.date, label: `Purchase ${row.number}`, reference: row.number, debit: 0, credit: netDue, balance: running, payment_status: row.payment_status });
     } else if (row.type === 'you_gave') {
       running = round2(running + row.amount);
       entries.push({ kind: 'txn', id: row.id, date: row.date, label: 'You Gave', reference: row.reference, mode: row.mode, notes: row.notes, debit: row.amount, credit: 0, balance: running });

@@ -6,7 +6,7 @@
  */
 const { db } = require('../db');
 const { round2, computeTotals, nextDocumentNumber, financialYear } = require('./gst');
-const { istToday, istFinancialYear } = require('./time');
+const { istToday, istFinancialYear, isIstDate } = require('./time');
 
 /**
  * Party balance, in "what they owe us" terms:
@@ -67,7 +67,7 @@ function takeNumber(businessId, type) {
 
 /** Apply stock movement for every line of a document (sale = out, purchase = in). */
 function postStock(businessId, doc, direction) {
-  const items = JSON.parse(doc.items || '[]');
+  const items = Array.isArray(doc.items) ? doc.items : JSON.parse(doc.items || '[]');
   const insert = db.prepare(`INSERT INTO stock_moves (business_id, product_id, qty, date, reason, document_id, rate, notes)
                              VALUES (?,?,?,?,?,?,?,?)`);
   const move = db.prepare('UPDATE products SET stock = stock + ? WHERE id = ? AND business_id = ?');
@@ -88,33 +88,34 @@ function unwindStock(businessId, doc) {
 }
 
 /** Build a document row from a request body, computing GST + totals server-side. */
-function buildDocument(business, body, type, existing) {
+function buildDocument(business, body, type, existing = null) {
   const supplyType = body.supplyType === 'inter' ? 'inter' : (body.supplyType === 'intra' ? 'intra' : inferSupply(business, body));
   const totals = computeTotals(body.items, {
-    discountType: body.discountType,
-    discountValue: Number(body.discountValue) || 0,
+    discountType: body.discountType || (existing ? existing.discount_type : 'flat'),
+    discountValue: Number(body.discountValue !== undefined ? body.discountValue : (existing ? existing.discount_value : 0)),
     roundOff: body.roundOff !== false,
-    cessRate: Number(body.cessRate) || 0,
+    cessRate: Number(body.cessRate !== undefined ? body.cessRate : (existing ? existing.cess : 0)),
     supplyType
   });
-  const paid = round2(Number(body.paidAmount) || 0);
+  const paid = round2(Number(body.paidAmount !== undefined ? body.paidAmount : (body.paid_amount !== undefined ? body.paid_amount : (existing ? existing.paid_amount : 0))));
   return {
     business_id: business.id,
     type,
-    number: existing ? existing.number : takeNumber(business.id, type),
-    party_id: body.partyId || null,
-    party_name: body.partyName || 'Walk-in Customer',
-    party_gstin: body.partyGstin || null,
-    party_state_code: body.partyStateCode || null,
-    date: body.date || istToday(),
-    due_date: body.dueDate || null,
-    place_of_supply: body.placeOfSupply || business.state_code,
+    number: existing ? existing.number : (body.number || takeNumber(business.id, type)),
+    party_id: body.partyId !== undefined ? body.partyId : (body.party_id !== undefined ? body.party_id : (existing ? existing.party_id : null)),
+    party_name: body.partyName || body.party_name || (existing ? existing.party_name : 'Walk-in Customer'),
+    party_gstin: body.partyGstin !== undefined ? body.partyGstin : (body.party_gstin !== undefined ? body.party_gstin : (existing ? existing.party_gstin : null)),
+    party_state_code: body.partyStateCode !== undefined ? body.partyStateCode : (body.party_state_code !== undefined ? body.party_state_code : (existing ? existing.party_state_code : null)),
+    party_address: body.partyAddress !== undefined ? body.partyAddress : (body.party_address !== undefined ? body.party_address : (existing ? existing.party_address : null)),
+    date: (body.date && isIstDate(body.date)) ? body.date : (existing ? existing.date : istToday()),
+    due_date: body.dueDate !== undefined ? body.dueDate : (body.due_date !== undefined ? body.due_date : (existing ? existing.due_date : null)),
+    place_of_supply: body.placeOfSupply || body.place_of_supply || (existing ? existing.place_of_supply : business.state_code),
     supply_type: supplyType,
-    currency: body.currency || 'INR',
+    currency: body.currency || (existing ? existing.currency : 'INR'),
     items: JSON.stringify(totals.lines),
     subtotal: totals.subtotal,
-    discount_type: body.discountType || 'flat',
-    discount_value: Number(body.discountValue) || 0,
+    discount_type: body.discountType || (existing ? existing.discount_type : 'flat'),
+    discount_value: Number(body.discountValue !== undefined ? body.discountValue : (existing ? existing.discount_value : 0)),
     discount_amount: totals.discountAmount,
     taxable_value: totals.taxableValue,
     cgst: totals.cgst,
@@ -127,15 +128,19 @@ function buildDocument(business, body, type, existing) {
     paid_amount: round2(paid),
     due_amount: round2(Math.max(0, totals.total - paid)),
     payment_status: paid <= 0 ? 'unpaid' : paid >= totals.total - 0.005 ? 'paid' : 'partial',
-    payment_mode: body.paymentMode || null,
-    status: body.status || 'active',
-    notes: body.notes || '',
-    transport_doc_no: body.transportDocNo || null,
-    vehicle_no: body.vehicleNo || null,
-    ewaybill_no: body.ewaybillNo || null,
-    ewaybill_date: body.ewaybillDate || null,
-    ewaybill_valid_upto: body.ewaybillValidUpto || null,
-    signed_by: body.signedBy || null,
+    payment_mode: body.paymentMode || body.payment_mode || (existing ? existing.payment_mode : null),
+    status: body.status || (existing ? existing.status : 'active'),
+    notes: body.notes !== undefined ? body.notes : (existing ? existing.notes : ''),
+    transport_doc_no: body.transportDocNo !== undefined ? body.transportDocNo : (body.transport_doc_no !== undefined ? body.transport_doc_no : (existing ? existing.transport_doc_no : null)),
+    vehicle_no: body.vehicleNo !== undefined ? body.vehicleNo : (body.vehicle_no !== undefined ? body.vehicle_no : (existing ? existing.vehicle_no : null)),
+    ewaybill_no: body.ewaybillNo !== undefined ? body.ewaybillNo : (body.ewaybill_no !== undefined ? body.ewaybill_no : (existing ? existing.ewaybill_no : null)),
+    ewaybill_date: body.ewaybillDate !== undefined ? body.ewaybillDate : (body.ewaybill_date !== undefined ? body.ewaybill_date : (existing ? existing.ewaybill_date : null)),
+    ewaybill_valid_upto: body.ewaybillValidUpto !== undefined ? body.ewaybillValidUpto : (body.ewaybill_valid_upto !== undefined ? body.ewaybill_valid_upto : (existing ? existing.ewaybill_valid_upto : null)),
+    irn: existing ? existing.irn : (body.irn || null),
+    ack_no: existing ? existing.ack_no : (body.ackNo || body.ack_no || null),
+    ack_date: existing ? existing.ack_date : (body.ackDate || body.ack_date || null),
+    signed_by: body.signedBy || body.signed_by || (existing ? existing.signed_by : null),
+    created_by: existing ? existing.created_by : (body.createdBy || body.created_by || null),
     totals
   };
 }
@@ -156,11 +161,11 @@ const DOC_PLACEHOLDERS = DOC_COLS.split(',').map(() => '?').join(',');
 
 function docValues(d) {
   return [
-    d.business_id, d.type, d.number, d.party_id, d.party_name, d.party_gstin, d.party_state_code, d.date, d.due_date,
-    d.place_of_supply, d.supply_type, d.currency, d.items, d.subtotal, d.discount_type, d.discount_value, d.discount_amount,
-    d.taxable_value, d.cgst, d.sgst, d.igst, d.cess, d.round_off, d.total, d.amount_in_words, d.paid_amount, d.due_amount,
-    d.payment_status, d.payment_mode, d.status, d.notes, d.transport_doc_no, d.vehicle_no, d.ewaybill_no, d.ewaybill_date,
-    d.ewaybill_valid_upto, d.irn, d.ack_no, d.ack_date, d.signed_by, d.created_by
+    d.business_id ?? null, d.type ?? null, d.number ?? null, d.party_id ?? null, d.party_name ?? null, d.party_gstin ?? null, d.party_state_code ?? null, d.date ?? null, d.due_date ?? null,
+    d.place_of_supply ?? null, d.supply_type ?? null, d.currency ?? 'INR', d.items ?? '[]', d.subtotal ?? 0, d.discount_type ?? 'flat', d.discount_value ?? 0, d.discount_amount ?? 0,
+    d.taxable_value ?? 0, d.cgst ?? 0, d.sgst ?? 0, d.igst ?? 0, d.cess ?? 0, d.round_off ?? 0, d.total ?? 0, d.amount_in_words ?? '', d.paid_amount ?? 0, d.due_amount ?? 0,
+    d.payment_status ?? 'unpaid', d.payment_mode ?? null, d.status ?? 'active', d.notes ?? '', d.transport_doc_no ?? null, d.vehicle_no ?? null, d.ewaybill_no ?? null, d.ewaybill_date ?? null,
+    d.ewaybill_valid_upto ?? null, d.irn ?? null, d.ack_no ?? null, d.ack_date ?? null, d.signed_by ?? null, d.created_by ?? null
   ];
 }
 

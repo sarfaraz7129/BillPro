@@ -21,19 +21,37 @@ export default function DocumentEditor({ business, type, doc, user, onClose, onS
   const isUserAdmin = isAdmin(user);
   const [form, setForm] = useState(() => {
     if (!doc) return blank(business, type);
+    const docItems = Array.isArray(doc.items)
+      ? doc.items
+      : (typeof doc.items === 'string' ? JSON.parse(doc.items || '[]') : []);
     return {
-      ...blank(business, doc.type),
+      ...blank(business, doc.type || type),
       ...doc,
-      items: doc.items.map((l) => ({ ...l, discountFlat: l.discount || 0, discountPct: 0 })),
-      discountValue: doc.discount_value || 0,
-      discountType: doc.discount_type || 'flat',
-      paidAmount: doc.paid_amount || 0,
-      dueDate: doc.due_date || '',
-      vehicleNo: doc.vehicle_no || '', transportDocNo: doc.transport_doc_no || '', ewaybillNo: doc.ewaybill_no || '',
-      partyName: doc.party_name || '',
-      partyId: doc.party_id || doc.partyId || null,
-      partyGstin: doc.party_gstin || '',
-      partyStateCode: doc.party_state_code || ''
+      items: docItems.length
+        ? docItems.map((l) => ({
+            ...l,
+            product_id: l.product_id || null,
+            name: l.name || '',
+            hsn: l.hsn || '',
+            unit: l.unit || 'pcs',
+            qty: Number(l.qty) || 1,
+            rate: Number(l.rate) || 0,
+            gstRate: l.gstRate !== undefined ? Number(l.gstRate) : (l.gst_rate !== undefined ? Number(l.gst_rate) : (business.default_gst_rate || 0)),
+            discountPct: Number(l.discountPct) || 0,
+            discountFlat: Number(l.discountFlat) || Number(l.discount) || 0
+          }))
+        : [{ name: '', hsn: '', unit: 'pcs', qty: 1, rate: 0, gstRate: business.default_gst_rate || 0, discountPct: 0, product_id: null }],
+      discountValue: doc.discount_value !== undefined ? Number(doc.discount_value) : (doc.discountValue || 0),
+      discountType: doc.discount_type || doc.discountType || 'flat',
+      paidAmount: doc.paid_amount !== undefined ? Number(doc.paid_amount) : (doc.paidAmount || 0),
+      dueDate: doc.due_date || doc.dueDate || '',
+      vehicleNo: doc.vehicle_no || doc.vehicleNo || '',
+      transportDocNo: doc.transport_doc_no || doc.transportDocNo || '',
+      ewaybillNo: doc.ewaybill_no || doc.ewaybillNo || '',
+      partyName: doc.party_name || doc.partyName || '',
+      partyId: doc.party_id !== undefined ? doc.party_id : (doc.partyId || null),
+      partyGstin: doc.party_gstin || doc.partyGstin || '',
+      partyStateCode: doc.party_state_code || doc.partyStateCode || ''
     };
   });
   const [parties, setParties] = useState([]);
@@ -75,12 +93,20 @@ export default function DocumentEditor({ business, type, doc, user, onClose, onS
   const t = useMemo(() => totals(form.items, { ...form, supplyType }), [form.items, form.discountType, form.discountValue, form.roundOff, supplyType]);
 
   const pickProduct = (i, p) => {
-    if (!p) return setItem(i, 'product_id', null);
+    if (!p) return setForm((f) => ({
+      ...f,
+      items: f.items.map((it, idx) => idx === i ? { ...it, product_id: null } : it)
+    }));
     setForm((f) => ({
       ...f,
       items: f.items.map((it, idx) => idx === i ? {
-        ...it, product_id: p.id, name: p.name, hsn: p.hsn || it.hsn, unit: p.unit || it.unit,
-        rate: Number(p.sale_price) || Number(p.purchase_price) || it.rate, gstRate: p.gst_rate ?? it.gstRate
+        ...it,
+        product_id: p.id,
+        name: p.name,
+        hsn: p.hsn || it.hsn,
+        unit: p.unit || it.unit,
+        rate: Number(p.sale_price) || Number(p.purchase_price) || it.rate,
+        gstRate: p.gst_rate !== undefined ? Number(p.gst_rate) : it.gstRate
       } : it)
     }));
   };
@@ -88,28 +114,57 @@ export default function DocumentEditor({ business, type, doc, user, onClose, onS
   const chooseParty = (p) => {
     if (!p) return setForm((f) => ({ ...f, partyId: null, partyGstin: '', partyStateCode: '', partyName: '' }));
     setForm((f) => ({
-      ...f, partyId: p.id, partyName: p.name, partyGstin: p.gstin || '',
-      partyStateCode: p.state_code || '', dueDate: f.dueDate || new Date(Date.now() + (p.credit_days || business.credit_days || 30) * 86400000).toISOString().slice(0, 10)
+      ...f,
+      partyId: p.id || null,
+      partyName: p.name || '',
+      partyGstin: p.gstin || '',
+      partyStateCode: p.state_code || '',
+      dueDate: f.dueDate || (p.credit_days || business.credit_days ? new Date(Date.now() + (p.credit_days || business.credit_days) * 86400000).toISOString().slice(0, 10) : '')
     }));
   };
 
   const save = async (opts = {}) => {
     const andPrint = opts && opts.andPrint;
     setErr('');
-    const valid = form.items.filter((l) => l.name && Number(l.qty) > 0 && Number(l.rate) >= 0);
+    const valid = form.items.filter((l) => String(l.name || '').trim() && Number(l.qty) > 0 && Number(l.rate) >= 0);
     if (!valid.length) return setErr('Add at least one line item with a name, quantity and rate.');
-    if (type !== 'expense' && !form.partyId && !form.partyName) return setErr('Choose a customer/supplier, or type a name for a walk-in party.');
+    if (type !== 'expense' && !form.partyId && !String(form.partyName || '').trim()) {
+      return setErr('Choose a customer/supplier, or type a name for a walk-in party.');
+    }
     setSaving(true);
     try {
       const finalDate = isUserAdmin ? form.date : (doc ? doc.date : today());
-      const payload = { ...form, date: finalDate, items: valid, supplyType };
+      const payload = {
+        ...form,
+        partyId: form.partyId || null,
+        partyName: String(form.partyName || '').trim() || (type === 'expense' ? '' : 'Walk-in Customer'),
+        partyGstin: form.partyGstin || '',
+        partyStateCode: form.partyStateCode || '',
+        date: finalDate,
+        items: valid.map((l) => ({
+          product_id: l.product_id || null,
+          name: String(l.name || '').trim(),
+          hsn: l.hsn || '',
+          unit: l.unit || 'pcs',
+          qty: Number(l.qty) || 1,
+          rate: Number(l.rate) || 0,
+          gstRate: Number(l.gstRate) || 0,
+          discountPct: Number(l.discountPct) || 0,
+          discountFlat: Number(l.discountFlat) || 0
+        })),
+        supplyType
+      };
       const res = doc ? await api.updateDocument(doc.id, payload) : await api.createDocument(payload);
       const savedDoc = res.document;
       if (andPrint && savedDoc && savedDoc.id) {
         window.open(pdfUrl(`invoice/${savedDoc.id}`), '_blank');
       }
       onSaved(savedDoc);
-    } catch (e) { setErr(e.message); } finally { setSaving(false); }
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const title = doc
@@ -154,7 +209,11 @@ export default function DocumentEditor({ business, type, doc, user, onClose, onS
             ? <input className="input" value={form.partyName} onChange={(e) => set('partyName', e.target.value)} placeholder="e.g. Diesel & Logistics" />
             : (
               <>
-                <Picker items={parties} value={form.partyId ? { id: form.partyId, name: form.partyName } : null} onChange={chooseParty}
+                <Picker
+                  items={parties}
+                  value={form.partyName ? { id: form.partyId, name: form.partyName } : (form.partyId ? { id: form.partyId, name: '' } : null)}
+                  onChange={chooseParty}
+                  onTextChange={(text) => setForm((f) => ({ ...f, partyName: text, partyId: null }))}
                   placeholder="Search party name or phone…"
                   onAddNew={async (name) => {
                     const p = await api.createParty({ name, type: type === 'purchase' ? 'supplier' : 'customer' });
@@ -294,8 +353,12 @@ export default function DocumentEditor({ business, type, doc, user, onClose, onS
                 return (
                   <tr key={i} style={{ position: 'relative', zIndex: form.items.length - i + 10 }}>
                     <td>
-                      <Picker items={products} value={it.product_id ? { id: it.product_id, name: it.name } : null}
-                        onChange={(p) => pickProduct(i, p)} placeholder="Type or pick an item…"
+                      <Picker
+                        items={products}
+                        value={it.name ? { id: it.product_id, name: it.name } : null}
+                        onChange={(p) => pickProduct(i, p)}
+                        onTextChange={(text) => setItem(i, 'name', text)}
+                        placeholder="Type or pick an item…"
                         onAddNew={async (name) => {
                           const p = await api.createProduct({ name, gst_rate: business.default_gst_rate });
                           setProducts((old) => [...old, p.product]);

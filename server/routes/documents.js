@@ -236,10 +236,14 @@ router.post('/:id/payment', (req, res) => {
   const todayIST = istToday();
   const date = (req.isAdmin && req.body?.date) ? req.body.date : todayIST;
   const tx = db.transaction(() => {
-    db.prepare(`INSERT INTO transactions (business_id, party_id, type, amount, date, mode, document_id, reference, notes)
-      VALUES (?,?,?,?,?,?,?,?,?)`)
-      .run(req.business.id, doc.party_id, doc.type === 'sale' ? 'you_got' : 'you_gave', amount, date, mode, doc.id, req.body?.reference || null, `Payment against ${doc.number}`);
-    const paid = db.prepare("SELECT COALESCE(SUM(amount),0) s FROM transactions WHERE document_id = ? AND type IN ('you_got','you_gave')").get(doc.id).s;
+    if (doc.party_id) {
+      db.prepare(`INSERT INTO transactions (business_id, party_id, type, amount, date, mode, document_id, reference, notes)
+        VALUES (?,?,?,?,?,?,?,?,?)`)
+        .run(req.business.id, doc.party_id, doc.type === 'sale' ? 'you_got' : 'you_gave', amount, date, mode, doc.id, req.body?.reference || null, `Payment against ${doc.number}`);
+    }
+    const paid = doc.party_id
+      ? db.prepare("SELECT COALESCE(SUM(amount),0) s FROM transactions WHERE document_id = ? AND type IN ('you_got','you_gave')").get(doc.id).s
+      : round2(doc.paid_amount + amount);
     const newPaid = round2(paid);
     db.prepare('UPDATE documents SET paid_amount = ?, due_amount = ?, payment_status = ? WHERE id = ?')
       .run(newPaid, round2(Math.max(0, doc.total - newPaid)), newPaid <= 0 ? 'unpaid' : newPaid >= doc.total - 0.005 ? 'paid' : 'partial', doc.id);

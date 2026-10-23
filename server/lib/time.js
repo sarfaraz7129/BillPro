@@ -125,6 +125,10 @@ function istAddDays(days, input) {
   return istToday(epoch + (Number(days) || 0) * 86400000);
 }
 
+function isIstDate(str) {
+  return typeof str === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(str);
+}
+
 module.exports = {
   IST_OFFSET_MINUTES,
   IST_OFFSET_MS,
@@ -135,5 +139,6 @@ module.exports = {
   formatIstDate,
   formatIstDateTime,
   istFinancialYear,
-  istAddDays
+  istAddDays,
+  isIstDate
 };

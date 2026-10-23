@@ -136,6 +136,13 @@ export default function Billing({ business, user, initialType, initialDocId, got
                       >
                         <Icon.whatsapp size={13} /> WhatsApp
                       </button>
+                      <button
+                        type="button"
+                        className="btn xs"
+                        onClick={() => api.document(r.id).then((d) => setEditor({ type: d.document.type, doc: d.document }))}
+                      >
+                        <Icon.edit size={13} /> Edit
+                      </button>
                       <a
                         className="btn xs"
                         href={pdfUrl(`invoice/${r.id}`, true)}

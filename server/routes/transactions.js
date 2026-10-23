@@ -3,7 +3,7 @@ const express = require('express');
 const { db } = require('../db');
 const { auth, loadBusiness } = require('../middleware');
 const { round2 } = require('../lib/gst');
-const { logActivity } = require('../lib/service');
+const { logActivity, partyBalance } = require('../lib/service');
 const { istToday } = require('../lib/time');
 
 const router = express.Router();
@@ -87,12 +87,10 @@ router.post('/interest', (req, res) => {
 });
 
 function currentBalance(partyId) {
-  const sign = db.prepare('SELECT balance_type FROM parties WHERE id = ?').get(partyId);
-  const opening = db.prepare('SELECT opening_balance FROM parties WHERE id = ?').get(partyId).opening_balance * (sign && sign.balance_type === 'CR' ? -1 : 1);
-  const sales = db.prepare("SELECT COALESCE(SUM(due_amount),0) s FROM documents WHERE party_id = ? AND type='sale' AND status='active'").get(partyId).s;
-  const purchases = db.prepare("SELECT COALESCE(SUM(paid_amount),0) s FROM documents WHERE party_id = ? AND type='purchase' AND status='active'").get(partyId).s;
-  const txns = db.prepare("SELECT COALESCE(SUM(CASE WHEN type='you_gave' THEN amount WHEN type='you_got' THEN -amount ELSE 0 END),0) s FROM transactions WHERE party_id = ?").get(partyId).s;
-  return round2(opening + sales + txns - purchases);
+  const p = db.prepare('SELECT business_id FROM parties WHERE id = ?').get(partyId);
+  if (!p) return 0;
+  const pb = partyBalance(p.business_id, partyId);
+  return pb ? pb.balance : 0;
 }
 
 module.exports = { router, MODES };
