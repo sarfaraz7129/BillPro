@@ -66,5 +66,45 @@
         "state": "Karnataka"
       }
     ]
+  },
+  {
+    "name": "Onboarding Test Customer",
+    "email": "testonboarding_1792756596879@client.com",
+    "phone": "9988776655",
+    "password": "SecretPass@999",
+    "plan": "yearly",
+    "expires_at": "2027-10-23",
+    "status": "active",
+    "business": {
+      "name": "Super Fast Logistics",
+      "legal_name": "Super Fast Logistics",
+      "gstin": null,
+      "pan": null,
+      "phone": "9988776655",
+      "city": null,
+      "state": null,
+      "pincode": null,
+      "upi_id": null
+    }
+  },
+  {
+    "name": "Rajesh Kumar",
+    "email": "auto_onboard_1792757738829@client.com",
+    "phone": "9845112233",
+    "password": "BillPro@188",
+    "plan": "yearly",
+    "expires_at": "2027-10-23",
+    "status": "active",
+    "business": {
+      "name": "Rajesh Super Store",
+      "legal_name": "Rajesh Super Store",
+      "gstin": null,
+      "pan": null,
+      "phone": "9845112233",
+      "city": null,
+      "state": null,
+      "pincode": null,
+      "upi_id": null
+    }
   }
 ]

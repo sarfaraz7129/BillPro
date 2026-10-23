@@ -63,8 +63,8 @@ function syncPersistentClients(db) {
         // Create user account
         const pwdHash = bcrypt.hashSync(c.password || 'demo1234', 10);
         const res = db.prepare(`
-          INSERT INTO users (name, email, phone, password_hash, role, permissions, is_superadmin, status, plan, expires_at)
-          VALUES (?, ?, ?, ?, 'owner', ?, 0, ?, ?, ?)
+          INSERT INTO users (name, email, phone, password_hash, role, permissions, is_superadmin, status, plan, expires_at, initial_password)
+          VALUES (?, ?, ?, ?, 'owner', ?, 0, ?, ?, ?, ?)
         `).run(
           c.name.trim(),
           cleanEmail,
@@ -73,9 +73,12 @@ function syncPersistentClients(db) {
           allPermsJson,
           c.status || 'active',
           c.plan || 'yearly',
-          c.expires_at || '2028-12-31'
+          c.expires_at || '2028-12-31',
+          c.password || 'demo1234'
         );
         user = db.prepare('SELECT * FROM users WHERE id = ?').get(res.lastInsertRowid);
+      } else if (c.password && (!user.initial_password || user.initial_password === 'BillPro@123')) {
+        db.prepare('UPDATE users SET initial_password = ? WHERE id = ?').run(c.password, user.id);
       }
 
       // Check primary business for this user

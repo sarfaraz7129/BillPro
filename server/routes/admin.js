@@ -71,7 +71,7 @@ router.get('/stats', (req, res) => {
 router.get('/users', (req, res) => {
   const today = istToday();
   const users = db.prepare(`
-    SELECT id, name, email, phone, role, is_superadmin, status, plan, expires_at, created_at, active_business_id
+    SELECT id, name, email, phone, role, is_superadmin, status, plan, expires_at, created_at, active_business_id, initial_password
     FROM users
     ORDER BY id DESC
   `).all();
@@ -87,6 +87,7 @@ router.get('/users', (req, res) => {
     }
     return {
       ...u,
+      initial_password: u.initial_password || (u.email === 'zoheb@billpro.in' ? 'demo1234' : 'BillPro@123'),
       is_superadmin: Boolean(u.is_superadmin),
       is_expired: isExpired,
       businesses,
@@ -132,8 +133,8 @@ router.post('/users', (req, res) => {
   const finalExpiry = computeExpiry(plan, custom_days, expires_at);
 
   const userInsert = db.prepare(`
-    INSERT INTO users (name, email, phone, password_hash, role, permissions, is_superadmin, status, plan, expires_at)
-    VALUES (?, ?, ?, ?, 'owner', ?, 0, 'active', ?, ?)
+    INSERT INTO users (name, email, phone, password_hash, role, permissions, is_superadmin, status, plan, expires_at, initial_password)
+    VALUES (?, ?, ?, ?, 'owner', ?, 0, 'active', ?, ?, ?)
   `).run(
     name.trim(),
     cleanEmail,
@@ -141,7 +142,8 @@ router.post('/users', (req, res) => {
     bcrypt.hashSync(rawPassword, 10),
     JSON.stringify(ALL_PERMS),
     plan,
-    finalExpiry
+    finalExpiry,
+    rawPassword
   );
 
   const newUserId = userInsert.lastInsertRowid;
@@ -205,7 +207,8 @@ router.post('/users', (req, res) => {
       plan,
       expires_at: finalExpiry,
       status: 'active',
-      raw_password: rawPassword
+      raw_password: rawPassword,
+      initial_password: rawPassword
     },
     business: {
       id: newBizId,
@@ -256,8 +259,11 @@ router.put('/users/:id', (req, res) => {
   const updatedIsAdmin = (req.user.id === userId) ? 1 : (is_superadmin !== undefined ? (is_superadmin ? 1 : 0) : targetUser.is_superadmin);
 
   let pwdHash = targetUser.password_hash;
-  if (new_password && String(new_password).length >= 6) {
-    pwdHash = bcrypt.hashSync(String(new_password), 10);
+  let rawPassword = targetUser.initial_password || (targetUser.email === 'zoheb@billpro.in' ? 'demo1234' : 'BillPro@123');
+  if (new_password && String(new_password).trim().length >= 6) {
+    rawPassword = String(new_password).trim();
+    pwdHash = bcrypt.hashSync(rawPassword, 10);
+    db.prepare('UPDATE users SET initial_password = ? WHERE id = ?').run(rawPassword, userId);
   }
 
   db.prepare(`
@@ -346,16 +352,23 @@ router.put('/users/:id', (req, res) => {
     db.prepare('UPDATE users SET active_business_id = ? WHERE id = ?').run(newBizInsert.lastInsertRowid, userId);
   }
 
-  const updated = db.prepare('SELECT id, name, email, phone, role, is_superadmin, status, plan, expires_at FROM users WHERE id = ?').get(userId);
+  const origin = req.headers.origin || (req.headers.host ? `${req.protocol}://${req.headers.host}` : 'https://billpro.in');
+  const expiryText = updatedExpiry ? `Valid until ${updatedExpiry}` : 'Lifetime Access (Never expires)';
+  const welcomeWhatsapp = `👋 *Welcome to BillPro Billing Suite!*\n\nYour business billing account is active:\n🌐 *Login:* ${origin}\n📧 *Login User:* ${updatedEmail}${updatedPhone ? `\n📱 *Mobile:* ${updatedPhone}` : ''}\n🔑 *Password:* ${rawPassword}\n🏢 *Business:* ${primaryBiz ? primaryBiz.name : 'Your Business'}\n📦 *Plan:* ${(updatedPlan || 'yearly').toUpperCase()} (${expiryText})\n\n💡 Sign in now to start issuing GST invoices, manage stock, and track Khata ledgers!`;
+
+  const updated = db.prepare('SELECT id, name, email, phone, role, is_superadmin, status, plan, expires_at, initial_password FROM users WHERE id = ?').get(userId);
   const updatedBizList = db.prepare('SELECT * FROM businesses WHERE owner_id = ?').all(userId);
 
   res.json({
     ok: true,
     user: {
       ...updated,
+      initial_password: rawPassword,
+      raw_password: rawPassword,
       is_superadmin: Boolean(updated.is_superadmin),
       businesses: updatedBizList
-    }
+    },
+    welcome_whatsapp: welcomeWhatsapp
   });
 });
 
@@ -479,8 +492,8 @@ router.post('/inquiries/:id/convert', (req, res) => {
   const finalExpiry = computeExpiry(plan);
 
   const userInsert = db.prepare(`
-    INSERT INTO users (name, email, phone, password_hash, role, permissions, is_superadmin, status, plan, expires_at)
-    VALUES (?, ?, ?, ?, 'owner', ?, 0, 'active', ?, ?)
+    INSERT INTO users (name, email, phone, password_hash, role, permissions, is_superadmin, status, plan, expires_at, initial_password)
+    VALUES (?, ?, ?, ?, 'owner', ?, 0, 'active', ?, ?, ?)
   `).run(
     inquiry.name,
     candidateEmail,
@@ -488,7 +501,8 @@ router.post('/inquiries/:id/convert', (req, res) => {
     bcrypt.hashSync(rawPassword, 10),
     JSON.stringify(ALL_PERMS),
     plan,
-    finalExpiry
+    finalExpiry,
+    rawPassword
   );
 
   const newUserId = userInsert.lastInsertRowid;

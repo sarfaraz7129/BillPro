@@ -266,6 +266,11 @@ try {
   if (!userCols.includes('expires_at')) {
     db.exec('ALTER TABLE users ADD COLUMN expires_at TEXT');
   }
+  if (!userCols.includes('initial_password')) {
+    db.exec('ALTER TABLE users ADD COLUMN initial_password TEXT');
+    db.exec("UPDATE users SET initial_password = 'demo1234' WHERE email IN ('zoheb@billpro.in', 'demo@billpro.in', 'demo.user@billpro.in')");
+    db.exec("UPDATE users SET initial_password = 'BillPro@123' WHERE initial_password IS NULL");
+  }
 
   // Migration: Ensure documents table has transportation, loading_charges, bag_charges, bags_count, extra_charges
   const docCols = db.prepare('PRAGMA table_info(documents)').all().map((c) => c.name);
@@ -310,13 +315,13 @@ try {
   const existingAdmin = db.prepare("SELECT id FROM users WHERE lower(email) = 'admin@billpro.in'").get();
   if (!existingAdmin) {
     db.prepare(`
-      INSERT INTO users (name, email, phone, password_hash, role, permissions, is_superadmin, status, plan, expires_at)
-      VALUES (?, 'admin@billpro.in', '9845000000', ?, 'owner', ?, 1, 'active', 'lifetime', NULL)
+      INSERT INTO users (name, email, phone, password_hash, role, permissions, is_superadmin, status, plan, expires_at, initial_password)
+      VALUES (?, 'admin@billpro.in', '9845000000', ?, 'owner', ?, 1, 'active', 'lifetime', NULL, 'demo1234')
     `).run('Super Admin', bcrypt.hashSync('demo1234', 10), ALL_PERMS);
   } else {
     db.prepare(`
       UPDATE users 
-      SET password_hash = ?, is_superadmin = 1, status = 'active', plan = 'lifetime', role = 'owner'
+      SET password_hash = ?, is_superadmin = 1, status = 'active', plan = 'lifetime', role = 'owner', initial_password = 'demo1234'
       WHERE id = ?
     `).run(bcrypt.hashSync('demo1234', 10), existingAdmin.id);
   }

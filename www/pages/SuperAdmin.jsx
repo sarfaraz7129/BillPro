@@ -179,6 +179,7 @@ export default function SuperAdmin({ user, toast }) {
       status: u.status || 'active',
       plan: u.plan || 'yearly',
       expires_at: u.expires_at || '',
+      initial_password: u.initial_password || (u.email === 'zoheb@billpro.in' ? 'demo1234' : 'BillPro@123'),
       new_password: '',
       is_superadmin: Boolean(u.is_superadmin),
       // Business Profile fields
@@ -344,6 +345,17 @@ export default function SuperAdmin({ user, toast }) {
         console.warn('Could not launch WhatsApp link automatically:', err);
       }
     }
+  };
+
+  const shareOnboardingWhatsApp = (u) => {
+    const origin = window.location.origin;
+    const primaryBiz = (u.businesses && u.businesses[0]) || {};
+    const pwd = u.initial_password || (u.email === 'zoheb@billpro.in' ? 'demo1234' : 'BillPro@123');
+    const expiryText = u.expires_at ? `Valid till ${u.expires_at}` : 'Lifetime Access (Never expires)';
+    const cleanPhone = u.phone ? String(u.phone).trim() : '';
+
+    const msg = `👋 *Welcome to BillPro Billing Suite!*\n\nHello *${u.name}*,\nYour business billing account credentials are ready:\n\n🌐 *Login URL:* ${origin}\n📧 *Login User / Email:* ${u.email}${cleanPhone ? `\n📱 *Mobile Number:* ${cleanPhone}` : ''}\n🔑 *Password:* ${pwd}\n\n🏢 *Business Name:* ${primaryBiz.name || 'Your Business'}${primaryBiz.gstin ? `\n🧾 *GSTIN:* ${primaryBiz.gstin}` : ''}\n📦 *License Plan:* ${(u.plan || 'yearly').toUpperCase()} (${expiryText})\n\n💡 Sign in now to start issuing GST invoices, manage stock, and track Khata ledgers!`;
+    openWhatsApp(u.phone, msg);
   };
 
   if (loading) {
@@ -543,14 +555,16 @@ export default function SuperAdmin({ user, toast }) {
                           </div>
                         </td>
                         <td>
-                          <div style={{ fontSize: 12.5 }}>{u.phone || '—'}</div>
+                          <div style={{ fontSize: 12.5, fontWeight: 600 }}>{u.phone || '—'}</div>
                           {u.phone && (
                             <button
+                              type="button"
                               className="btn xs"
-                              style={{ marginTop: 2, background: 'rgba(34, 197, 94, 0.1)', color: '#16a34a', border: 0 }}
-                              onClick={() => openWhatsApp(u.phone, `Hello ${u.name}, from BillPro Support!`)}
+                              style={{ marginTop: 4, background: '#22c55e', color: '#fff', border: 0, fontWeight: 650, display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                              onClick={() => shareOnboardingWhatsApp(u)}
+                              title="Send complete login details & password on WhatsApp"
                             >
-                              <Icon.whatsapp size={11} /> WhatsApp
+                              <Icon.whatsapp size={11} /> Send Password
                             </button>
                           )}
                         </td>
@@ -603,6 +617,16 @@ export default function SuperAdmin({ user, toast }) {
                         </td>
                         <td style={{ textAlign: 'right' }}>
                           <div style={{ display: 'inline-flex', gap: 6 }}>
+                            {u.phone && (
+                              <button
+                                className="btn sm"
+                                style={{ background: '#22c55e', color: '#fff', border: 0, fontWeight: 650 }}
+                                title="Send login details & password on WhatsApp"
+                                onClick={() => shareOnboardingWhatsApp(u)}
+                              >
+                                <Icon.whatsapp size={13} /> Send Credentials
+                              </button>
+                            )}
                             <button
                               className="btn sm"
                               title="Renew license plan"
@@ -760,17 +784,18 @@ export default function SuperAdmin({ user, toast }) {
                       </div>
                     </div>
 
-                    {/* Phone & WhatsApp */}
+                    {/* Phone & WhatsApp Credentials */}
                     {u.phone && (
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 12.5 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 12.5, gap: 8, flexWrap: 'wrap' }}>
                         <span style={{ color: 'var(--ink-2)' }}>📞 <b>{u.phone}</b></span>
                         <button
                           type="button"
                           className="btn xs"
-                          style={{ background: 'rgba(34, 197, 94, 0.12)', color: '#16a34a', border: '1px solid rgba(34, 197, 94, 0.25)', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4 }}
-                          onClick={() => openWhatsApp(u.phone, `Hello ${u.name}, from BillPro Support!`)}
+                          style={{ background: '#22c55e', color: '#fff', border: 0, fontWeight: 650, display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                          onClick={() => shareOnboardingWhatsApp(u)}
+                          title="Send onboarding login credentials and password to customer on WhatsApp"
                         >
-                          <Icon.whatsapp size={13} /> Chat on WhatsApp
+                          <Icon.whatsapp size={13} /> Send Credentials
                         </button>
                       </div>
                     )}
@@ -1360,7 +1385,7 @@ export default function SuperAdmin({ user, toast }) {
               </div>
               <div>
                 <div style={{ fontSize: 11, color: 'var(--ink-3)' }}>LOGIN EMAIL / USER</div>
-                <div style={{ fontWeight: 600 }}>{credentialsModal.user.email}</div>
+                <div style={{ fontWeight: 600, wordBreak: 'break-all' }}>{credentialsModal.user.email}</div>
               </div>
               {credentialsModal.phone && (
                 <div>
@@ -1370,7 +1395,7 @@ export default function SuperAdmin({ user, toast }) {
               )}
               <div>
                 <div style={{ fontSize: 11, color: 'var(--ink-3)' }}>PASSWORD</div>
-                <div style={{ fontWeight: 600, color: '#4f46e5' }}>{credentialsModal.user.raw_password}</div>
+                <div style={{ fontWeight: 700, color: '#4f46e5', fontSize: 14 }}>{credentialsModal.user.raw_password || credentialsModal.user.initial_password || 'BillPro@123'}</div>
               </div>
               <div>
                 <div style={{ fontSize: 11, color: 'var(--ink-3)' }}>PRIMARY BUSINESS</div>
@@ -1470,14 +1495,16 @@ export default function SuperAdmin({ user, toast }) {
                 <button
                   type="button"
                   className="btn sm"
-                  style={{ background: 'rgba(34, 197, 94, 0.1)', color: '#16a34a', border: '1px solid rgba(34, 197, 94, 0.25)', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 6, width: '100%', justifyContent: 'center' }}
+                  style={{ background: '#22c55e', color: '#fff', border: 0, fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 6, width: '100%', justifyContent: 'center' }}
                   onClick={() => {
                     const origin = window.location.origin;
-                    const msg = `👋 *BillPro Account Update*\n\nHello ${editTarget.name},\nYour account details for *${editTarget.business_name || 'your business'}*:\n🌐 *Login:* ${origin}\n📧 *Login User:* ${editTarget.email}\n📱 *Mobile:* ${editTarget.phone}\n${editTarget.new_password ? `🔑 *New Password:* ${editTarget.new_password}\n` : ''}🏢 *Business:* ${editTarget.business_name || '—'}${editTarget.gstin ? `\n🧾 *GSTIN:* ${editTarget.gstin}` : ''}\n📦 *Plan:* ${(editTarget.plan || 'yearly').toUpperCase()} (${editTarget.expires_at ? `Valid till ${editTarget.expires_at}` : 'Lifetime Access'})\n\n💡 Log in anytime to access your billing dashboard!`;
+                    const pwd = editTarget.new_password || editTarget.initial_password || (editTarget.email === 'zoheb@billpro.in' ? 'demo1234' : 'BillPro@123');
+                    const cleanPhone = editTarget.phone ? String(editTarget.phone).trim() : '';
+                    const msg = `👋 *Welcome to BillPro Billing Suite!*\n\nHello *${editTarget.name}*,\nHere are your billing account credentials for *${editTarget.business_name || 'your business'}*:\n\n🌐 *Login URL:* ${origin}\n📧 *Login User:* ${editTarget.email}${cleanPhone ? `\n📱 *Mobile:* ${cleanPhone}` : ''}\n🔑 *Password:* ${pwd}\n\n🏢 *Business:* ${editTarget.business_name || '—'}${editTarget.gstin ? `\n🧾 *GSTIN:* ${editTarget.gstin}` : ''}\n📦 *Plan:* ${(editTarget.plan || 'yearly').toUpperCase()} (${editTarget.expires_at ? `Valid till ${editTarget.expires_at}` : 'Lifetime Access'})\n\n💡 Log in anytime to start issuing GST invoices, manage stock, and track Khata ledgers!`;
                     openWhatsApp(editTarget.phone, msg);
                   }}
                 >
-                  <Icon.whatsapp size={14} /> Send WhatsApp Update to Client
+                  <Icon.whatsapp size={14} /> Send WhatsApp Credentials to Client
                 </button>
               )}
             </div>
@@ -1555,7 +1582,15 @@ export default function SuperAdmin({ user, toast }) {
                   </Field>
                 )}
 
-                <Field label="Reset Password (Optional)" full hint="Leave blank to keep unchanged. Min 6 characters.">
+                <Field label="Customer Password" full hint="Client's current login password for sign-in & WhatsApp credentials dispatch">
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: '#eef2ff', borderRadius: 8, border: '1px solid #c7d2fe' }}>
+                    <span style={{ fontSize: 13, color: '#312e81', fontWeight: 650 }}>
+                      🔑 Current Password: <code style={{ fontSize: 14, fontWeight: 700, color: '#4338ca', background: '#fff', padding: '2px 8px', borderRadius: 6, border: '1px solid #a5b4fc' }}>{editTarget.initial_password || (editTarget.email === 'zoheb@billpro.in' ? 'demo1234' : 'BillPro@123')}</code>
+                    </span>
+                  </div>
+                </Field>
+
+                <Field label="Reset / Change Password (Optional)" full hint="Leave blank to keep unchanged. Minimum 6 characters.">
                   <input
                     className="input"
                     placeholder="Enter new password (e.g. BillPro@987)"
