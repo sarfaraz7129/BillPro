@@ -1,18 +1,52 @@
 [
   {
-    "name": "Mohammad Sayyad Zoheb",
-    "email": "zoheb@billpro.in",
-    "phone": "9845012399",
-    "password": "demo1234",
+    "name": "Sayyad Mohammad zoheb",
+    "email": "Mohammed.zoheb21@gmail.com",
+    "phone": "9986998645",
+    "password": "zoheb123",
     "plan": "yearly",
     "expires_at": "2028-12-31",
     "status": "active",
     "business": {
-      "name": "Mohammad Sayyad Zoheb Enterprises",
-      "legal_name": "Mohammad Sayyad Zoheb Trading Co",
+      "name": "City walk",
+      "legal_name": "City walk",
       "gstin": "29ABCDE1234F1Z5",
       "pan": "ABCDE1234F",
-      "phone": "9845012399",
+      "phone": "9986998645",
+      "city": "Udupi",
+      "state": "Karnataka",
+      "state_code": "29",
+      "pincode": "576101",
+      "invoice_prefix": "INV",
+      "default_gst_rate": 18,
+      "credit_days": 30
+    },
+    "parties": [
+      {
+        "name": "City Walk Customer",
+        "contact_name": "City Walk Customer",
+        "phone": "9986998645",
+        "email": "Mohammed.zoheb21@gmail.com",
+        "type": "customer",
+        "city": "Udupi",
+        "state": "Karnataka"
+      }
+    ]
+  },
+  {
+    "name": "Mohammad Sayyad Zoheb",
+    "email": "zoheb@billpro.in",
+    "phone": "9986998645",
+    "password": "zoheb123",
+    "plan": "yearly",
+    "expires_at": "2028-12-31",
+    "status": "active",
+    "business": {
+      "name": "City walk",
+      "legal_name": "City walk",
+      "gstin": "29ABCDE1234F1Z5",
+      "pan": "ABCDE1234F",
+      "phone": "9986998645",
       "city": "Udupi",
       "state": "Karnataka",
       "state_code": "29",
@@ -25,8 +59,8 @@
       {
         "name": "City Walk",
         "contact_name": "City Walk Customer",
-        "phone": "9845099887",
-        "email": "citywalk@example.com",
+        "phone": "9986998645",
+        "email": "Mohammed.zoheb21@gmail.com",
         "type": "customer",
         "city": "Udupi",
         "state": "Karnataka"
@@ -59,8 +93,8 @@
       {
         "name": "City Walk",
         "contact_name": "City Walk Customer",
-        "phone": "9845099887",
-        "email": "citywalk@example.com",
+        "phone": "9986998645",
+        "email": "Mohammed.zoheb21@gmail.com",
         "type": "customer",
         "city": "Udupi",
         "state": "Karnataka"

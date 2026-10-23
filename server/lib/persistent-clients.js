@@ -77,8 +77,23 @@ function syncPersistentClients(db) {
           c.password || 'demo1234'
         );
         user = db.prepare('SELECT * FROM users WHERE id = ?').get(res.lastInsertRowid);
-      } else if (c.password && (!user.initial_password || user.initial_password === 'BillPro@123')) {
-        db.prepare('UPDATE users SET initial_password = ? WHERE id = ?').run(c.password, user.id);
+      } else {
+        // Update credentials & profile to match persistent registry
+        const pwdHash = c.password ? bcrypt.hashSync(c.password, 10) : user.password_hash;
+        db.prepare(`
+          UPDATE users 
+          SET name = ?, phone = ?, password_hash = ?, initial_password = ?, status = ?, plan = ?, expires_at = ?
+          WHERE id = ?
+        `).run(
+          c.name.trim(),
+          c.phone ? String(c.phone).trim() : user.phone,
+          pwdHash,
+          c.password || user.initial_password || 'demo1234',
+          c.status || user.status || 'active',
+          c.plan || user.plan || 'yearly',
+          c.expires_at || user.expires_at || '2028-12-31',
+          user.id
+        );
       }
 
       // Check primary business for this user
@@ -106,6 +121,22 @@ function syncPersistentClients(db) {
           b.credit_days || 30
         );
         biz = db.prepare('SELECT * FROM businesses WHERE id = ?').get(bizInsert.lastInsertRowid);
+      } else if (biz && c.business) {
+        const b = c.business;
+        db.prepare(`
+          UPDATE businesses SET
+            name = COALESCE(?, name),
+            legal_name = COALESCE(?, legal_name),
+            phone = COALESCE(?, phone),
+            gstin = COALESCE(?, gstin)
+          WHERE id = ?
+        `).run(
+          b.name || null,
+          b.legal_name || b.name || null,
+          b.phone || c.phone || null,
+          b.gstin || null,
+          biz.id
+        );
       }
 
       if (biz && (!user.active_business_id || user.active_business_id !== biz.id)) {
