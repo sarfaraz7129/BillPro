@@ -333,6 +333,7 @@ export const api = {
   adminSettings: () => request('GET', '/api/admin/settings'),
   adminUpdateSettings: (b) => request('PUT', '/api/admin/settings', b),
   adminPersistenceStatus: () => request('GET', '/api/admin/persistence-status'),
+  adminPersistUser: (id) => request('POST', `/api/admin/users/${id}/persist`),
   adminRestoreData: (b) => request('POST', '/api/admin/restore', b)
 };
 

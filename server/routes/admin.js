@@ -439,6 +439,63 @@ router.delete('/users/:id', (req, res) => {
 });
 
 /**
+ * Add / lock a client into persistent_registry.json
+ */
+router.post('/users/:id/persist', (req, res) => {
+  const userId = Number(req.params.id);
+  const targetUser = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
+  if (!targetUser) return res.status(404).json({ error: 'User not found' });
+
+  let primaryBiz = null;
+  if (targetUser.active_business_id) {
+    primaryBiz = db.prepare('SELECT * FROM businesses WHERE id = ?').get(targetUser.active_business_id);
+  }
+  if (!primaryBiz) {
+    primaryBiz = db.prepare('SELECT * FROM businesses WHERE owner_id = ? ORDER BY id ASC LIMIT 1').get(userId);
+  }
+
+  const parties = primaryBiz ? db.prepare('SELECT * FROM parties WHERE business_id = ?').all(primaryBiz.id) : [];
+
+  saveToRegistry({
+    name: targetUser.name,
+    email: targetUser.email,
+    phone: targetUser.phone,
+    password: targetUser.initial_password || (targetUser.email === 'zoheb@billpro.in' ? 'demo1234' : 'BillPro@123'),
+    plan: targetUser.plan || 'yearly',
+    expires_at: targetUser.expires_at || null,
+    status: targetUser.status || 'active',
+    business: primaryBiz ? {
+      name: primaryBiz.name,
+      legal_name: primaryBiz.legal_name,
+      gstin: primaryBiz.gstin,
+      pan: primaryBiz.pan,
+      phone: primaryBiz.phone,
+      city: primaryBiz.city,
+      state: primaryBiz.state,
+      state_code: primaryBiz.state_code,
+      pincode: primaryBiz.pincode,
+      invoice_prefix: primaryBiz.invoice_prefix,
+      default_gst_rate: primaryBiz.default_gst_rate,
+      credit_days: primaryBiz.credit_days
+    } : null,
+    parties: parties.map(p => ({
+      name: p.name,
+      contact_name: p.contact_name,
+      phone: p.phone,
+      email: p.email,
+      type: p.type,
+      city: p.city,
+      state: p.state
+    }))
+  });
+
+  res.json({
+    ok: true,
+    message: `${targetUser.name} & ${primaryBiz ? primaryBiz.name : 'business'} locked into persistent registry!`
+  });
+});
+
+/**
  * List all inquiries
  */
 router.get('/inquiries', (req, res) => {
@@ -632,7 +689,7 @@ router.get('/backup', (req, res) => {
     const snapshot = {
       version: 1,
       exported_at: new Date().toISOString(),
-      users: db.prepare('SELECT id, name, email, phone, role, permissions, status, plan, expires_at FROM users').all(),
+      users: db.prepare('SELECT id, name, email, phone, role, permissions, is_superadmin, status, plan, expires_at, initial_password, password_hash FROM users').all(),
       businesses: db.prepare('SELECT * FROM businesses').all(),
       parties: db.prepare('SELECT * FROM parties').all(),
       products: db.prepare('SELECT * FROM products').all(),
@@ -659,6 +716,32 @@ router.post('/restore', (req, res) => {
     }
 
     const tx = db.transaction(() => {
+      // Restore users
+      if (Array.isArray(data.users)) {
+        for (const u of data.users) {
+          const cleanEmail = String(u.email || '').trim().toLowerCase();
+          const exists = db.prepare('SELECT id FROM users WHERE lower(email) = ?').get(cleanEmail);
+          if (!exists) {
+            db.prepare(`
+              INSERT INTO users (name, email, phone, password_hash, role, permissions, is_superadmin, status, plan, expires_at, initial_password)
+              VALUES (@name, @email, @phone, @password_hash, @role, @permissions, @is_superadmin, @status, @plan, @expires_at, @initial_password)
+            `).run({
+              name: u.name,
+              email: cleanEmail,
+              phone: u.phone || null,
+              password_hash: u.password_hash || bcrypt.hashSync(u.initial_password || 'BillPro@123', 10),
+              role: u.role || 'owner',
+              permissions: typeof u.permissions === 'string' ? u.permissions : JSON.stringify(u.permissions || ALL_PERMS),
+              is_superadmin: u.is_superadmin ? 1 : 0,
+              status: u.status || 'active',
+              plan: u.plan || 'yearly',
+              expires_at: u.expires_at || null,
+              initial_password: u.initial_password || 'BillPro@123'
+            });
+          }
+        }
+      }
+
       // Restore businesses
       if (Array.isArray(data.businesses)) {
         for (const b of data.businesses) {
@@ -697,13 +780,79 @@ router.post('/restore', (req, res) => {
           const exists = db.prepare('SELECT id FROM parties WHERE business_id = ? AND lower(name) = ?').get(p.business_id, p.name.toLowerCase());
           if (!exists) {
             db.prepare(`
-              INSERT INTO parties (business_id, type, name, contact_name, phone, email, city, state, state_code, opening_balance, balance_type, credit_limit, credit_days)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              INSERT INTO parties (id, business_id, type, name, contact_name, phone, email, city, state, state_code, opening_balance, balance_type, credit_limit, credit_days)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `).run(
-              p.business_id, p.type || 'customer', p.name, p.contact_name || p.name, p.phone || null, p.email || null,
+              p.id || null, p.business_id, p.type || 'customer', p.name, p.contact_name || p.name, p.phone || null, p.email || null,
               p.city || null, p.state || null, p.state_code || '29', p.opening_balance || 0, p.balance_type || 'DR',
               p.credit_limit || 0, p.credit_days || 30
             );
+          }
+        }
+      }
+
+      // Restore products
+      if (Array.isArray(data.products)) {
+        for (const pr of data.products) {
+          const exists = db.prepare('SELECT id FROM products WHERE id = ?').get(pr.id);
+          if (!exists) {
+            db.prepare(`
+              INSERT INTO products (id, business_id, name, item_code, hsn, unit, sale_price, purchase_price, gst_rate, cess_rate, stock, min_stock, is_service)
+              VALUES (@id, @business_id, @name, @item_code, @hsn, @unit, @sale_price, @purchase_price, @gst_rate, @cess_rate, @stock, @min_stock, @is_service)
+            `).run({
+              id: pr.id,
+              business_id: pr.business_id,
+              name: pr.name,
+              item_code: pr.item_code || null,
+              hsn: pr.hsn || null,
+              unit: pr.unit || 'PCS',
+              sale_price: pr.sale_price || 0,
+              purchase_price: pr.purchase_price || 0,
+              gst_rate: pr.gst_rate || 0,
+              cess_rate: pr.cess_rate || 0,
+              stock: pr.stock || 0,
+              min_stock: pr.min_stock || 0,
+              is_service: pr.is_service ? 1 : 0
+            });
+          }
+        }
+      }
+
+      // Restore documents
+      if (Array.isArray(data.documents)) {
+        for (const doc of data.documents) {
+          const exists = db.prepare('SELECT id FROM documents WHERE id = ?').get(doc.id);
+          if (!exists) {
+            db.prepare(`
+              INSERT INTO documents (id, business_id, doc_type, doc_number, doc_date, due_date, party_id, party_name, party_gstin, party_phone, party_address, party_city, party_state, party_state_code, subtotal, tax_total, round_off, total, balance_due, status, items_json, notes, terms, created_at, bag_charges)
+              VALUES (@id, @business_id, @doc_type, @doc_number, @doc_date, @due_date, @party_id, @party_name, @party_gstin, @party_phone, @party_address, @party_city, @party_state, @party_state_code, @subtotal, @tax_total, @round_off, @total, @balance_due, @status, @items_json, @notes, @terms, @created_at, @bag_charges)
+            `).run({
+              id: doc.id,
+              business_id: doc.business_id,
+              doc_type: doc.doc_type || 'tax_invoice',
+              doc_number: doc.doc_number,
+              doc_date: doc.doc_date,
+              due_date: doc.due_date || null,
+              party_id: doc.party_id || null,
+              party_name: doc.party_name,
+              party_gstin: doc.party_gstin || null,
+              party_phone: doc.party_phone || null,
+              party_address: doc.party_address || null,
+              party_city: doc.party_city || null,
+              party_state: doc.party_state || null,
+              party_state_code: doc.party_state_code || null,
+              subtotal: doc.subtotal || 0,
+              tax_total: doc.tax_total || 0,
+              round_off: doc.round_off || 0,
+              total: doc.total || 0,
+              balance_due: doc.balance_due || 0,
+              status: doc.status || 'unpaid',
+              items_json: typeof doc.items_json === 'string' ? doc.items_json : JSON.stringify(doc.items_json || []),
+              notes: doc.notes || null,
+              terms: doc.terms || null,
+              created_at: doc.created_at || new Date().toISOString(),
+              bag_charges: doc.bag_charges || 0
+            });
           }
         }
       }

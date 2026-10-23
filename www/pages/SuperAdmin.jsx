@@ -629,6 +629,20 @@ export default function SuperAdmin({ user, toast }) {
                             )}
                             <button
                               className="btn sm"
+                              title="Lock customer into permanent registry so account is never lost on redeploys"
+                              onClick={async () => {
+                                try {
+                                  const res = await api.adminPersistUser(u.id);
+                                  toast(res.message || 'Client locked into permanent registry!', 'ok');
+                                } catch (err) {
+                                  toast(err.message || 'Failed to persist client', 'err');
+                                }
+                              }}
+                            >
+                              📌 Lock Permanent
+                            </button>
+                            <button
+                              className="btn sm"
                               title="Renew license plan"
                               onClick={() => {
                                 setRenewTarget(u);
@@ -801,7 +815,7 @@ export default function SuperAdmin({ user, toast }) {
                     )}
 
                     {/* Action Buttons Row */}
-                    <div style={{ display: 'grid', gridTemplateColumns: isSelf ? '1fr 1fr' : '1fr 1fr auto', gap: 8, paddingTop: 4, borderTop: '1px solid var(--line-soft)' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: isSelf ? '1fr 1fr' : '1fr 1fr', gap: 8, paddingTop: 4, borderTop: '1px solid var(--line-soft)' }}>
                       <button
                         type="button"
                         className="btn sm"
@@ -822,15 +836,31 @@ export default function SuperAdmin({ user, toast }) {
                       >
                         <Icon.edit size={13} /> Edit Client
                       </button>
+                      <button
+                        type="button"
+                        className="btn sm"
+                        style={{ fontWeight: 600, justifyContent: 'center' }}
+                        title="Lock client into permanent registry"
+                        onClick={async () => {
+                          try {
+                            const res = await api.adminPersistUser(u.id);
+                            toast(res.message || 'Client locked into permanent registry!', 'ok');
+                          } catch (err) {
+                            toast(err.message || 'Failed to persist client', 'err');
+                          }
+                        }}
+                      >
+                        📌 Lock Permanent
+                      </button>
                       {!isSelf && (
                         <button
                           type="button"
                           className="btn sm red"
+                          style={{ fontWeight: 600, justifyContent: 'center' }}
                           title="Delete client"
-                          style={{ padding: '0 12px', justifyContent: 'center' }}
                           onClick={() => setDeleteTarget(u)}
                         >
-                          <Icon.trash size={13} />
+                          <Icon.trash size={13} /> Delete
                         </button>
                       )}
                     </div>
