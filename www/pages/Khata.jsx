@@ -104,7 +104,7 @@ export default function Khata({ business, initialType, initialPartyId, toast }) 
                       </div>
                     </div>
                     <div style={{ display: 'flex', gap: 8, padding: '0 12px 10px', justifyContent: 'flex-end' }}>
-                      <button className="btn sm" onClick={() => setOpen({ party: p })}><Icon.book size={14} /> Ledger</button>
+                      <button className="btn sm" onClick={() => setOpen({ party: p })}><Icon.khata size={14} /> Ledger</button>
                       <button className="btn sm" onClick={() => setEditor({ type, party: p })}><Icon.edit size={14} /> Edit</button>
                       <button className="btn sm red" onClick={() => setConfirm(p)}><Icon.trash size={14} /> Delete</button>
                     </div>
