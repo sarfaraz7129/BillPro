@@ -124,10 +124,13 @@ function syncPersistentClients(db) {
       } else {
         // Update credentials & profile to match persistent registry
         const pwdHash = c.password ? bcrypt.hashSync(c.password, 10) : (c.password_hash || user.password_hash);
-        const resolvedPlan = c.plan || user.plan || 'yearly';
+        // The live database is authoritative for an existing user. A bundled or
+        // stale registry snapshot must never downgrade a changed subscription.
+        const hasDatabasePlan = Boolean(user.plan);
+        const resolvedPlan = hasDatabasePlan ? user.plan : (c.plan || 'yearly');
         const resolvedExpiry = resolvedPlan === 'lifetime'
           ? null
-          : (c.expires_at !== undefined ? c.expires_at : (user.expires_at || '2028-12-31'));
+          : (hasDatabasePlan ? user.expires_at : (c.expires_at !== undefined ? c.expires_at : '2028-12-31'));
         db.prepare(`
           UPDATE users 
           SET name = ?, phone = ?, password_hash = ?, initial_password = ?, status = ?, plan = ?, expires_at = ?

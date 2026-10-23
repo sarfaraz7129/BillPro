@@ -199,8 +199,11 @@ async function run() {
   ok('overdue reminder endpoint responds', rem.status === 200 && typeof rem.body.totalDue === 'number', rem.status);
 
   console.log('\n--- new business isolation ---');
+  const subscriptionBeforeBusiness = db.prepare('SELECT plan FROM users WHERE lower(email)=lower(?)').get(EMAIL)?.plan;
   const nb = await call('POST', '/api/businesses', { name: 'Test Third Business', gstin: '29AAACT2727Q1ZQ', city: 'Bengaluru', state: 'Karnataka' });
   ok('creates a third business', nb.status === 201, nb.status);
+  const subscriptionAfterBusiness = db.prepare('SELECT plan FROM users WHERE lower(email)=lower(?)').get(EMAIL)?.plan;
+  ok('adding a business does not reset the account subscription plan', subscriptionAfterBusiness === subscriptionBeforeBusiness, { before: subscriptionBeforeBusiness, after: subscriptionAfterBusiness });
   ok('GSTIN state code is derived', nb.body.business.state_code === '29', nb.body.business.state_code);
   const badGstin = await call('POST', '/api/businesses', { name: 'Bad GSTIN', gstin: '29XX' });
   ok('rejects an invalid GSTIN', badGstin.status === 400, badGstin.status);
@@ -375,10 +378,11 @@ async function run() {
   ok('renews and updates client subscription plan to lifetime', renewClient.status === 200 && renewClient.body.user.plan === 'lifetime' && renewClient.body.user.expires_at === null);
   const lifetimeRegistryEntry = loadRegistry().find((c) => c.email === 'priya@sharmafashion.in');
   ok('registry snapshot records lifetime with no expiry', lifetimeRegistryEntry?.plan === 'lifetime' && lifetimeRegistryEntry.expires_at === null, lifetimeRegistryEntry);
-  db.prepare("UPDATE users SET plan = 'yearly', expires_at = '2028-12-31' WHERE id = ?").run(directProvision.body.user.id);
+  // Simulate an older bundled registry copy left at yearly after the live account was upgraded.
+  saveToRegistry({ email: 'priya@sharmafashion.in', plan: 'yearly', expires_at: '2028-12-31' });
   syncPersistentClients(db);
   const restoredLifetimeUser = db.prepare('SELECT plan, expires_at FROM users WHERE id = ?').get(directProvision.body.user.id);
-  ok('startup sync does not downgrade lifetime clients to yearly or add an expiry', restoredLifetimeUser.plan === 'lifetime' && restoredLifetimeUser.expires_at === null, restoredLifetimeUser);
+  ok('startup sync preserves the live lifetime subscription against a stale yearly registry snapshot', restoredLifetimeUser.plan === 'lifetime' && restoredLifetimeUser.expires_at === null, restoredLifetimeUser);
   const diskLock = await call('POST', `/api/admin/users/${directProvision.body.user.id}/persist`);
   ok('permanent lock succeeds with configured persistent storage', diskLock.status === 200 && diskLock.body.storage === 'persistent', diskLock.body);
   db.prepare("UPDATE users SET expires_at = '2020-01-01' WHERE id = ?").run(directProvision.body.user.id);
