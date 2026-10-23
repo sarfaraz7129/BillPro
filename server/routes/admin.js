@@ -5,6 +5,7 @@ const { db } = require('../db');
 const { auth, PERMISSIONS } = require('../middleware');
 const { istToday, istAddDays } = require('../lib/time');
 const { getSystemSettings, updateSystemSettings } = require('../lib/settings');
+const { normaliseGstin } = require('../lib/gst');
 
 const router = express.Router();
 const ALL_PERMS = Object.keys(PERMISSIONS);
@@ -210,7 +211,6 @@ router.put('/users/:id', (req, res) => {
   // Self safety guards
   if (req.user.id === userId) {
     if (status === 'suspended') return res.status(400).json({ error: 'You cannot suspend your own Super Admin account.' });
-    if (is_superadmin === false || is_superadmin === 0) return res.status(400).json({ error: 'You cannot remove your own Super Admin privileges.' });
   }
 
   // Handle email update with uniqueness check
@@ -228,10 +228,10 @@ router.put('/users/:id', (req, res) => {
 
   const updatedName = name !== undefined ? String(name).trim() : targetUser.name;
   const updatedPhone = phone !== undefined ? ((phone || '').trim() || null) : targetUser.phone;
-  const updatedStatus = status !== undefined ? status : targetUser.status;
+  const updatedStatus = (req.user.id === userId) ? 'active' : (status !== undefined ? status : targetUser.status);
   const updatedPlan = plan !== undefined ? plan : targetUser.plan;
   const updatedExpiry = expires_at !== undefined ? (expires_at || null) : targetUser.expires_at;
-  const updatedIsAdmin = is_superadmin !== undefined ? (is_superadmin ? 1 : 0) : targetUser.is_superadmin;
+  const updatedIsAdmin = (req.user.id === userId) ? 1 : (is_superadmin !== undefined ? (is_superadmin ? 1 : 0) : targetUser.is_superadmin);
 
   let pwdHash = targetUser.password_hash;
   if (new_password && String(new_password).length >= 6) {
@@ -256,14 +256,20 @@ router.put('/users/:id', (req, res) => {
   if (primaryBiz) {
     const bName = business_name !== undefined ? (String(business_name).trim() || primaryBiz.name) : primaryBiz.name;
     const bLegal = legal_name !== undefined ? (String(legal_name).trim() || null) : primaryBiz.legal_name;
-    const bGstin = gstin !== undefined ? (String(gstin).trim().toUpperCase() || null) : primaryBiz.gstin;
-    const bPan = pan !== undefined ? (String(pan).trim().toUpperCase() || null) : primaryBiz.pan;
+
+    let bGstin = primaryBiz.gstin;
+    if (gstin !== undefined) {
+      const trimmed = String(gstin || '').trim();
+      bGstin = trimmed ? (normaliseGstin(trimmed) || trimmed.toUpperCase()) : null;
+    }
+
+    const bPan = pan !== undefined ? (String(pan).trim().toUpperCase() || null) : (bGstin && bGstin.length >= 12 ? bGstin.slice(2, 12) : primaryBiz.pan);
     const bPhone = business_phone !== undefined ? (String(business_phone).trim() || null) : primaryBiz.phone;
     const bEmail = business_email !== undefined ? (String(business_email).trim().toLowerCase() || null) : primaryBiz.email;
     const bAddress = address !== undefined ? (String(address).trim() || null) : primaryBiz.address;
     const bCity = city !== undefined ? (String(city).trim() || null) : primaryBiz.city;
     const bState = state !== undefined ? (String(state).trim() || null) : primaryBiz.state;
-    const bStateCode = state_code !== undefined ? (String(state_code).trim() || null) : primaryBiz.state_code;
+    const bStateCode = state_code !== undefined ? (String(state_code).trim() || null) : (bGstin && bGstin.length >= 2 ? bGstin.slice(0, 2) : primaryBiz.state_code);
     const bPincode = pincode !== undefined ? (String(pincode).trim() || null) : primaryBiz.pincode;
     const bPrefix = invoice_prefix !== undefined ? (String(invoice_prefix).trim().toUpperCase() || primaryBiz.invoice_prefix) : primaryBiz.invoice_prefix;
     const bGstRate = default_gst_rate !== undefined ? Number(default_gst_rate) : primaryBiz.default_gst_rate;

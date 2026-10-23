@@ -43,7 +43,7 @@ function amountInWords(amount) {
 function normaliseGstin(raw) {
   if (!raw) return null;
   const g = String(raw).trim().toUpperCase().replace(/\s/g, '');
-  return /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][0-9A-Z]{2}[A-Z]$/.test(g) ? g : null;
+  return /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][0-9A-Z]{2}[0-9A-Z]$/.test(g) ? g : null;
 }
 
 /** GST state code -> state name (as per the GST state code list). */

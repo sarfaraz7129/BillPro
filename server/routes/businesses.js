@@ -2,7 +2,7 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const { db } = require('../db');
-const { auth, loadBusiness, getUserBusinesses, PERMISSIONS } = require('../middleware');
+const { auth, loadBusiness, getUserBusinesses, getEffectiveRole, isAdminRole, PERMISSIONS } = require('../middleware');
 const { normaliseGstin } = require('../lib/gst');
 const { logActivity } = require('../lib/service');
 const { istToday } = require('../lib/time');
@@ -88,13 +88,36 @@ router.get('/:id', auth, (req, res) => {
 });
 
 router.put('/:id', auth, (req, res) => {
-  const userBizs = getUserBusinesses(req.user.id, req.user.email);
-  const biz = userBizs.find((b) => b.id === Number(req.params.id));
+  const bizId = Number(req.params.id);
+  let biz = null;
+  if (req.user.is_superadmin) {
+    biz = db.prepare('SELECT * FROM businesses WHERE id = ?').get(bizId);
+  } else {
+    const userBizs = getUserBusinesses(req.user.id, req.user.email);
+    biz = userBizs.find((b) => b.id === bizId);
+  }
   if (!biz) return res.status(404).json({ error: 'Business not found' });
-  const role = getEffectiveRole(req.user, biz);
-  if (!isAdminRole(role)) return res.status(403).json({ error: 'Only business owners and admins can edit business settings' });
+
+  if (!req.user.is_superadmin) {
+    const role = getEffectiveRole(req.user, biz);
+    if (!isAdminRole(role)) return res.status(403).json({ error: 'Only business owners and admins can edit business settings' });
+  }
+
   const b = req.body || {};
-  const gstin = normaliseGstin(b.gstin || biz.gstin);
+  let gstin = biz.gstin;
+  if (b.gstin !== undefined) {
+    const trimmedGstin = String(b.gstin || '').trim();
+    if (!trimmedGstin) {
+      gstin = null;
+    } else {
+      const norm = normaliseGstin(trimmedGstin);
+      if (!norm) {
+        return res.status(400).json({ error: 'GSTIN format looks invalid (expected 15 characters, e.g. 29ABCDE1234F1Z5)' });
+      }
+      gstin = norm;
+    }
+  }
+
   db.prepare(`UPDATE businesses SET name=@name, legal_name=@legal_name, gstin=@gstin, pan=@pan, address=@address,
     city=@city, state=@state, state_code=@state_code, pincode=@pincode, phone=@phone, email=@email, website=@website,
     logo_url=@logo_url, bank_name=@bank_name, bank_account_no=@bank_account_no, bank_ifsc=@bank_ifsc,
@@ -106,7 +129,7 @@ router.put('/:id', auth, (req, res) => {
       name: b.name ?? biz.name,
       legal_name: b.legal_name ?? biz.legal_name,
       gstin,
-      pan: b.pan ?? biz.pan,
+      pan: b.pan ?? (gstin ? gstin.slice(2, 12) : biz.pan),
       address: b.address ?? biz.address,
       city: b.city ?? biz.city,
       state: b.state ?? biz.state,
