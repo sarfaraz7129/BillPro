@@ -476,7 +476,9 @@ async function run() {
   ok('generates clean Estimate Bill PDF', estPdfRes.status === 200 && Number(estPdfRes.headers.get('content-length') || 0) > 1000);
 
   // Full restore verification with deliberately shifted source IDs, as happens on a fresh Render DB.
-  const backup = (await call('GET', '/api/admin/backup')).body;
+  const backupResponse = await call('GET', '/api/admin/backup');
+  const backup = backupResponse.body;
+  ok('authenticated JSON backup endpoint returns a complete snapshot', backupResponse.status === 200 && Array.isArray(backup.users) && Array.isArray(backup.businesses), { status: backupResponse.status, error: backup.error });
   const bump = (v) => v == null ? v : Number(v) + 50000;
   for (const u of backup.users || []) { u.id = bump(u.id); u.active_business_id = bump(u.active_business_id); }
   for (const b of backup.businesses || []) { b.id = bump(b.id); b.owner_id = bump(b.owner_id); }
