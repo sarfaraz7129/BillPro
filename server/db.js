@@ -325,19 +325,28 @@ try {
       console.warn('[BillPro Security] Refusing to grant platform-wide access to a public demo alias.');
     } else if (configuredAdminEmail) {
       const configuredAdmin = db.prepare('SELECT id FROM users WHERE lower(email) = ?').get(configuredAdminEmail);
+      const bootstrapPassword = String(process.env.BILLPRO_SUPERADMIN_PASSWORD || '');
+      const validBootstrapPassword = bootstrapPassword.length >= 16 && Buffer.byteLength(bootstrapPassword, 'utf8') <= 72;
       if (configuredAdmin) {
-        // Promote the selected existing private account without changing its password.
-        db.prepare("UPDATE users SET is_superadmin = 1, role = 'owner' WHERE id = ?").run(configuredAdmin.id);
-      } else {
-        const bootstrapPassword = String(process.env.BILLPRO_SUPERADMIN_PASSWORD || '');
-        if (bootstrapPassword.length < 16 || Buffer.byteLength(bootstrapPassword, 'utf8') > 72) {
-          console.warn('[BillPro Security] New platform admin not created: set BILLPRO_SUPERADMIN_PASSWORD to a unique 16-72 byte secret in the environment.');
-        } else {
-          db.prepare(`INSERT INTO users (name, email, password_hash, role, permissions, is_superadmin, status, plan)
-            VALUES (?, ?, ?, 'owner', ?, 1, 'active', 'lifetime')`)
-            .run('Platform Administrator', configuredAdminEmail, bcrypt.hashSync(bootstrapPassword, 12), ALL_PERMS);
-          console.warn('[BillPro Security] Created the configured platform administrator account.');
+        // Promote the selected private account. When supplied, the protected env secret
+        // also sets its password so an existing row cannot retain an unknown credential.
+        if (bootstrapPassword && !validBootstrapPassword) {
+          console.warn('[BillPro Security] BILLPRO_SUPERADMIN_PASSWORD must be 16-72 bytes; existing password was not changed.');
         }
+        if (validBootstrapPassword) {
+          db.prepare("UPDATE users SET is_superadmin = 1, role = 'owner', status = 'active', plan = 'lifetime', expires_at = NULL, password_hash = ? WHERE id = ?")
+            .run(bcrypt.hashSync(bootstrapPassword, 12), configuredAdmin.id);
+        } else {
+          db.prepare("UPDATE users SET is_superadmin = 1, role = 'owner', status = 'active', plan = 'lifetime', expires_at = NULL WHERE id = ?")
+            .run(configuredAdmin.id);
+        }
+      } else if (!validBootstrapPassword) {
+        console.warn('[BillPro Security] New platform admin not created: set BILLPRO_SUPERADMIN_PASSWORD to a unique 16-72 byte secret in the environment.');
+      } else {
+        db.prepare(`INSERT INTO users (name, email, password_hash, role, permissions, is_superadmin, status, plan)
+          VALUES (?, ?, ?, 'owner', ?, 1, 'active', 'lifetime')`)
+          .run('Platform Administrator', configuredAdminEmail, bcrypt.hashSync(bootstrapPassword, 12), ALL_PERMS);
+        console.warn('[BillPro Security] Created the configured platform administrator account.');
       }
     }
     console.warn('[BillPro Security] Public demo/admin aliases are isolated from platform-wide access in production.');
