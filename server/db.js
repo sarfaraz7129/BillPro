@@ -327,6 +327,7 @@ try {
       const configuredAdmin = db.prepare('SELECT id FROM users WHERE lower(email) = ?').get(configuredAdminEmail);
       const bootstrapPassword = String(process.env.BILLPRO_SUPERADMIN_PASSWORD || '');
       const validBootstrapPassword = bootstrapPassword.length >= 16 && Buffer.byteLength(bootstrapPassword, 'utf8') <= 72;
+      let platformAdminId = configuredAdmin?.id || null;
       if (configuredAdmin) {
         // Promote the selected private account. When supplied, the protected env secret
         // also sets its password so an existing row cannot retain an unknown credential.
@@ -343,10 +344,24 @@ try {
       } else if (!validBootstrapPassword) {
         console.warn('[BillPro Security] New platform admin not created: set BILLPRO_SUPERADMIN_PASSWORD to a unique 16-72 byte secret in the environment.');
       } else {
-        db.prepare(`INSERT INTO users (name, email, password_hash, role, permissions, is_superadmin, status, plan)
+        const created = db.prepare(`INSERT INTO users (name, email, password_hash, role, permissions, is_superadmin, status, plan)
           VALUES (?, ?, ?, 'owner', ?, 1, 'active', 'lifetime')`)
           .run('Platform Administrator', configuredAdminEmail, bcrypt.hashSync(bootstrapPassword, 12), ALL_PERMS);
+        platformAdminId = created.lastInsertRowid;
         console.warn('[BillPro Security] Created the configured platform administrator account.');
+      }
+
+      // Give the platform account its own empty workspace as the safe default. Never
+      // inherit a previous browser's demo/customer business selection on first login.
+      if (platformAdminId) {
+        let adminBusiness = db.prepare('SELECT id FROM businesses WHERE owner_id = ? ORDER BY id LIMIT 1').get(platformAdminId);
+        if (!adminBusiness) {
+          const workspaceName = String(process.env.BILLPRO_SUPERADMIN_BUSINESS_NAME || 'Super Admin Workspace').trim().slice(0, 100);
+          const createdBusiness = db.prepare(`INSERT INTO businesses (owner_id, name, legal_name, invoice_prefix, quoter_prefix)
+            VALUES (?, ?, ?, 'ADM', 'ADQ')`).run(platformAdminId, workspaceName || 'Super Admin Workspace', workspaceName || 'Super Admin Workspace');
+          adminBusiness = { id: createdBusiness.lastInsertRowid };
+        }
+        db.prepare('UPDATE users SET active_business_id = ? WHERE id = ?').run(adminBusiness.id, platformAdminId);
       }
     }
     console.warn('[BillPro Security] Public demo/admin aliases are isolated from platform-wide access in production.');

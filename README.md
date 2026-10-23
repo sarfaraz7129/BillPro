@@ -106,7 +106,7 @@ npm start
 * **Password:** `demo1234`
 * **Sample Business:** Bharat Retail Mart (fictional sample customers, products, and bills)
 
-The public demo account is never a platform Super Admin. `demo@billpro.in` and `admin@billpro.in` are local-development aliases only and are explicitly denied platform-wide access in production. To bootstrap a private production platform admin, set `BILLPRO_SUPERADMIN_EMAIL` and a unique `BILLPRO_SUPERADMIN_PASSWORD` (16–72 bytes) in the host environment. The password is stored as a bcrypt hash and is never logged. For an existing private user, the configured email grants the role; supplying `BILLPRO_SUPERADMIN_PASSWORD` resets it to that protected environment secret so the login is known only to the service owner.
+The public demo account is never a platform Super Admin. `demo@billpro.in` and `admin@billpro.in` are local-development aliases only and are explicitly denied platform-wide access in production. To bootstrap a private production platform admin, set `BILLPRO_SUPERADMIN_EMAIL` and a unique `BILLPRO_SUPERADMIN_PASSWORD` (16–72 bytes) in the host environment. The password is stored as a bcrypt hash and is never logged. For an existing private user, the configured email grants the role; supplying `BILLPRO_SUPERADMIN_PASSWORD` resets it to that protected environment secret so the login is known only to the service owner. A new or workspace-less platform admin receives a separate empty `Super Admin Workspace` (or the name in `BILLPRO_SUPERADMIN_BUSINESS_NAME`) and starts there, rather than inheriting a demo/customer business selected in the browser.
 
 ---
 
