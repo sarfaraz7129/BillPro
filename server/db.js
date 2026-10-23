@@ -320,7 +320,10 @@ try {
     db.prepare("UPDATE users SET is_superadmin = 0 WHERE lower(email) IN ('demo@billpro.in', 'admin@billpro.in')").run();
 
     const configuredAdminEmail = String(process.env.BILLPRO_SUPERADMIN_EMAIL || process.env.SUPERADMIN_EMAIL || '').trim().toLowerCase();
-    if (configuredAdminEmail) {
+    const publicDemoEmails = ['demo@billpro.in', 'admin@billpro.in', 'demo.user@billpro.in'];
+    if (configuredAdminEmail && publicDemoEmails.includes(configuredAdminEmail)) {
+      console.warn('[BillPro Security] Refusing to grant platform-wide access to a public demo alias.');
+    } else if (configuredAdminEmail) {
       const configuredAdmin = db.prepare('SELECT id FROM users WHERE lower(email) = ?').get(configuredAdminEmail);
       if (configuredAdmin) {
         db.prepare("UPDATE users SET is_superadmin = 1, role = 'owner' WHERE id = ?").run(configuredAdmin.id);
