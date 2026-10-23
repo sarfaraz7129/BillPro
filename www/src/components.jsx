@@ -6,6 +6,8 @@ import { money } from './api.js';
 /* ---------------- modal ---------------- */
 export function Modal({ title, sub, children, footer, onClose, size = '' }) {
   const isClosingViaPopRef = useRef(false);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   useEffect(() => {
     // Push dummy history entry so Android/browser back gesture closes the modal instead of exiting the PWA
@@ -15,11 +17,11 @@ export function Modal({ title, sub, children, footer, onClose, size = '' }) {
 
     const onPop = () => {
       isClosingViaPopRef.current = true;
-      if (onClose) onClose();
+      if (onCloseRef.current) onCloseRef.current();
     };
 
     const onKey = (e) => {
-      if (e.key === 'Escape' && onClose) onClose();
+      if (e.key === 'Escape' && onCloseRef.current) onCloseRef.current();
     };
 
     window.addEventListener('popstate', onPop);
@@ -36,7 +38,7 @@ export function Modal({ title, sub, children, footer, onClose, size = '' }) {
         } catch (_) {}
       }
     };
-  }, [onClose]);
+  }, []);
 
   return (
     <div className="modal-bg" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose && onClose(); }}>

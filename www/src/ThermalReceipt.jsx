@@ -3,11 +3,24 @@ import { api, money, fmtDate, fmtDateTime } from './api.js';
 import { Icon } from './ui.jsx';
 import { Modal } from './components.jsx';
 
-export default function ThermalReceiptModal({ doc, party, business, onClose, onWhatsApp, toast }) {
-  const [width, setWidth] = useState('80'); // '58' or '80'
+export default function ThermalReceiptModal({ doc, party, business, initialWidth, onClose, onWhatsApp, toast }) {
+  const [width, setWidth] = useState(() => {
+    return initialWidth || localStorage.getItem('billpro.receipt_width') || '80';
+  });
   const [qrUrl, setQrUrl] = useState('');
   const [copied, setCopied] = useState(false);
   const [partyData, setPartyData] = useState(party || null);
+
+  const handleSetWidth = (w) => {
+    setWidth(w);
+    try { localStorage.setItem('billpro.receipt_width', w); } catch (e) {}
+  };
+
+  useEffect(() => {
+    if (initialWidth) {
+      handleSetWidth(initialWidth);
+    }
+  }, [initialWidth]);
 
   useEffect(() => {
     let active = true;
@@ -51,7 +64,8 @@ export default function ThermalReceiptModal({ doc, party, business, onClose, onW
   };
 
   const copyPlainText = async () => {
-    const cols = width === '58' ? 32 : 42;
+    const isLq50 = width === '150';
+    const cols = width === '58' ? 32 : width === '80' ? 42 : 54;
     const line = '-'.repeat(cols);
     const double = '='.repeat(cols);
     const center = (str) => {
@@ -71,6 +85,32 @@ export default function ThermalReceiptModal({ doc, party, business, onClose, onW
     const paid = Number(doc.paid_amount || 0);
     const prevBal = hasPartyBal ? Math.round((netBal - (Number(doc.total) - paid)) * 100) / 100 : 0;
 
+    const itemLines = isLq50
+      ? [
+          line,
+          row('Item Description', 'HSN   Qty  Rate  GST%    Total'),
+          line,
+          ...doc.items.map((it) => {
+            const name = it.name.length > 20 ? it.name.slice(0, 20) : it.name.padEnd(20, ' ');
+            const hsn = (it.hsn || '-').slice(0, 5).padEnd(5, ' ');
+            const qty = `${it.qty} ${it.unit || ''}`.slice(0, 5).padStart(5, ' ');
+            const rate = `${it.rate}`.slice(0, 6).padStart(6, ' ');
+            const gst = `${it.gstRate}%`.slice(0, 4).padStart(4, ' ');
+            const tot = `${it.total}`.slice(0, 8).padStart(8, ' ');
+            return `${name} ${hsn} ${qty} ${rate} ${gst} ${tot}`;
+          })
+        ]
+      : [
+          line,
+          row('Item', 'Qty x Rate   Total'),
+          line,
+          ...doc.items.map((it) => {
+            const itemLine = it.name.length > cols - 16 ? it.name.slice(0, cols - 16) : it.name;
+            const calc = `${it.qty} ${it.unit || ''} x ${it.rate} = ${it.total}`;
+            return `${itemLine}\n` + row(`  GST ${it.gstRate}%`, calc);
+          })
+        ];
+
     const text = [
       double,
       center(business.name.toUpperCase()),
@@ -81,16 +121,10 @@ export default function ThermalReceiptModal({ doc, party, business, onClose, onW
       business.phone ? center(`Tel: ${business.phone}`) : '',
       line,
       row(`Tax Invoice: ${doc.number}`, fmtDate(doc.date)),
-      row('Time (IST):', fmtDateTime(doc.created_at || doc.date)),
+      row('Standard Time (IST):', fmtDateTime(doc.created_at || doc.date)),
       row(`Customer: ${doc.party_name || 'Walk-in'}`, doc.payment_mode ? `Mode: ${doc.payment_mode.toUpperCase()}` : ''),
-      line,
-      row('Item', 'Qty x Rate   Total'),
-      line,
-      ...doc.items.map((it) => {
-        const itemLine = it.name.length > cols - 16 ? it.name.slice(0, cols - 16) : it.name;
-        const calc = `${it.qty} ${it.unit || ''} x ${it.rate} = ${it.total}`;
-        return `${itemLine}\n` + row(`  GST ${it.gstRate}%`, calc);
-      }),
+      ...(doc.party_gstin ? [row(`Party GSTIN: ${doc.party_gstin}`, '')] : []),
+      ...itemLines,
       line,
       row('Subtotal:', money(doc.subtotal)),
       doc.discount_amount > 0 ? row('Discount:', `-${money(doc.discount_amount)}`) : '',
@@ -116,15 +150,19 @@ export default function ThermalReceiptModal({ doc, party, business, onClose, onW
       await navigator.clipboard.writeText(text);
       setCopied(true);
       setTimeout(() => setCopied(false), 1800);
-      if (toast) toast('Thermal receipt text copied to clipboard', 'ok');
+      if (toast) toast(isLq50 ? 'Epson LQ-50 text copied to clipboard' : 'Thermal receipt text copied to clipboard', 'ok');
     } catch (e) {}
   };
 
+  const isLq50 = width === '150';
+
   return (
     <Modal
-      title="Thermal Printer Receipt"
-      sub={`${doc.number} · ${money(doc.total)} · ESC/POS ready`}
-      size=""
+      title={isLq50 ? 'Epson LQ-50 Slip (6-Inch / 152mm)' : 'Receipt / Thermal Printer'}
+      sub={isLq50
+        ? `${doc.number} · ${money(doc.total)} · 6-inch continuous tractor-feed dot matrix`
+        : `${doc.number} · ${money(doc.total)} · ESC/POS ready`}
+      size={isLq50 ? 'wide' : ''}
       onClose={onClose}
       footer={
         <>
@@ -140,7 +178,7 @@ export default function ThermalReceiptModal({ doc, party, business, onClose, onW
             </button>
           )}
           <button type="button" className="btn" onClick={copyPlainText}>
-            {copied ? '✓ Copied' : '📋 Copy ESC/POS text'}
+            {copied ? '✓ Copied' : isLq50 ? '📋 Copy Dot Matrix Text' : '📋 Copy ESC/POS text'}
           </button>
           <button
             type="button"
@@ -148,7 +186,7 @@ export default function ThermalReceiptModal({ doc, party, business, onClose, onW
             style={{ fontWeight: 650, display: 'inline-flex', alignItems: 'center', gap: 6 }}
             onClick={printReceipt}
           >
-            <Icon.print size={16} /> Print to Thermal Printer
+            <Icon.print size={16} /> {isLq50 ? '🖨️ Print to Epson LQ-50 (6")' : 'Print to Thermal Printer'}
           </button>
         </>
       }
@@ -156,32 +194,48 @@ export default function ThermalReceiptModal({ doc, party, business, onClose, onW
       {/* Width Selector bar */}
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        marginBottom: 12, paddingBottom: 10, borderBottom: '1px solid var(--line)'
+        marginBottom: 12, paddingBottom: 10, borderBottom: '1px solid var(--line)', flexWrap: 'wrap', gap: 8
       }}>
         <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--ink)' }}>
-          Roll Width:
+          Printer / Paper Width:
         </div>
-        <div className="btn-row" style={{ gap: 4 }}>
+        <div className="btn-row" style={{ gap: 4, flexWrap: 'wrap' }}>
           <button
             type="button"
             className={`btn sm ${width === '58' ? 'primary' : ''}`}
-            onClick={() => setWidth('58')}
+            onClick={() => handleSetWidth('58')}
+            title="58mm 2-inch mini thermal roll"
           >
             58mm (2-Inch)
           </button>
           <button
             type="button"
             className={`btn sm ${width === '80' ? 'primary' : ''}`}
-            onClick={() => setWidth('80')}
+            onClick={() => handleSetWidth('80')}
+            title="80mm 3-inch standard POS thermal receipt"
           >
             80mm (3-Inch Standard)
+          </button>
+          <button
+            type="button"
+            className={`btn sm ${width === '150' ? 'primary' : ''}`}
+            style={width === '150' ? { fontWeight: 700 } : { color: '#4338ca', borderColor: '#c7d2fe', background: '#eef2ff' }}
+            onClick={() => handleSetWidth('150')}
+            title="Epson LQ-50 6-inch (152mm) 24-pin continuous paper / tractor feed"
+          >
+            🖨️ 6-Inch (Epson LQ-50)
           </button>
         </div>
       </div>
 
-      {/* Visual thermal roll preview */}
+      {/* Visual roll/slip preview */}
       <div className="thermal-wrapper">
         <div id="thermal-receipt-printable" className={`thermal-receipt w-${width}`}>
+          {isLq50 && (
+            <div className="center muted" style={{ fontSize: '0.8em', marginBottom: 4, letterSpacing: '0.8px' }}>
+              --- TAX INVOICE · EPSON LQ-50 6" SLIP ---
+            </div>
+          )}
           {business.logo_url && (
             <div style={{ textAlign: 'center', marginBottom: 6 }}>
               <img src={business.logo_url} alt="Logo" style={{ maxHeight: 44, maxWidth: 140, objectFit: 'contain', filter: 'grayscale(100%)' }} />
@@ -224,10 +278,12 @@ export default function ThermalReceiptModal({ doc, party, business, onClose, onW
           <table>
             <thead>
               <tr>
-                <th style={{ textAlign: 'left' }}>Item</th>
-                <th className="num">Qty</th>
-                <th className="num">Rate</th>
-                <th className="num">Total</th>
+                <th style={{ textAlign: 'left' }}>Item Description</th>
+                <th style={{ textAlign: 'center', width: isLq50 ? 55 : 45 }}>HSN</th>
+                <th className="num" style={{ width: isLq50 ? 65 : 45 }}>Qty</th>
+                <th className="num" style={{ width: isLq50 ? 70 : 55 }}>Rate</th>
+                {isLq50 && <th className="num" style={{ width: 55 }}>GST%</th>}
+                <th className="num" style={{ width: isLq50 ? 80 : 65 }}>Total</th>
               </tr>
             </thead>
             <tbody>
@@ -235,12 +291,16 @@ export default function ThermalReceiptModal({ doc, party, business, onClose, onW
                 <tr key={idx}>
                   <td style={{ verticalAlign: 'top' }}>
                     <div><b>{it.name}</b></div>
-                    <div style={{ fontSize: '0.85em', color: '#555' }}>
-                      HSN:{it.hsn || '-'} · GST {it.gstRate}%
-                    </div>
+                    {!isLq50 && (
+                      <div style={{ fontSize: '0.85em', color: '#555' }}>
+                        HSN:{it.hsn || '-'} · GST {it.gstRate}%
+                      </div>
+                    )}
                   </td>
-                  <td className="num" style={{ verticalAlign: 'top' }}>{it.qty}</td>
+                  <td style={{ textAlign: 'center', verticalAlign: 'top' }}>{it.hsn || '-'}</td>
+                  <td className="num" style={{ verticalAlign: 'top' }}>{it.qty} {it.unit || ''}</td>
                   <td className="num" style={{ verticalAlign: 'top' }}>{it.rate}</td>
+                  {isLq50 && <td className="num" style={{ verticalAlign: 'top' }}>{it.gstRate}%</td>}
                   <td className="num" style={{ verticalAlign: 'top' }}><b>{it.total}</b></td>
                 </tr>
               ))}

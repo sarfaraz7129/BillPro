@@ -1037,6 +1037,20 @@ tr:hover .row-actions { opacity: 1; }
 }
 .thermal-receipt.w-58 { width: 280px; font-size: 11px; }
 .thermal-receipt.w-80 { width: 350px; font-size: 12.5px; }
+.thermal-receipt.w-150 {
+  width: 576px;
+  max-width: 100%;
+  font-size: 13px;
+  font-family: 'Courier New', Courier, monospace, monospace;
+  padding: 16px 18px;
+}
+.thermal-receipt.w-150 h2 {
+  font-size: 18px;
+  letter-spacing: 0.5px;
+}
+.thermal-receipt.w-150 .grand-total {
+  font-size: 17px;
+}
 .thermal-receipt h2 { font-size: 15px; margin: 0 0 3px; text-align: center; font-weight: 700; color: #111; }
 .thermal-receipt .center { text-align: center; }
 .thermal-receipt .dashed { border-top: 1px dashed #555; margin: 7px 0; }
@@ -1059,14 +1073,31 @@ tr:hover .row-actions { opacity: 1; }
     position: absolute !important;
     left: 0 !important;
     top: 0 !important;
-    width: 100% !important;
-    max-width: 80mm !important;
     margin: 0 !important;
     padding: 2mm 3mm !important;
     box-shadow: none !important;
     border: none !important;
     background: #fff !important;
     color: #000 !important;
+  }
+  body.printing-thermal #thermal-receipt-printable.w-58 {
+    width: 58mm !important;
+    max-width: 58mm !important;
+  }
+  body.printing-thermal #thermal-receipt-printable.w-80 {
+    width: 80mm !important;
+    max-width: 80mm !important;
+  }
+  body.printing-thermal #thermal-receipt-printable.w-150 {
+    width: 6in !important;
+    max-width: 6in !important;
+    font-family: 'Courier New', Courier, monospace !important;
+    font-size: 10.5pt !important;
+    line-height: 1.25 !important;
+    padding: 0 4mm !important;
+  }
+  @page {
+    margin: 0mm;
   }
 }
 

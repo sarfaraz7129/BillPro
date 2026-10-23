@@ -328,7 +328,7 @@ export default function POS({ business, toast }) {
                 style={{ fontWeight: 650 }}
                 onClick={() => setThermalDoc(lastDoc)}
               >
-                <Icon.print size={15} /> 🧾 Print Thermal Slip
+                <Icon.print size={15} /> 🖨️ Print Receipt / 6" LQ-50
               </button>
             </>
           }

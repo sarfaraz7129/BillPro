@@ -26,6 +26,7 @@ export default function Billing({ business, user, initialType, initialDocId, got
   const [share, setShare] = useState(null);
   const [thermalDoc, setThermalDoc] = useState(null);
   const [thermalParty, setThermalParty] = useState(null);
+  const [thermalWidth, setThermalWidth] = useState('80');
   const [whatsAppModal, setWhatsAppModal] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -205,10 +206,11 @@ export default function Billing({ business, user, initialType, initialDocId, got
                           </button>
                           <button
                             className="icon-btn"
-                            title="Print Thermal Receipt (58mm/80mm)"
+                            title="Print Slip (Epson LQ-50 6-inch / Thermal 58/80mm)"
                             onClick={() => api.document(r.id).then((d) => {
                               setThermalDoc(d.document);
                               setThermalParty(d.party);
+                              setThermalWidth(localStorage.getItem('billpro.receipt_width') || '150');
                             })}
                           >
                             <Icon.file size={14} />
@@ -250,9 +252,10 @@ export default function Billing({ business, user, initialType, initialDocId, got
         onEdit={(d) => { setView(null); setEditor({ type: d.type, doc: d }); }}
         onShare={(d) => setWhatsAppModal({ doc: d, party: view?.party })}
         onWhatsApp={(d, p) => setWhatsAppModal({ doc: d, party: p || view?.party })}
-        onThermal={(d, p) => {
+        onThermal={(d, p, w) => {
           setThermalDoc(d);
           setThermalParty(p || view?.party || null);
+          setThermalWidth(w || localStorage.getItem('billpro.receipt_width') || '80');
         }}
         onPaid={async (d, amount, mode) => { try { await api.payDocument(d.id, { amount, mode }); toast('Payment recorded', 'ok'); const fresh = await api.document(d.id); setView(fresh); load(); } catch (e) { toast(e.message, 'err'); } }}
         onEwb={async (d, body) => { try { const r = await api.ewaybill(d.id, body); toast(`E-Way Bill ${r.ewaybillNo} generated`, 'ok'); setView(await api.document(d.id)); } catch (e) { toast(e.message, 'err'); } }}
@@ -265,6 +268,7 @@ export default function Billing({ business, user, initialType, initialDocId, got
           doc={thermalDoc}
           party={thermalParty}
           business={business}
+          initialWidth={thermalWidth}
           onClose={() => { setThermalDoc(null); setThermalParty(null); }}
           onWhatsApp={(d) => setWhatsAppModal({ doc: d, party: thermalParty || view?.party })}
           toast={toast}
@@ -323,8 +327,17 @@ function DocViewer({ doc, party, payments, business, onClose, onEdit, onShare, o
             {isSale && doc.due_amount > 0 && doc.status === 'active' && <button className="btn green" onClick={() => setPayOpen(true)}><Icon.rupee size={14} /> Receive payment</button>}
             <button className="btn" onClick={() => onDuplicate(doc)}><Icon.copy size={14} /> Duplicate</button>
             <button className="btn" onClick={() => onEdit(doc)}><Icon.edit size={14} /> Edit</button>
+            <button
+              type="button"
+              className="btn"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 650, color: '#4338ca', borderColor: '#c7d2fe', background: '#eef2ff' }}
+              onClick={() => onThermal && onThermal(doc, party, '150')}
+              title="Print directly formatted for 6-inch Epson LQ-50 Dot Matrix printer"
+            >
+              <Icon.print size={14} /> 🖨️ 6" LQ-50 Print
+            </button>
             <a href={pdfUrl(`invoice/${doc.id}`, true)} download={`${doc.number}.pdf`} className="btn primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Icon.download size={14} /> Download PDF</a>
-            <a href={pdfUrl(`invoice/${doc.id}`)} target="_blank" rel="noreferrer" className="btn" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }} title="Open print-ready PDF in new tab"><Icon.print size={14} /> Print</a>
+            <a href={pdfUrl(`invoice/${doc.id}`)} target="_blank" rel="noreferrer" className="btn" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }} title="Open print-ready PDF in new tab"><Icon.print size={14} /> Print (A4)</a>
           </>
         }
       >
@@ -457,7 +470,8 @@ function DocViewer({ doc, party, payments, business, onClose, onEdit, onShare, o
 
         <div className="btn-row" style={{ marginBottom: 12, flexWrap: 'wrap' }}>
           <button className="btn sm" style={{ color: '#059669', fontWeight: 600, borderColor: '#a7f3d0' }} onClick={() => (onWhatsApp ? onWhatsApp(doc, party) : onShare(doc))}><Icon.whatsapp size={14} /> Send on WhatsApp</button>
-          <button className="btn sm" style={{ fontWeight: 600 }} onClick={() => onThermal && onThermal(doc, party)}><Icon.print size={14} /> 🧾 Thermal Receipt (58/80mm)</button>
+          <button className="btn sm" style={{ fontWeight: 650, color: '#4338ca', borderColor: '#c7d2fe', background: '#eef2ff' }} onClick={() => onThermal && onThermal(doc, party, '150')} title="Print formatted for 6-inch Epson LQ-50 Dot Matrix printer"><Icon.print size={14} /> 🖨️ Epson LQ-50 (6" Print)</button>
+          <button className="btn sm" style={{ fontWeight: 600 }} onClick={() => onThermal && onThermal(doc, party, '80')}><Icon.print size={14} /> 🧾 Thermal (58/80mm)</button>
           {isSale && (doc.irn
             ? <span className="pill brand"><Icon.stamp size={12} /> IRN {String(doc.irn).slice(0, 16)}…</span>
             : <button className="btn sm" onClick={() => onEinv(doc)}><Icon.stamp size={14} /> Generate e-Invoice (IRN)</button>)}
