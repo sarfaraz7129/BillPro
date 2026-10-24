@@ -68,6 +68,10 @@ export default function DocumentEditor({ business, type, doc, user, onClose, onS
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
   const [showEwb, setShowEwb] = useState(!!doc?.ewaybill_no || false);
+  const [showLineDetails, setShowLineDetails] = useState(false);
+  const [focusItemIndex, setFocusItemIndex] = useState(null);
+  const qtyInputRefs = React.useRef({});
+  const rateInputRefs = React.useRef({});
 
   useEffect(() => {
     api.parties({ type: type === 'purchase' ? 'supplier' : 'customer' }).then((r) => setParties(r.parties)).catch(() => {});
@@ -90,6 +94,24 @@ export default function DocumentEditor({ business, type, doc, user, onClose, onS
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
   const setItem = (i, k, v) => setForm((f) => ({ ...f, items: f.items.map((it, idx) => (idx === i ? { ...it, [k]: v } : it)) }));
   const addLine = () => setForm((f) => ({ ...f, items: [...f.items, { name: '', hsn: '', unit: 'pcs', qty: 1, rate: 0, gstRate: business.default_gst_rate, discountPct: 0, product_id: null, isReturn: false }] }));
+  const isDesktopKeyboard = () => typeof window !== 'undefined' && window.innerWidth > 680 && window.matchMedia('(pointer: fine)').matches;
+  const focusQtyForDesktop = (index) => {
+    if (isDesktopKeyboard()) window.setTimeout(() => { qtyInputRefs.current[index]?.focus(); qtyInputRefs.current[index]?.select(); }, 40);
+  };
+  const focusItemSearch = (index) => {
+    const input = document.getElementById(`doc-item-search-${index}`);
+    if (input) { input.focus(); input.click(); }
+  };
+  useEffect(() => {
+    if (focusItemIndex == null || form.items.length <= focusItemIndex) return;
+    focusItemSearch(focusItemIndex);
+    setFocusItemIndex(null);
+  }, [focusItemIndex, form.items.length]);
+  const appendAndFocusNextItem = (index) => {
+    const nextIndex = index + 1;
+    if (nextIndex < form.items.length) focusItemSearch(nextIndex);
+    else { setFocusItemIndex(nextIndex); addLine(); }
+  };
   const addReturnLine = () => setForm((f) => ({ ...f, items: [...f.items, { name: '', hsn: '', unit: 'pcs', qty: 1, rate: 0, gstRate: business.default_gst_rate, discountPct: 0, product_id: null, isReturn: true }] }));
   const toggleReturn = (i) => setForm((f) => ({ ...f, items: f.items.map((it, idx) => idx === i ? { ...it, isReturn: !it.isReturn } : it) }));
   const dropLine = (i) => setForm((f) => ({ ...f, items: f.items.length > 1 ? f.items.filter((_, idx) => idx !== i) : f.items }));
@@ -425,7 +447,10 @@ export default function DocumentEditor({ business, type, doc, user, onClose, onS
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
           <h3 style={{ fontSize: 13.5 }}>Items</h3>
           <div className="spacer" />
-          <button type="button" className="btn sm" onClick={addLine}><Icon.plus size={14} /> Add line</button>
+          <button type="button" className="btn sm" onClick={() => { const index = form.items.length; if (isDesktopKeyboard()) setFocusItemIndex(index); addLine(); }}><Icon.plus size={14} /> Add line</button>
+          <button type="button" className={`btn sm ${showLineDetails ? 'primary' : ''}`} onClick={() => setShowLineDetails((v) => !v)} title="Show or hide optional HSN/SAC, unit and discount fields">
+            {showLineDetails ? 'Hide optional fields' : 'More item fields'}
+          </button>
           <button
             type="button"
             className="btn sm"
@@ -436,16 +461,16 @@ export default function DocumentEditor({ business, type, doc, user, onClose, onS
             ↩ Add Return / Less item
           </button>
         </div>
-        <div className="doc-tbl-wrap">
+        <div className={`doc-tbl-wrap ${showLineDetails ? '' : 'quick-entry'}`}>
           <table className="tbl doc-tbl">
             <thead>
               <tr>
-                <th style={{ width: '28%' }}>Item / service</th>
-                <th style={{ width: 78 }}>HSN/SAC</th>
+                <th style={{ width: showLineDetails ? '28%' : '38%' }}>Item / service</th>
+                {showLineDetails && <th style={{ width: 78 }}>HSN/SAC</th>}
                 <th style={{ width: 66 }}>Qty</th>
-                <th style={{ width: 62 }}>Unit</th>
+                {showLineDetails && <th style={{ width: 62 }}>Unit</th>}
                 <th style={{ width: 92 }}>Rate</th>
-                <th style={{ width: 62 }}>Disc %</th>
+                {showLineDetails && <th style={{ width: 62 }}>Disc %</th>}
                 <th style={{ width: 76 }}>{form.isEstimate ? 'Tax' : 'GST %'}</th>
                 <th className="num" style={{ width: 96 }}>Amount</th>
                 <th style={{ width: 34 }} />
@@ -460,17 +485,22 @@ export default function DocumentEditor({ business, type, doc, user, onClose, onS
                 const lineAmount = form.isEstimate ? afterDisc : (afterDisc * (1 + (Number(it.gstRate) || 0) / 100));
                 return (
                   <tr key={i} style={{ position: 'relative', zIndex: form.items.length - i + 10, background: isRet ? 'rgba(239, 68, 68, 0.05)' : 'inherit' }}>
-                    <td>
+                    <td data-label="Item / service">
                       <Picker
                         items={products}
+                        inputId={`doc-item-search-${i}`}
                         value={it.name ? { id: it.product_id, name: it.name } : null}
-                        onChange={(p) => pickProduct(i, p)}
+                        onChange={(p) => {
+                          pickProduct(i, p);
+                          focusQtyForDesktop(i);
+                        }}
                         onTextChange={(text) => setItem(i, 'name', text)}
                         placeholder="Type or pick an item…"
                         onAddNew={async (name) => {
                           const p = await api.createProduct({ name, gst_rate: business.default_gst_rate });
                           setProducts((old) => [...old, p.product]);
                           pickProduct(i, p.product);
+                          focusQtyForDesktop(i);
                           toast(`Added ${name} to inventory`, 'ok');
                         }}
                       />
@@ -500,21 +530,32 @@ export default function DocumentEditor({ business, type, doc, user, onClose, onS
                         )}
                       </div>
                     </td>
-                    <td><input className="input" value={it.hsn || ''} onChange={(e) => setItem(i, 'hsn', e.target.value)} /></td>
-                    <td>
+                    {showLineDetails && <td data-label="HSN/SAC"><input className="input" value={it.hsn || ''} onChange={(e) => setItem(i, 'hsn', e.target.value)} /></td>}
+                    <td data-label="Qty">
                       <input
+                        ref={(el) => { qtyInputRefs.current[i] = el; }}
+                        id={`doc-item-qty-${i}`}
                         className="input"
                         type="number"
                         min="1"
                         value={absQty}
                         onChange={(e) => setItem(i, 'qty', Math.abs(Number(e.target.value)))}
+                        onKeyDown={(e) => { if (e.key === 'Enter' && isDesktopKeyboard()) { e.preventDefault(); rateInputRefs.current[i]?.focus(); rateInputRefs.current[i]?.select(); } }}
                         style={isRet ? { color: '#dc2626', fontWeight: 600 } : {}}
                       />
                     </td>
-                    <td><input className="input" value={it.unit || ''} onChange={(e) => setItem(i, 'unit', e.target.value)} /></td>
-                    <td><input className="input" type="number" value={it.rate} onChange={(e) => setItem(i, 'rate', Number(e.target.value))} /></td>
-                    <td><input className="input" type="number" disabled={isRet} value={isRet ? '' : (it.discountPct || '')} onChange={(e) => setItem(i, 'discountPct', Number(e.target.value))} /></td>
-                    <td style={{ minWidth: 96 }}>
+                    {showLineDetails && <td data-label="Unit"><input className="input" value={it.unit || ''} onChange={(e) => setItem(i, 'unit', e.target.value)} /></td>}
+                    <td data-label="Rate"><input
+                      ref={(el) => { rateInputRefs.current[i] = el; }}
+                      id={`doc-item-rate-${i}`}
+                      className="input"
+                      type="number"
+                      value={it.rate}
+                      onChange={(e) => setItem(i, 'rate', Number(e.target.value))}
+                      onKeyDown={(e) => { if (e.key === 'Enter' && isDesktopKeyboard()) { e.preventDefault(); appendAndFocusNextItem(i); } }}
+                    /></td>
+                    {showLineDetails && <td data-label="Discount"><input className="input" type="number" disabled={isRet} value={isRet ? '' : (it.discountPct || '')} onChange={(e) => setItem(i, 'discountPct', Number(e.target.value))} /></td>}
+                    <td data-label={form.isEstimate ? 'Tax' : 'GST'} style={{ minWidth: 96 }}>
                       {form.isEstimate ? (
                         <span className="badge sm" style={{ background: '#f1f5f9', color: '#64748b', fontSize: 11, padding: '3px 6px' }}>
                           0% Non-GST
@@ -523,10 +564,10 @@ export default function DocumentEditor({ business, type, doc, user, onClose, onS
                         <GstRateInput value={it.gstRate} onChange={(r) => setItem(i, 'gstRate', r)} />
                       )}
                     </td>
-                    <td className="num strong" style={{ color: isRet ? '#dc2626' : 'inherit' }}>
+                    <td data-label="Amount" className="num strong" style={{ color: isRet ? '#dc2626' : 'inherit' }}>
                       {isRet ? '-' : ''}{money(lineAmount)}
                     </td>
-                    <td><button className="icon-btn danger" onClick={() => dropLine(i)}><Icon.trash size={14} /></button></td>
+                    <td data-label="Remove"><button className="icon-btn danger" onClick={() => dropLine(i)}><Icon.trash size={14} /></button></td>
                   </tr>
                 );
               })}
