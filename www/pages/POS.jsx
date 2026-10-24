@@ -140,7 +140,7 @@ export default function POS({ business, toast }) {
           </div>
         </div>
 
-        <div className="card" style={{ position: 'sticky', top: 74 }}>
+        <div className="card pos-checkout-card">
           <div className="card-h">
             <Icon.pos size={16} /><h3>Current bill</h3>
             <div className="spacer" />

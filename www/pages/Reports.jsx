@@ -75,9 +75,9 @@ export default function Reports({ business, toast, initialTab }) {
   );
 }
 
-function Card({ title, sub, children, right }) {
+function Card({ title, sub, children, right, className = '' }) {
   return (
-    <div className="card">
+    <div className={`card ${className}`.trim()}>
       <div className="card-h"><div><h3>{title}</h3>{sub && <div className="sub">{sub}</div>}</div><div className="spacer" />{right}</div>
       <div className="card-b">{children}</div>
     </div>
@@ -561,11 +561,12 @@ function PaymentsReport({ d }) {
 
       {/* Detailed Payment Receipts Register */}
       <Card
+        className="payment-register-card"
         title="Payment Receipts Register"
         sub="All cash, UPI and bank payments received"
         right={
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <div className="segmented-control" style={{ display: 'inline-flex' }}>
+          <div className="payment-register-tools">
+            <div className="segmented-control payment-register-filters">
               <button type="button" className={`btn xs ${filterMode === 'all' ? 'primary' : ''}`} onClick={() => setFilterMode('all')}>All ({t.count})</button>
               <button type="button" className={`btn xs ${filterMode === 'cash' ? 'primary' : ''}`} onClick={() => setFilterMode('cash')}>Cash</button>
               <button type="button" className={`btn xs ${filterMode === 'upi' ? 'primary' : ''}`} onClick={() => setFilterMode('upi')}>UPI</button>
@@ -573,18 +574,17 @@ function PaymentsReport({ d }) {
             </div>
             <input
               type="search"
-              className="input sm"
+              className="input sm payment-register-search"
               placeholder="Search receipts…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              style={{ width: 140 }}
             />
           </div>
         }
       >
         {filteredReceipts.length === 0 ? <Empty title="No payment receipts found" /> : (
           <div className="tbl-wrap" style={{ maxHeight: 420, overflowY: 'auto' }}>
-            <table className="tbl">
+            <table className="tbl payment-register-table">
               <thead>
                 <tr>
                   <th>Date</th>

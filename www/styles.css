@@ -1105,9 +1105,33 @@ tr:hover .row-actions { opacity: 1; }
   }
 }
 
-/* ---------- POS ---------- */
-.pos-layout { display: grid; grid-template-columns: 1fr 400px; gap: 14px; align-items: start; }
-@media (max-width: 1100px) { .pos-layout { grid-template-columns: 1fr; } }
+/* ---------- Payment register & POS layouts ---------- */
+.payment-register-tools {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+.payment-register-filters { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+.payment-register-search { width: 190px; }
+.payment-register-table { min-width: 760px; }
+.pos-layout { display: grid; grid-template-columns: minmax(0, 1fr) 400px; gap: 14px; align-items: start; }
+.pos-checkout-card { position: sticky; top: 74px; min-width: 0; }
+@media (max-width: 1100px) {
+  .pos-layout { grid-template-columns: minmax(0, 1fr); }
+  .pos-checkout-card { position: static; }
+}
+@media (max-width: 680px) {
+  .payment-register-card > .card-h { align-items: stretch; flex-direction: column; gap: 10px; }
+  .payment-register-card > .card-h > .spacer { display: none; }
+  .payment-register-tools { align-items: stretch; flex-direction: column; width: 100%; }
+  .payment-register-filters { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); width: 100%; }
+  .payment-register-filters .btn { min-width: 0; justify-content: center; padding: 6px 3px; font-size: 11px; }
+  .payment-register-search { width: 100%; }
+  .payment-register-card > .card-b { padding: 12px; }
+}
 .pos-items table.tbl td { padding: 7px 8px; }
 .pos-items .input { padding: 5px 7px; font-size: 12.5px; }
 .pos-sum { background: var(--surface-2); border-radius: 11px; padding: 12px; margin-top: 10px; }
