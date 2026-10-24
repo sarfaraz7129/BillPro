@@ -232,7 +232,7 @@ export function DateRange({ from, to, onChange, presets = true }) {
 }
 
 /* ---------------- party / product autocomplete with React Portal & Mobile Sheet ---------------- */
-export function Picker({ items = [], value, onChange, onTextChange, placeholder, onAddNew, render, emptyText = 'Nothing found', inputId }) {
+export function Picker({ items = [], value, onChange, onTextChange, placeholder, onAddNew, render, emptyText = 'Nothing found' }) {
   const [q, setQ] = useState('');
   const [open, setOpen] = useState(false);
   const [highlightIndex, setHighlightIndex] = useState(0);
@@ -399,7 +399,6 @@ export function Picker({ items = [], value, onChange, onTextChange, placeholder,
         <Icon.search size={15} />
         <input
           ref={inputRef}
-          id={inputId}
           className="input"
           placeholder={placeholder}
           readOnly={isMobile}
