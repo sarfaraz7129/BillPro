@@ -160,7 +160,7 @@ export default function ThermalReceiptModal({ doc, party, business, initialWidth
           doc.discount_amount > 0 ? row('Discount:', `-${money(doc.discount_amount)}`) : '',
           Number(doc.transportation) > 0 ? row('Transportation:', money(doc.transportation)) : '',
           Number(doc.loading_charges) > 0 ? row('Loading Charges:', money(doc.loading_charges)) : '',
-          Number(doc.bag_charges) > 0 ? row('Bag Charges:', money(doc.bag_charges)) : '',
+          Number(doc.bag_charges) > 0 ? row('Other Charges:', money(doc.bag_charges)) : '',
           doc.round_off ? row('Round Off:', money(doc.round_off)) : '',
           double,
           row('CURRENT BILL TOTAL:', money(doc.total)),
@@ -195,7 +195,7 @@ export default function ThermalReceiptModal({ doc, party, business, initialWidth
             : [row('CGST:', money(doc.cgst)), row('SGST:', money(doc.sgst))].join('\n'),
           Number(doc.transportation) > 0 ? row('Transportation:', money(doc.transportation)) : '',
           Number(doc.loading_charges) > 0 ? row('Loading Charges:', money(doc.loading_charges)) : '',
-          Number(doc.bag_charges) > 0 ? row('Bag Charges:', money(doc.bag_charges)) : '',
+          Number(doc.bag_charges) > 0 ? row('Other Charges:', money(doc.bag_charges)) : '',
           doc.round_off ? row('Round Off:', money(doc.round_off)) : '',
           double,
           row('CURRENT BILL TOTAL:', money(doc.total)),
@@ -349,13 +349,6 @@ export default function ThermalReceiptModal({ doc, party, business, initialWidth
           {!isEstimate && doc.party_gstin && (
             <div><b>Party GSTIN:</b> {doc.party_gstin}</div>
           )}
-          {doc.bags_count ? (
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 1 }}>
-              <span><b>Bags / Pkgs:</b></span>
-              <span><b>{doc.bags_count}</b></span>
-            </div>
-          ) : null}
-
           <div className="dashed" />
 
           {/* Item Table */}
@@ -463,7 +456,7 @@ export default function ThermalReceiptModal({ doc, party, business, initialWidth
           )}
           {Number(doc.bag_charges) > 0 && (
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span>Bag Charges:</span>
+              <span>Other Charges:</span>
               <span>{money(doc.bag_charges)}</span>
             </div>
           )}

@@ -11,7 +11,7 @@ const blank = (business, type) => ({
   partyId: null, partyName: '', partyGstin: '', partyStateCode: '',
   items: [{ name: '', hsn: '', unit: 'pcs', qty: 1, rate: 0, gstRate: business.default_gst_rate, discountPct: 0, product_id: null, isReturn: false }],
   discountType: 'flat', discountValue: 0, roundOff: true,
-  transportation: 0, loadingCharges: 0, bagCharges: 0,
+  transportation: 0, loadingCharges: 0, otherCharges: 0,
   paidAmount: 0, paymentMode: 'upi', notes: '', vehicleNo: '', transportDocNo: '', ewaybillNo: ''
 });
 
@@ -34,7 +34,7 @@ export default function DocumentEditor({ business, type, doc, user, onClose, onS
         : (['invoice', 'sale'].includes(doc.type || type) ? business.default_bill_mode !== 'gst' : false),
       transportation: Number(doc.transportation) || 0,
       loadingCharges: Number(doc.loading_charges || doc.loadingCharges) || 0,
-      bagCharges: Number(doc.bag_charges || doc.bagCharges || doc.bags_charges) || 0,
+      otherCharges: Number(doc.other_charges ?? doc.bag_charges ?? doc.otherCharges ?? doc.bagCharges ?? doc.bags_charges) || 0,
       items: docItems.length
         ? docItems.map((l) => ({
             ...l,
@@ -103,7 +103,7 @@ export default function DocumentEditor({ business, type, doc, user, onClose, onS
 
   const t = useMemo(() => totals(form.items, { ...form, supplyType, isEstimate: form.isEstimate }), [
     form.items, form.discountType, form.discountValue, form.roundOff,
-    form.transportation, form.loadingCharges, form.bagCharges,
+    form.transportation, form.loadingCharges, form.otherCharges,
     form.isEstimate,
     supplyType
   ]);
@@ -160,7 +160,7 @@ export default function DocumentEditor({ business, type, doc, user, onClose, onS
         date: finalDate,
         transportation: Number(form.transportation) || 0,
         loadingCharges: Number(form.loadingCharges) || 0,
-        bagCharges: Number(form.bagCharges) || 0,
+        otherCharges: Number(form.otherCharges) || 0,
         items: valid.map((l) => ({
           product_id: l.product_id || null,
           name: String(l.name || '').trim(),
@@ -537,7 +537,7 @@ export default function DocumentEditor({ business, type, doc, user, onClose, onS
 
       <div className="doc-summary-grid">
         <div>
-          {/* Logistics & Bag Charges */}
+          {/* Logistics & Other Charges */}
           <div style={{
             background: 'var(--surface-2)',
             padding: '12px 14px',
@@ -547,7 +547,7 @@ export default function DocumentEditor({ business, type, doc, user, onClose, onS
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 700, fontSize: 12.5, color: 'var(--ink)', marginBottom: 8 }}>
               <Icon.truck size={15} style={{ color: 'var(--brand)' }} />
-              Logistics & Bag Charges
+              Logistics & Other Charges
             </div>
             <div className="form-grid c3">
               <Field label="Transportation (₹)" hint="Freight">
@@ -572,14 +572,14 @@ export default function DocumentEditor({ business, type, doc, user, onClose, onS
                   placeholder="0.00"
                 />
               </Field>
-              <Field label="Bag Charges (₹)" hint="e.g. ₹8, ₹10 per bag / total">
+              <Field label="Other Charges (₹)" hint="Enter amount only">
                 <input
                   type="number"
                   min="0"
                   step="any"
                   className="input"
-                  value={form.bagCharges || ''}
-                  onChange={(e) => set('bagCharges', e.target.value === '' ? 0 : Number(e.target.value))}
+                  value={form.otherCharges || ''}
+                  onChange={(e) => set('otherCharges', e.target.value === '' ? 0 : Number(e.target.value))}
                   placeholder="0.00"
                 />
               </Field>
@@ -639,7 +639,7 @@ export default function DocumentEditor({ business, type, doc, user, onClose, onS
           )}
           {Number(form.transportation) > 0 && <Row label="Transportation" value={Number(form.transportation)} />}
           {Number(form.loadingCharges) > 0 && <Row label="Loading charges" value={Number(form.loadingCharges)} />}
-          {Number(form.bagCharges) > 0 && <Row label="Bag charges" value={Number(form.bagCharges)} />}
+          {Number(form.otherCharges) > 0 && <Row label="Other charges" value={Number(form.otherCharges)} />}
           {form.roundOff && <Row label="Round off" value={t.roundOff} />}
           <div className="grand" style={{ paddingTop: 6, marginTop: 4 }}><span style={{ fontWeight: 700 }}>Total</span><span className="v">{money(t.total)}</span></div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 3, fontSize: 11, color: 'var(--muted)' }}>
@@ -859,14 +859,14 @@ export function totals(items, opts) {
   const igst = (isEstimate || !isInter) ? 0 : taxTotal;
   const transportation = r2(Number(opts.transportation) || 0);
   const loadingCharges = r2(Number(opts.loadingCharges || opts.loading_charges) || 0);
-  const bagCharges = r2(Number(opts.bagCharges || opts.bag_charges || opts.bags_charges) || 0);
+  const otherCharges = r2(Number(opts.otherCharges ?? opts.other_charges ?? opts.bagCharges ?? opts.bag_charges ?? opts.bags_charges) || 0);
   const preTotal = isEstimate
-    ? r2(netDiscounted + transportation + loadingCharges + bagCharges)
-    : r2(taxableValue + taxTotal + transportation + loadingCharges + bagCharges);
+    ? r2(netDiscounted + transportation + loadingCharges + otherCharges)
+    : r2(taxableValue + taxTotal + transportation + loadingCharges + otherCharges);
   const total = opts.roundOff ? Math.round(preTotal) : preTotal;
   return {
     subtotal, lineDiscount, docDiscount, taxableValue, cgst, sgst, igst,
-    transportation, loadingCharges, bagCharges, returnAmount,
+    transportation, loadingCharges, otherCharges, returnAmount,
     roundOff: r2(total - preTotal), total,
     amountInWords: words(total)
   };

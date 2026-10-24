@@ -438,13 +438,13 @@ async function run() {
     items: [{ product_id: estProd.id, name: estProd.name, qty: 3, rate: 200, gstRate: 18 }],
     paidAmount: 200,
     paymentMode: 'cash',
-    bagCharges: 15
+    otherCharges: 15
   });
   ok('creates an Estimate Bill', estCreate.status === 201 && estCreate.body.document.is_estimate === 1, estCreate.status);
   const estDocData = estCreate.body.document;
   ok('estimate bill uses EST-n series number', /^EST-\d+$/.test(estDocData.number), estDocData.number);
   ok('estimate bill has 0 GST taxes', estDocData.cgst === 0 && estDocData.sgst === 0 && estDocData.igst === 0, { cgst: estDocData.cgst, sgst: estDocData.sgst });
-  ok('estimate bill total matches subtotal + bag charges (615)', estDocData.total === 615, estDocData.total);
+  ok('estimate bill total includes Other Charges (615)', estDocData.total === 615, estDocData.total);
   ok('estimate bill reduces inventory stock', (await call('GET', '/api/products')).body.products.find((p) => p.id === estProd.id).stock === initialEstStock - 3);
   ok('estimate bill updates customer khata (+415 due)', near((await call('GET', `/api/parties/${estParty.id}`)).body.party.balance, initialEstPartyBal + 415));
 

@@ -485,7 +485,6 @@ function DocViewer({ doc, party, payments, business, onClose, onEdit, onShare, o
               <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', color: '#64748b' }}>Estimate No</div>
               <div style={{ fontSize: 16, fontWeight: 700, color: '#0f172a' }}>{doc.number}</div>
               <div style={{ fontSize: 12, color: 'var(--muted)' }}>Date: {fmtDate(doc.date)}</div>
-              {doc.bags_count ? <div style={{ fontSize: 11.5, fontWeight: 650, color: 'var(--brand)', marginTop: 2 }}>📦 Bags: {doc.bags_count}</div> : null}
             </div>
           </div>
         ) : (
@@ -536,7 +535,6 @@ function DocViewer({ doc, party, payments, business, onClose, onEdit, onShare, o
               </div>
               <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ink)' }}>{doc.number}</div>
               <div style={{ fontSize: 12, color: 'var(--muted)' }}>Date: {fmtDate(doc.date)}</div>
-              {doc.bags_count ? <div style={{ fontSize: 11.5, fontWeight: 650, color: 'var(--brand)', marginTop: 2 }}>📦 Bags: {doc.bags_count}</div> : null}
             </div>
           </div>
         )}
@@ -663,12 +661,12 @@ function DocViewer({ doc, party, payments, business, onClose, onEdit, onShare, o
             )}
             {Number(doc.transportation) > 0 && <div className="kv"><span className="k">Transportation</span><span className="v">{money(doc.transportation)}</span></div>}
             {Number(doc.loading_charges) > 0 && <div className="kv"><span className="k">Loading charges</span><span className="v">{money(doc.loading_charges)}</span></div>}
-            {Number(doc.bag_charges) > 0 && <div className="kv"><span className="k">Bag charges</span><span className="v">{money(doc.bag_charges)}</span></div>}
+            {Number(doc.bag_charges) > 0 && <div className="kv"><span className="k">Other charges</span><span className="v">{money(doc.bag_charges)}</span></div>}
             <div className="grand"><span style={{ fontWeight: 700 }}>Current Bill Total</span><span className="v">{money(doc.total)}</span></div>
             <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 6 }}>{doc.amount_in_words}</div>
             {Number(doc.transportation) > 0 && <div className="kv"><span className="k">Transportation</span><span className="v">{money(doc.transportation)}</span></div>}
             {Number(doc.loading_charges) > 0 && <div className="kv"><span className="k">Loading charges</span><span className="v">{money(doc.loading_charges)}</span></div>}
-            {Number(doc.bag_charges) > 0 && <div className="kv"><span className="k">Bag charges</span><span className="v">{money(doc.bag_charges)}</span></div>}
+            {Number(doc.bag_charges) > 0 && <div className="kv"><span className="k">Other charges</span><span className="v">{money(doc.bag_charges)}</span></div>}
             <div className="grand"><span style={{ fontWeight: 700 }}>Current Bill Total</span><span className="v">{money(doc.total)}</span></div>
             <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 6 }}>{doc.amount_in_words}</div>
 

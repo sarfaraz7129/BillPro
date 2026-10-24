@@ -117,7 +117,7 @@ function buildDocument(business, body, type, existing = null) {
 
   const transportation = Number(body.transportation !== undefined ? body.transportation : (existing ? existing.transportation : 0)) || 0;
   const loadingCharges = Number(body.loadingCharges !== undefined ? body.loadingCharges : (body.loading_charges !== undefined ? body.loading_charges : (existing ? existing.loading_charges : 0))) || 0;
-  const bagCharges = Number(body.bagCharges !== undefined ? body.bagCharges : (body.bag_charges !== undefined ? body.bag_charges : (body.bags_charges !== undefined ? body.bags_charges : (existing ? existing.bag_charges : 0)))) || 0;
+  const otherCharges = Number(body.otherCharges !== undefined ? body.otherCharges : (body.other_charges !== undefined ? body.other_charges : (body.bagCharges !== undefined ? body.bagCharges : (body.bag_charges !== undefined ? body.bag_charges : (body.bags_charges !== undefined ? body.bags_charges : (existing ? existing.bag_charges : 0)))))) || 0;
   const extraCharges = Number(body.extraCharges !== undefined ? body.extraCharges : (body.extra_charges !== undefined ? body.extra_charges : (body.extra !== undefined ? body.extra : (existing ? existing.extra_charges : 0)))) || 0;
   const bagsCount = body.bagsCount !== undefined ? String(body.bagsCount).trim() : (body.bags_count !== undefined ? String(body.bags_count).trim() : (body.bags !== undefined ? String(body.bags).trim() : (existing ? existing.bags_count : null)));
 
@@ -128,7 +128,7 @@ function buildDocument(business, body, type, existing = null) {
     cessRate: Number(body.cessRate !== undefined ? body.cessRate : (existing ? existing.cess : 0)),
     transportation,
     loadingCharges,
-    bagCharges,
+    otherCharges,
     extraCharges,
     bagsCount,
     supplyType,
@@ -162,7 +162,7 @@ function buildDocument(business, body, type, existing = null) {
     cess: totals.cess,
     transportation,
     loading_charges: loadingCharges,
-    bag_charges: bagCharges,
+    bag_charges: otherCharges,
     bags_count: bagsCount || null,
     extra_charges: extraCharges,
     round_off: totals.roundOff,

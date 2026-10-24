@@ -48,7 +48,7 @@ async function testDualMode() {
     ],
     paidAmount: 200,
     paymentMode: 'cash',
-    bagCharges: 10
+    otherCharges: 10
   });
 
   assert.strictEqual(estRes.status, 201);
@@ -59,7 +59,7 @@ async function testDualMode() {
   assert.strictEqual(estDoc.cgst, 0);
   assert.strictEqual(estDoc.sgst, 0);
   assert.strictEqual(estDoc.igst, 0);
-  // Subtotal: 500, Bag charges: 10 => Total: 510
+  // Subtotal: 500, Other Charges: 10 => Total: 510
   assert.strictEqual(estDoc.total, 510);
   assert.strictEqual(estDoc.paid_amount, 200);
   assert.strictEqual(estDoc.due_amount, 310);
@@ -109,7 +109,7 @@ async function testDualMode() {
   // Tax should now be computed: 500 @ 18% = 90 tax => 45 CGST + 45 SGST (intra-state)
   assert.strictEqual(gstDoc.cgst + gstDoc.sgst + gstDoc.igst, 90);
   assert.strictEqual(gstDoc.taxable_value, 500);
-  // Total: 500 + 90 tax + 10 bag charges = 600
+  // Total: 500 + 90 tax + 10 Other Charges = 600
   assert.strictEqual(gstDoc.total, 600);
   assert.strictEqual(gstDoc.paid_amount, 200);
   assert.strictEqual(gstDoc.due_amount, 400);
