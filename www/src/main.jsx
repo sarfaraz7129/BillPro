@@ -17,7 +17,6 @@ import SuperAdmin from '../pages/SuperAdmin.jsx';
 const NAV = [
   { section: 'Run the business', items: [
     { id: 'dashboard', label: 'Dashboard', icon: 'dashboard' },
-    { id: 'pos', label: 'Counter billing (POS)', icon: 'pos' },
     { id: 'billing', label: 'Invoices & bills', icon: 'invoice' },
     { id: 'khata', label: 'Khata / ledgers', icon: 'khata' },
     { id: 'inventory', label: 'Inventory', icon: 'box' }
@@ -181,7 +180,7 @@ export default function App() {
     const list = [
       { section: 'Run the business', items: [
         { id: 'dashboard', label: 'Dashboard', icon: 'dashboard' },
-        { id: 'pos', label: 'Counter billing (POS)', icon: 'pos' },
+        ...(active?.pos_enabled ? [{ id: 'pos', label: 'Counter billing (POS)', icon: 'pos' }] : []),
         { id: 'billing', label: 'Invoices & bills', icon: 'invoice' },
         { id: 'khata', label: 'Khata / ledgers', icon: 'khata' },
         { id: 'inventory', label: 'Inventory', icon: 'box' }
@@ -198,7 +197,11 @@ export default function App() {
       }] : [])
     ];
     return list;
-  }, [user?.is_superadmin]);
+  }, [user?.is_superadmin, active?.pos_enabled]);
+
+  useEffect(() => {
+    if (page === 'pos' && !active?.pos_enabled) setPage('dashboard');
+  }, [page, active?.pos_enabled]);
 
   if (booting) return <div className="empty" style={{ minHeight: '100vh', display: 'grid', placeItems: 'center' }}>Loading BillPro…</div>;
   if (!user) return (
@@ -393,7 +396,7 @@ export default function App() {
           ) : (
             <>
               {page === 'dashboard' && <Dashboard business={active} goto={goto} toast={toast} />}
-              {page === 'pos' && <POS business={active} toast={toast} />}
+              {page === 'pos' && active.pos_enabled && <POS business={active} toast={toast} />}
               {page === 'billing' && <Billing business={active} user={user} initialType={nav.type} initialDocId={nav.docId} goto={goto} toast={toast} />}
               {page === 'khata' && <Khata business={active} initialType={nav.type} initialPartyId={nav.partyId} toast={toast} />}
               {page === 'inventory' && <Inventory business={active} toast={toast} />}
@@ -470,7 +473,7 @@ export default function App() {
 
         <button
           type="button"
-          className={`mobile-tab ${['inventory', 'reports', 'group', 'settings', 'admin', 'pos'].includes(page) ? 'active' : ''}`}
+          className={`mobile-tab ${['inventory', 'reports', 'group', 'settings', 'admin', ...(active?.pos_enabled ? ['pos'] : [])].includes(page) ? 'active' : ''}`}
           onClick={() => setDrawer(true)}
         >
           <div className="tab-icon-wrap">
@@ -505,7 +508,7 @@ export default function App() {
                 <Icon.chevRight size={15} style={{ color: '#94a3b8' }} />
               </button>
 
-              <button
+              {active?.pos_enabled ? <button
                 type="button"
                 className="mobile-sheet-btn"
                 onClick={() => {
@@ -521,7 +524,7 @@ export default function App() {
                   <small>Instant receipt & automatic stock reduction</small>
                 </div>
                 <Icon.chevRight size={15} style={{ color: '#94a3b8' }} />
-              </button>
+              </button> : null}
 
               <button
                 type="button"

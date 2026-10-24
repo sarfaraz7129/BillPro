@@ -202,6 +202,11 @@ async function run() {
   const subscriptionBeforeBusiness = db.prepare('SELECT plan FROM users WHERE lower(email)=lower(?)').get(EMAIL)?.plan;
   const nb = await call('POST', '/api/businesses', { name: 'Test Third Business', gstin: '29AAACT2727Q1ZQ', city: 'Bengaluru', state: 'Karnataka' });
   ok('creates a third business', nb.status === 201, nb.status);
+  ok('POS is disabled by default for a new business', nb.body.business.pos_enabled === 0, nb.body.business.pos_enabled);
+  const posEnabled = await call('PUT', `/api/businesses/${nb.body.business.id}`, { pos_enabled: 1 });
+  ok('business profile can enable POS', posEnabled.status === 200 && posEnabled.body.business.pos_enabled === 1, posEnabled.body.business?.pos_enabled);
+  const posDisabled = await call('PUT', `/api/businesses/${nb.body.business.id}`, { pos_enabled: 0 });
+  ok('business profile can disable POS again', posDisabled.status === 200 && posDisabled.body.business.pos_enabled === 0, posDisabled.body.business?.pos_enabled);
   const subscriptionAfterBusiness = db.prepare('SELECT plan FROM users WHERE lower(email)=lower(?)').get(EMAIL)?.plan;
   ok('adding a business does not reset the account subscription plan', subscriptionAfterBusiness === subscriptionBeforeBusiness, { before: subscriptionBeforeBusiness, after: subscriptionAfterBusiness });
   ok('GSTIN state code is derived', nb.body.business.state_code === '29', nb.body.business.state_code);

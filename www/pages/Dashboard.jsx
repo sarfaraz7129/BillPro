@@ -117,13 +117,13 @@ export default function Dashboard({ business, goto, toast }) {
           <span className="qa-sub">Invoice</span>
         </button>
 
-        <button type="button" className="quick-action-tile" onClick={() => goto('pos')}>
+        {business.pos_enabled ? <button type="button" className="quick-action-tile" onClick={() => goto('pos')}>
           <div className="qa-icon" style={{ background: '#fffbeb', color: '#d97706' }}>
             <Icon.pos size={19} />
           </div>
           <span className="qa-title">POS Bill</span>
           <span className="qa-sub">Counter</span>
-        </button>
+        </button> : null}
 
         <button type="button" className="quick-action-tile" onClick={() => goto('khata')}>
           <div className="qa-icon" style={{ background: '#f0fdf4', color: '#16a34a' }}>

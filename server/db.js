@@ -59,6 +59,7 @@ CREATE TABLE IF NOT EXISTS businesses (
   estimate_prefix   TEXT DEFAULT 'EST',
   estimate_counter  INTEGER NOT NULL DEFAULT 0,
   default_bill_mode TEXT DEFAULT 'estimate',
+  pos_enabled       INTEGER NOT NULL DEFAULT 0,
   quoter_prefix     TEXT DEFAULT 'QT',
   quoter_counter    INTEGER NOT NULL DEFAULT 100,
   default_gst_rate  REAL NOT NULL DEFAULT 18,
@@ -307,6 +308,9 @@ try {
   }
   if (!bizCols.includes('default_bill_mode')) {
     db.exec("ALTER TABLE businesses ADD COLUMN default_bill_mode TEXT DEFAULT 'estimate'");
+  }
+  if (!bizCols.includes('pos_enabled')) {
+    db.exec('ALTER TABLE businesses ADD COLUMN pos_enabled INTEGER NOT NULL DEFAULT 0');
   }
 
   const bcrypt = require('bcryptjs');

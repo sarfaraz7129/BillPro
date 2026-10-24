@@ -289,6 +289,12 @@ export default function Settings({ business, user, onBusinessSaved, onAddBusines
                     <option value="gst">🏛️ Official GST Tax Invoice (~20% with GSTIN)</option>
                   </select>
                 </Field>
+                <Field label="Counter Billing (POS)" hint="Hidden from desktop and mobile menus unless enabled for this business">
+                  <label className="checkbox">
+                    <input type="checkbox" checked={Number(form.pos_enabled) === 1} onChange={(e) => set('pos_enabled', e.target.checked ? 1 : 0)} />
+                    Enable POS for this business
+                  </label>
+                </Field>
                 <Field label="Estimate series prefix" hint="e.g. EST- gives EST-1, EST-2...">
                   <input className="input" value={form.estimate_prefix || 'EST-'} onChange={(e) => set('estimate_prefix', e.target.value.toUpperCase())} />
                 </Field>

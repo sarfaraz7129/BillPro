@@ -38,13 +38,13 @@ router.post('/', auth, (req, res) => {
     (owner_id, name, legal_name, gstin, pan, address, city, state, state_code, pincode, phone, email, website,
      logo_url, bank_name, bank_account_no, bank_ifsc, bank_branch, upi_id, invoice_prefix, quoter_prefix,
      estimate_prefix, estimate_counter, default_bill_mode,
-     default_gst_rate, composition_scheme, invoice_theme, invoice_footer, terms, credit_days, color)
+     default_gst_rate, composition_scheme, invoice_theme, invoice_footer, terms, credit_days, color, pos_enabled)
     VALUES (@owner_id, @name, @legal_name, @gstin, @pan, @address, @city, @state, @state_code, @pincode, @phone,
             @email, @website, @logo_url, @bank_name, @bank_account_no, @bank_ifsc, @bank_branch, @upi_id,
             @invoice_prefix, @quoter_prefix,
             @estimate_prefix, @estimate_counter, @default_bill_mode,
             @default_gst_rate, @composition_scheme, @invoice_theme, @invoice_footer,
-            @terms, @credit_days, @color)`)
+            @terms, @credit_days, @color, @pos_enabled)`)
     .run({
       owner_id: ownerId,
       name: b.name,
@@ -76,7 +76,8 @@ router.post('/', auth, (req, res) => {
       invoice_footer: b.invoice_footer || null,
       terms: b.terms || null,
       credit_days: Number(b.credit_days) || 30,
-      color: b.color || '#4f46e5'
+      color: b.color || '#4f46e5',
+      pos_enabled: b.pos_enabled ? 1 : 0
     });
   const biz = db.prepare('SELECT * FROM businesses WHERE id = ?').get(info.lastInsertRowid);
   db.prepare('UPDATE users SET active_business_id = ? WHERE id = ? AND active_business_id IS NULL').run(biz.id, req.user.id);
@@ -140,7 +141,7 @@ router.put('/:id', auth, (req, res) => {
     logo_url=@logo_url, bank_name=@bank_name, bank_account_no=@bank_account_no, bank_ifsc=@bank_ifsc,
     bank_branch=@bank_branch, upi_id=@upi_id, invoice_prefix=@invoice_prefix, quoter_prefix=@quoter_prefix,
     estimate_prefix=@estimate_prefix, estimate_counter=@estimate_counter, default_bill_mode=@default_bill_mode,
-    default_gst_rate=@default_gst_rate, composition_scheme=@composition_scheme, invoice_theme=@invoice_theme,
+    default_gst_rate=@default_gst_rate, composition_scheme=@composition_scheme, invoice_theme=@invoice_theme, pos_enabled=@pos_enabled,
     invoice_footer=@invoice_footer, terms=@terms, credit_days=@credit_days, color=@color WHERE id=@id`)
     .run({
       id: biz.id,
@@ -169,6 +170,7 @@ router.put('/:id', auth, (req, res) => {
       default_bill_mode: b.default_bill_mode ?? (biz.default_bill_mode || 'estimate'),
       default_gst_rate: b.default_gst_rate !== undefined ? Number(b.default_gst_rate) : biz.default_gst_rate,
       composition_scheme: b.composition_scheme !== undefined ? (b.composition_scheme ? 1 : 0) : biz.composition_scheme,
+      pos_enabled: b.pos_enabled !== undefined ? (b.pos_enabled ? 1 : 0) : (biz.pos_enabled || 0),
       invoice_theme: b.invoice_theme ?? biz.invoice_theme,
       invoice_footer: b.invoice_footer ?? biz.invoice_footer,
       terms: b.terms ?? biz.terms,
