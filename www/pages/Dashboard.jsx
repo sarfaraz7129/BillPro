@@ -108,7 +108,7 @@ export default function Dashboard({ business, goto, toast }) {
       </div>
 
       {/* Mobile App Quick Actions */}
-      <div className="mobile-quick-actions">
+      <div className={`mobile-quick-actions ${business.pos_enabled ? 'pos-enabled' : ''}`}>
         <button type="button" className="quick-action-tile" onClick={() => goto('billing', { type: 'sale', docId: 'new' })}>
           <div className="qa-icon" style={{ background: '#eef2ff', color: '#4f46e5' }}>
             <Icon.plus size={19} />
@@ -139,6 +139,14 @@ export default function Dashboard({ business, goto, toast }) {
           </div>
           <span className="qa-title">Stock</span>
           <span className="qa-sub">Items</span>
+        </button>
+
+        <button type="button" className="quick-action-tile" onClick={() => goto('reports')}>
+          <div className="qa-icon" style={{ background: '#ecfeff', color: '#0891b2' }}>
+            <Icon.chart size={19} />
+          </div>
+          <span className="qa-title">Reports</span>
+          <span className="qa-sub">Sales & GST</span>
         </button>
       </div>
 

@@ -779,6 +779,9 @@ tr:hover .row-actions { opacity: 1; }
     gap: 8px;
     margin-bottom: 14px;
   }
+  .mobile-quick-actions.pos-enabled {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
   .quick-action-tile {
     display: flex;
     flex-direction: column;
