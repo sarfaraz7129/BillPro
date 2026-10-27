@@ -106,25 +106,11 @@ The public demo account is never a platform Super Admin. `demo@billpro.in` and `
 
 ---
 
-## ⏰ Preventing Render Free Tier Inactivity Sleep (24/7 Uptime)
+## Render Free Tier: Allowing the Service to Sleep
 
-Render free tier instances go to sleep after **15 minutes of inactivity**, resulting in a ~50s delay on the next visit. Three built-in ways keep your live service active 24/7:
+Render Free web services spin down after about **15 minutes without inbound traffic** and start again when a user visits; the first request after sleep can take about a minute. Sleeping services do not consume free instance-hours. Free instance-hours are shared across the Render workspace, so do not configure self-pingers, scheduled health checks, UptimeRobot, or cron jobs to keep this service awake. This project intentionally does not send keep-alive requests.
 
-### 1. Built-in Internal Pinger (Zero Setup Required)
-`server/index.js` automatically detects Render's `RENDER_EXTERNAL_URL` (or `KEEP_ALIVE_URL`) and pings `/api/health` every **14 minutes**, resetting the Render idle timer continuously while the server is active.
-
-### 2. Included GitHub Actions Workflow (Runs Every 14 Minutes)
-This repository includes `.github/workflows/keepalive.yml`:
-- Runs automatically on GitHub's free runners every 14 minutes.
-- To customize the URL: Go to your repo on GitHub → **Settings** → **Secrets and variables** → **Actions** → Add a secret named `RENDER_URL` with your full Render link (`https://your-service.onrender.com`).
-
-### 3. Free External Monitoring (UptimeRobot / Cron-Job.org — Most Popular)
-If your service ever sleeps (e.g. during a deploy restart), an external pinger wakes it up instantly:
-- Go to **[uptimerobot.com](https://uptimerobot.com/)** (100% free forever).
-- Click **Add New Monitor** → Monitor Type: `HTTP(s)`.
-- URL: `https://your-service.onrender.com/api/health`.
-- Monitoring Interval: `Every 5 minutes`.
-- Now your Render app stays awake permanently 24/7 with 0 cold starts!
+Render Free filesystems are ephemeral: local SQLite data can be lost when the service sleeps, restarts, or redeploys. Do not rely on the local SQLite database for live business records; use a durable external database (for example, the user's selected Neon PostgreSQL Free plan) before storing important data.
 
 ---
 
