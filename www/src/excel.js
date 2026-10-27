@@ -1,19 +1,5 @@
 import * as XLSX from 'xlsx';
 
-function downloadWorkbook(workbook, fileName) {
-  const bytes = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
-  const blob = new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = fileName;
-  link.style.display = 'none';
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  window.setTimeout(() => URL.revokeObjectURL(url), 1500);
-}
-
 export const PRODUCT_COLUMNS = [
   { key: 'name', label: 'Item Name*', required: true, aliases: ['item name', 'product name', 'item', 'product', 'name', 'title', 'particulars', 'description'] },
   { key: 'barcode', label: 'Barcode / Item Code', aliases: ['barcode', 'item code', 'code', 'sku', 'upc', 'product code'] },
@@ -109,25 +95,13 @@ export const PRODUCT_TEMPLATE_SAMPLE = [
   ];
 
 export function downloadProductTemplate() {
-  const data = PRODUCT_TEMPLATE_SAMPLE;
-
-  const ws = XLSX.utils.json_to_sheet(data);
-  ws['!cols'] = [
-    { wch: 35 }, // Item Name
-    { wch: 20 }, // Barcode
-    { wch: 16 }, // Category
-    { wch: 8 },  // Unit
-    { wch: 16 }, // Sale Price
-    { wch: 18 }, // Purchase Price
-    { wch: 14 }, // GST Rate
-    { wch: 15 }, // HSN
-    { wch: 14 }, // Opening Stock
-    { wch: 15 }  // Min Stock
-  ];
-
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'Products Template');
-  downloadWorkbook(wb, 'BillPro_Product_Import_Template.xlsx');
+  // Use an HTTP attachment; generated Blob downloads route to Print Service on some Android phones.
+  const link = document.createElement('a');
+  link.href = '/downloads/product-import-template.xlsx';
+  link.style.display = 'none';
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
 }
 
 /** Downloads sample Customer / Party import Excel template */

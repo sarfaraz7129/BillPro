@@ -65,6 +65,14 @@ app.get('/api/time', (req, res) => {
   });
 });
 
+app.get('/downloads/product-import-template.xlsx', (req, res, next) => {
+  const templatePath = path.join(WWW, 'templates', 'BillPro_Product_Import_Template.xlsx');
+  res.setHeader('Cache-Control', 'no-store');
+  res.download(templatePath, 'BillPro_Product_Import_Template.xlsx', (err) => {
+    if (err && !res.headersSent) next(err);
+  });
+});
+
 app.get('/api/health', (req, res) => {
   const businesses = db.prepare('SELECT COUNT(*) n FROM businesses').get().n;
   const docs = db.prepare('SELECT COUNT(*) n FROM documents').get().n;

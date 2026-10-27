@@ -36,6 +36,11 @@ async function run() {
   const server = app.listen(0);
   await new Promise((r) => server.once('listening', r));
   const base = `http://127.0.0.1:${server.address().port}`;
+  const productTemplate = await fetch(base + '/downloads/product-import-template.xlsx');
+  const productTemplateBytes = Buffer.from(await productTemplate.arrayBuffer());
+  ok('product Excel sample downloads as an attachment',
+    productTemplate.status === 200 && /attachment/i.test(productTemplate.headers.get('content-disposition') || '') && productTemplateBytes.subarray(0, 4).toString('hex') === '504b0304',
+    { status: productTemplate.status, disposition: productTemplate.headers.get('content-disposition'), signature: productTemplateBytes.subarray(0, 4).toString('hex') });
 
   let token = null;
   const call = async (method, path, body, headers = {}) => {
