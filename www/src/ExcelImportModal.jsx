@@ -27,20 +27,10 @@ export default function ExcelImportModal({ mode = 'products', partyType = 'custo
   const fileInputRef = useRef(null);
 
   const isProduct = mode === 'products';
-  const isMobileDevice = typeof window !== 'undefined' && (
-    window.innerWidth <= 680 ||
-    /Android|iPhone|iPad|iPod|Mobile/i.test(window.navigator?.userAgent || '') ||
-    (typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches)
-  );
   const schemaColumns = isProduct ? PRODUCT_COLUMNS : PARTY_COLUMNS;
   const title = isProduct ? 'Import Products from Excel / CSV' : `Import ${partyType === 'supplier' ? 'Suppliers' : 'Customers'} from Excel / CSV`;
 
   const handleDownloadTemplate = () => {
-    if (isProduct && isMobileDevice) {
-      setShowProductSample(true);
-      toast('The product sample is shown in BillPro on phones to avoid the Android print-service screen.', 'info');
-      return;
-    }
     if (isProduct) {
       downloadProductTemplate();
       toast('Product Excel template downloaded', 'ok');
@@ -205,15 +195,9 @@ export default function ExcelImportModal({ mode = 'products', partyType = 'custo
                   {showProductSample ? 'Hide sample preview' : 'View sample'}
                 </button>
               )}
-              {isProduct && isMobileDevice ? (
-                <div role="status" style={{ fontSize: 11, color: '#166534', maxWidth: 210 }}>
-                  Sample preview is shown below. Excel download is available on desktop.
-                </div>
-              ) : (
-                <button type="button" className="btn green" onClick={handleDownloadTemplate}>
-                  <Icon.download size={14} /> Download Sample (.xlsx)
-                </button>
-              )}
+              <button type="button" className="btn green" onClick={handleDownloadTemplate}>
+                <Icon.download size={14} /> Download Sample (.xlsx)
+              </button>
             </div>
           </div>
 
