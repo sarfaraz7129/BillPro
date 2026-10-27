@@ -23,7 +23,7 @@ export default function ExcelImportModal({ mode = 'products', partyType = 'custo
   const [importing, setImporting] = useState(false);
   const [parsing, setParsing] = useState(false);
   const [step, setStep] = useState(1); // 1 = Upload, 2 = Preview & Map
-  const [showProductSample, setShowProductSample] = useState(false);
+  const [showProductSample, setShowProductSample] = useState(true);
   const fileInputRef = useRef(null);
 
   const isProduct = mode === 'products';
@@ -179,7 +179,9 @@ export default function ExcelImportModal({ mode = 'products', partyType = 'custo
                 Need the official Excel format?
               </div>
               <div style={{ fontSize: 13, color: '#15803d' }}>
-                Download our sample Excel template pre-filled with sample rows, proper columns, and GST rates.
+                {isProduct
+                  ? 'View the sample rows below in BillPro. Download the .xlsx only if you need to edit it in Excel or Sheets.'
+                  : 'Download our sample Excel template pre-filled with sample rows and proper columns.'}
               </div>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
