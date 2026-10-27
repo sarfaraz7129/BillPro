@@ -1,5 +1,19 @@
 import * as XLSX from 'xlsx';
 
+function downloadWorkbook(workbook, fileName) {
+  const bytes = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
+  const blob = new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = fileName;
+  link.style.display = 'none';
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1500);
+}
+
 export const PRODUCT_COLUMNS = [
   { key: 'name', label: 'Item Name*', required: true, aliases: ['item name', 'product name', 'item', 'product', 'name', 'title', 'particulars', 'description'] },
   { key: 'barcode', label: 'Barcode / Item Code', aliases: ['barcode', 'item code', 'code', 'sku', 'upc', 'product code'] },
@@ -30,9 +44,8 @@ export const PARTY_COLUMNS = [
   { key: 'credit_days', label: 'Credit Period (Days)', aliases: ['credit period', 'credit days', 'due days'] }
 ];
 
-/** Downloads sample Product import Excel template */
-export function downloadProductTemplate() {
-  const data = [
+/** Sample rows shared by the in-app preview and Excel template download. */
+export const PRODUCT_TEMPLATE_SAMPLE = [
     {
       'Item Name*': 'Tata Tea Gold 500g',
       'Barcode / Item Code': '8901030382341',
@@ -95,6 +108,9 @@ export function downloadProductTemplate() {
     }
   ];
 
+export function downloadProductTemplate() {
+  const data = PRODUCT_TEMPLATE_SAMPLE;
+
   const ws = XLSX.utils.json_to_sheet(data);
   ws['!cols'] = [
     { wch: 35 }, // Item Name
@@ -111,7 +127,7 @@ export function downloadProductTemplate() {
 
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Products Template');
-  XLSX.writeFile(wb, 'BillPro_Product_Import_Template.xlsx');
+  downloadWorkbook(wb, 'BillPro_Product_Import_Template.xlsx');
 }
 
 /** Downloads sample Customer / Party import Excel template */

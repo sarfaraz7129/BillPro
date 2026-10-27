@@ -5,6 +5,7 @@ import { Modal } from './components.jsx';
 import {
   PRODUCT_COLUMNS,
   PARTY_COLUMNS,
+  PRODUCT_TEMPLATE_SAMPLE,
   downloadProductTemplate,
   downloadPartyTemplate,
   parseSpreadsheet,
@@ -22,6 +23,7 @@ export default function ExcelImportModal({ mode = 'products', partyType = 'custo
   const [importing, setImporting] = useState(false);
   const [parsing, setParsing] = useState(false);
   const [step, setStep] = useState(1); // 1 = Upload, 2 = Preview & Map
+  const [showProductSample, setShowProductSample] = useState(false);
   const fileInputRef = useRef(null);
 
   const isProduct = mode === 'products';
@@ -180,10 +182,57 @@ export default function ExcelImportModal({ mode = 'products', partyType = 'custo
                 Download our sample Excel template pre-filled with sample rows, proper columns, and GST rates.
               </div>
             </div>
-            <button className="btn green" onClick={handleDownloadTemplate}>
-              <Icon.download size={14} /> Download Sample Template (.xlsx)
-            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              {isProduct && (
+                <button
+                  type="button"
+                  className="btn"
+                  aria-expanded={showProductSample}
+                  onClick={() => setShowProductSample((shown) => !shown)}
+                >
+                  {showProductSample ? 'Hide sample preview' : 'View sample'}
+                </button>
+              )}
+              <button type="button" className="btn green" onClick={handleDownloadTemplate}>
+                <Icon.download size={14} /> Download Sample (.xlsx)
+              </button>
+            </div>
           </div>
+
+          {isProduct && showProductSample && (
+            <div style={{ border: '1px solid var(--line)', borderRadius: 10, background: 'var(--surface)', overflow: 'hidden' }}>
+              <div style={{ padding: '10px 12px', background: 'var(--surface-2)', borderBottom: '1px solid var(--line)' }}>
+                <div style={{ fontSize: 13, fontWeight: 700 }}>Product spreadsheet sample</div>
+                <div style={{ marginTop: 3, fontSize: 11, color: 'var(--muted)' }}>
+                  Preview it here without opening another app or connecting a printer. Download the .xlsx file if you want to edit it.
+                </div>
+              </div>
+              <div style={{ maxHeight: 250, overflow: 'auto', WebkitOverflowScrolling: 'touch' }}>
+                <table style={{ borderCollapse: 'collapse', minWidth: 980, width: '100%', fontSize: 11 }}>
+                  <thead>
+                    <tr>
+                      {Object.keys(PRODUCT_TEMPLATE_SAMPLE[0] || {}).map((heading) => (
+                        <th key={heading} style={{ position: 'sticky', top: 0, zIndex: 1, background: 'var(--surface-2)', textAlign: 'left', padding: '8px 9px', borderBottom: '1px solid var(--line)', whiteSpace: 'nowrap' }}>
+                          {heading}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {PRODUCT_TEMPLATE_SAMPLE.map((row) => (
+                      <tr key={row['Item Name*']}>
+                        {Object.values(row).map((value, index) => (
+                          <td key={index} style={{ padding: '7px 9px', borderBottom: '1px solid var(--line)', whiteSpace: 'nowrap' }}>
+                            {value === '' || value === null || value === undefined ? '—' : String(value)}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
 
           {/* Upload Drop Zone */}
           <div
