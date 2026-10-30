@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, setToken, setBizId, getBizId, getToken, syncServerTime } from './api.js';
 import { Icon, initials, colorFor } from './ui.jsx';
 import { Toasts, Modal, Field, GstRateInput } from './components.jsx';
@@ -138,6 +138,35 @@ export default function App() {
     window.addEventListener('online', on); window.addEventListener('offline', off);
     return () => { window.removeEventListener('billpro:signed-out', out); window.removeEventListener('online', on); window.removeEventListener('offline', off); };
   }, []);
+
+  // Render Free sleeps after 15 minutes without inbound requests. Keep it warm only
+  // while a signed-in user is actively interacting; never run a background keep-alive.
+  const lastUserActivityRef = useRef(Date.now());
+  useEffect(() => {
+    if (!user) return undefined;
+    const markActive = () => { lastUserActivityRef.current = Date.now(); };
+    markActive();
+    const pingWhileActive = () => {
+      if (!navigator.onLine || document.visibilityState !== 'visible') return;
+      if (Date.now() - lastUserActivityRef.current > 10 * 60 * 1000) return;
+      fetch('/api/time', { cache: 'no-store', credentials: 'same-origin' }).catch(() => {});
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        markActive();
+        pingWhileActive();
+      }
+    };
+    const activityEvents = ['pointerdown', 'keydown', 'touchstart', 'scroll'];
+    activityEvents.forEach((eventName) => window.addEventListener(eventName, markActive, { passive: true }));
+    document.addEventListener('visibilitychange', onVisibility);
+    const heartbeat = window.setInterval(pingWhileActive, 8 * 60 * 1000);
+    return () => {
+      window.clearInterval(heartbeat);
+      activityEvents.forEach((eventName) => window.removeEventListener(eventName, markActive));
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, [user]);
 
   const switchBusiness = async (b) => {
     setActive(b); setBizId(b.id); setNav({});

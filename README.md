@@ -108,7 +108,7 @@ The public demo account is never a platform Super Admin. `demo@billpro.in` and `
 
 ## Render Free Tier: Allowing the Service to Sleep
 
-Render Free web services spin down after about **15 minutes without inbound traffic** and start again when a user visits; the first request after sleep can take about a minute. Sleeping services do not consume free instance-hours. Free instance-hours are shared across the Render workspace, so do not configure self-pingers, scheduled health checks, UptimeRobot, or cron jobs to keep this service awake. This project intentionally does not send keep-alive requests.
+Render Free web services spin down after about **15 minutes without inbound traffic** and start again when a user visits; the first request after sleep can take about a minute. Sleeping services do not consume free instance-hours. While a signed-in user is actively interacting with BillPro in a visible tab, the app sends a lightweight time request every 8 minutes so the service stays awake during use. These requests stop when the tab is hidden or there has been no interaction for 10 minutes. Do not configure server-side self-pingers, UptimeRobot, or cron jobs; free instance-hours are shared across the Render workspace.
 
 Render Free filesystems are ephemeral: local SQLite data can be lost when the service sleeps, restarts, or redeploys. Do not rely on the local SQLite database for live business records; use a durable external database (for example, the user's selected Neon PostgreSQL Free plan) before storing important data.
 
