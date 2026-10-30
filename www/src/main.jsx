@@ -140,13 +140,21 @@ export default function App() {
   }, []);
 
   // Render Free sleeps after 15 minutes without inbound requests. Keep it warm only
-  // while a signed-in user is actively interacting; never run a background keep-alive.
+  // during the 06:00–23:00 IST service window and while a signed-in user is active.
+  // This is browser-side gating, not a background job or an always-on keep-alive.
   const lastUserActivityRef = useRef(Date.now());
   useEffect(() => {
     if (!user) return undefined;
     const markActive = () => { lastUserActivityRef.current = Date.now(); };
+    const isInsideServiceWindow = () => {
+      const hourInIndia = Number(new Intl.DateTimeFormat('en-IN', {
+        timeZone: 'Asia/Kolkata', hour: '2-digit', hourCycle: 'h23'
+      }).format(new Date()));
+      return hourInIndia >= 6 && hourInIndia < 23;
+    };
     markActive();
     const pingWhileActive = () => {
+      if (!isInsideServiceWindow()) return;
       if (!navigator.onLine || document.visibilityState !== 'visible') return;
       if (Date.now() - lastUserActivityRef.current > 10 * 60 * 1000) return;
       fetch('/api/time', { cache: 'no-store', credentials: 'same-origin' }).catch(() => {});
