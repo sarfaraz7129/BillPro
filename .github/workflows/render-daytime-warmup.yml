@@ -20,5 +20,5 @@ jobs:
           curl --fail --silent --show-error
           --retry 3 --retry-connrefused --retry-delay 10 --retry-max-time 180
           --max-time 120
-          https://billpro-84ay.onrender.com/api/time
+        https://billpro-kye9.onrender.com/api/time
           --output /dev/null
