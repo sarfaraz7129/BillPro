@@ -2,9 +2,12 @@ name: Keep BillPro warm during customer hours
 
 on:
   schedule:
-    - cron: '15,25,35,45,55 0 * * *'
-    - cron: '5,15,25,35,45,55 1-16 * * *'
-    - cron: '5,15 17 * * *'
+    - cron: '45,55 5 * * *'
+      timezone: 'Asia/Kolkata'
+    - cron: '5,15,25,35,45,55 6-21 * * *'
+      timezone: 'Asia/Kolkata'
+    - cron: '5,15,25,35,45 22 * * *'
+      timezone: 'Asia/Kolkata'
   workflow_dispatch:
 
 permissions:
