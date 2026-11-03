@@ -322,7 +322,7 @@ export default function Billing({ business, user, initialType, initialDocId, got
           setThermalWidth(w || localStorage.getItem('billpro.receipt_width') || '80');
         }}
         onConvertToGst={convertToGst}
-        onPaid={async (d, amount, mode) => { try { await api.payDocument(d.id, { amount, mode }); toast('Payment recorded', 'ok'); const fresh = await api.document(d.id); setView(fresh); load(); } catch (e) { toast(e.message, 'err'); } }}
+        onPaid={async (d, amount, mode, allDue) => { try { await api.payDocument(d.id, { amount, mode, allDue }); toast(allDue ? 'Payment allocated across customer due bills, oldest first' : 'Payment recorded', 'ok'); const fresh = await api.document(d.id); setView(fresh); load(); } catch (e) { toast(e.message, 'err'); } }}
         onEwb={async (d, body) => { try { const r = await api.ewaybill(d.id, body); toast(`E-Way Bill ${r.ewaybillNo} generated`, 'ok'); setView(await api.document(d.id)); } catch (e) { toast(e.message, 'err'); } }}
         onEinv={async (d) => { try { const r = await api.einvoice(d.id); toast(`e-Invoice IRN generated: ${r.ackNo}`, 'ok'); setView(await api.document(d.id)); } catch (e) { toast(e.message, 'err'); } }}
         onDuplicate={async (d) => { try { const r = await api.duplicateDocument(d.id); toast(`Copied to ${r.document.number}`, 'ok'); setView(r); load(); } catch (e) { toast(e.message, 'err'); } }}
@@ -375,10 +375,30 @@ function DocViewer({ doc, party, payments, business, onClose, onEdit, onShare, o
   const [ewbOpen, setEwbOpen] = useState(false);
   const [payAmt, setPayAmt] = useState(doc.due_amount || 0);
   const [payMode, setPayMode] = useState('upi');
+  const [customerDueTotal, setCustomerDueTotal] = useState(doc.due_amount || 0);
+  const [dueLoading, setDueLoading] = useState(false);
   const [ewb, setEwb] = useState({ vehicleNo: doc.vehicle_no || '', transportDocNo: doc.transport_doc_no || '', validDays: 4 });
   const isSale = doc.type === 'sale';
   const isPurchase = doc.type === 'purchase';
   const isEstimate = Boolean(doc.is_estimate);
+  const openPayment = async () => {
+    setPayOpen(true);
+    setPayAmt(doc.due_amount || 0);
+    setCustomerDueTotal(doc.due_amount || 0);
+    if (isSale && doc.party_id) {
+      setDueLoading(true);
+      try {
+        const summary = await api.partyOutstanding(doc.party_id);
+        const total = Math.max(0, Number(summary.totalDue) || 0);
+        setCustomerDueTotal(total);
+        setPayAmt(total);
+      } catch (e) {
+        toast(e.message || 'Could not load customer due bills', 'err');
+      } finally {
+        setDueLoading(false);
+      }
+    }
+  };
 
   return (
     <>
@@ -404,8 +424,8 @@ function DocViewer({ doc, party, payments, business, onClose, onEdit, onShare, o
                 🏛️ Convert to GST Invoice
               </button>
             )}
-            {isSale && doc.due_amount > 0 && doc.status === 'active' && <button className="btn green" onClick={() => setPayOpen(true)}><Icon.rupee size={14} /> Receive payment</button>}
-            {isPurchase && doc.due_amount > 0 && doc.status === 'active' && <button className="btn red" onClick={() => setPayOpen(true)}><Icon.rupee size={14} /> Pay supplier</button>}
+            {isSale && doc.due_amount > 0 && doc.status === 'active' && <button className="btn green" onClick={openPayment}><Icon.rupee size={14} /> Receive payment</button>}
+            {isPurchase && doc.due_amount > 0 && doc.status === 'active' && <button className="btn red" onClick={openPayment}><Icon.rupee size={14} /> Pay supplier</button>}
             <button className="btn" onClick={() => onDuplicate(doc)}><Icon.copy size={14} /> Duplicate</button>
             <button className="btn" onClick={() => onEdit(doc)}><Icon.edit size={14} /> Edit</button>
             <button
@@ -754,13 +774,13 @@ function DocViewer({ doc, party, payments, business, onClose, onEdit, onShare, o
       </Modal>
 
       {payOpen && (
-        <Modal title={isPurchase ? 'Pay supplier bill' : 'Receive payment'} sub={`${doc.party_name} · balance ${money(doc.due_amount)}`} onClose={() => setPayOpen(false)}
+        <Modal title={isPurchase ? 'Pay supplier bill' : 'Receive payment'} sub={`${doc.party_name || 'Customer'} · ${isSale && doc.party_id ? `all due ${money(customerDueTotal)}` : `balance ${money(doc.due_amount)}`}`} onClose={() => setPayOpen(false)}
           footer={<>
             <button className="btn" onClick={() => setPayOpen(false)}>Cancel</button>
-            <button className={`btn ${isPurchase ? 'red' : 'green'}`} onClick={() => { onPaid(doc, payAmt, payMode); setPayOpen(false); }} disabled={!payAmt || payAmt <= 0 || payAmt > doc.due_amount + 0.005}>Save payment</button>
+            <button className={`btn ${isPurchase ? 'red' : 'green'}`} onClick={() => { onPaid(doc, payAmt, payMode, isSale && !!doc.party_id); setPayOpen(false); }} disabled={dueLoading || !payAmt || payAmt <= 0 || payAmt > (isSale && doc.party_id ? customerDueTotal : doc.due_amount) + 0.005}>Save payment</button>
           </>}>
           <div className="form-grid">
-            <Field label={isPurchase ? 'Amount paid' : 'Amount received'} req><input className="input" type="number" min="0.01" max={doc.due_amount} step="0.01" value={payAmt} onChange={(e) => setPayAmt(Number(e.target.value))} /></Field>
+            <Field label={isPurchase ? 'Amount paid' : 'Amount received'} req><input className="input" type="number" min="0.01" max={isSale && doc.party_id ? customerDueTotal : doc.due_amount} step="0.01" value={payAmt} disabled={dueLoading} onChange={(e) => setPayAmt(Number(e.target.value))} /></Field>
             <Field label="Mode">
               <select className="input" value={payMode} onChange={(e) => setPayMode(e.target.value)}>
                 {['upi', 'cash', 'bank', 'card', 'cheque'].map((m) => <option key={m} value={m}>{m.toUpperCase()}</option>)}
@@ -768,14 +788,17 @@ function DocViewer({ doc, party, payments, business, onClose, onEdit, onShare, o
             </Field>
           </div>
           <div className="btn-row" style={{ marginTop: 10 }}>
-            <button className="btn sm" onClick={() => setPayAmt(Math.round(doc.due_amount * 100) / 100)}>
-              {isPurchase ? 'Full bill balance' : 'This invoice balance'}
+            <button className="btn sm" disabled={dueLoading} onClick={() => setPayAmt(Math.round((isSale && doc.party_id ? customerDueTotal : doc.due_amount) * 100) / 100)}>
+              {isPurchase ? 'Full bill balance' : 'Full balance'}
             </button>
+            {dueLoading && <span className="hint">Loading customer due bills…</span>}
           </div>
           <div className="hint" style={{ marginTop: 8 }}>
             {isPurchase
-              ? 'This payment applies only to this purchase bill. Other bills for this supplier stay due. No new item or invoice is created.'
-              : 'This payment applies only to this invoice. Any previous unpaid invoices stay due and must be paid from their own invoice. No new item is required.'}
+              ? 'This payment applies only to this purchase bill.'
+              : doc.party_id
+                ? 'Full balance includes this customer’s unpaid sales invoices. Payments are applied to the oldest due bill first.'
+                : 'Without a selected customer, payment applies only to this invoice.'}
           </div>
         </Modal>
       )}

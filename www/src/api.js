@@ -293,6 +293,7 @@ export const api = {
   duplicateDocument: (id) => request('POST', `/api/documents/${id}/duplicate`),
   convertToGst: (id) => request('POST', `/api/documents/${id}/convert-to-gst`),
   payDocument: (id, b) => request('POST', `/api/documents/${id}/payment`, b),
+  partyOutstanding: (id) => request('GET', `/api/documents/party/${id}/outstanding`),
   ewaybill: (id, b) => request('POST', `/api/documents/${id}/ewaybill`, b),
   einvoice: (id) => request('POST', `/api/documents/${id}/einvoice`),
   docQr: (id) => request('GET', `/api/documents/${id}/qr`),

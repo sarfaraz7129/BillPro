@@ -72,6 +72,19 @@ router.get('/', (req, res) => {
   });
 });
 
+/** Outstanding sales invoices for a customer; used by the consolidated receive-payment dialog. */
+router.get('/party/:partyId/outstanding', (req, res) => {
+  const party = db.prepare('SELECT id FROM parties WHERE id = ? AND business_id = ?')
+    .get(req.params.partyId, req.business.id);
+  if (!party) return res.status(404).json({ error: 'Customer not found' });
+  const invoices = db.prepare(`SELECT id, number, date, total, paid_amount, due_amount
+    FROM documents
+    WHERE business_id = ? AND party_id = ? AND type = 'sale' AND status = 'active' AND due_amount > 0
+    ORDER BY date ASC, id ASC`).all(req.business.id, party.id);
+  const totalDue = round2(invoices.reduce((sum, invoice) => sum + Number(invoice.due_amount || 0), 0));
+  res.json({ partyId: party.id, totalDue, invoiceCount: invoices.length, invoices });
+});
+
 /** Overdue invoices across the business - drives the reminder queue. */
 router.get('/reminders/overdue', (req, res) => {
   const today = istToday();
@@ -237,6 +250,59 @@ router.post('/:id/payment', (req, res) => {
   if (!doc) return res.status(404).json({ error: 'Document not found' });
   const amount = round2(Number(req.body?.amount));
   if (!amount || amount <= 0) return res.status(400).json({ error: 'Enter a payment amount' });
+
+  if (req.body?.allDue === true) {
+    if (doc.type !== 'sale' || !doc.party_id || doc.status !== 'active') {
+      return res.status(400).json({ error: 'Collect all due bills is available only from an active customer invoice.' });
+    }
+    const validModes = ['cash', 'upi', 'bank', 'card', 'cheque'];
+    const mode = validModes.includes(req.body?.mode) ? req.body.mode : 'cash';
+    const date = (req.isAdmin && req.body?.date) ? req.body.date : istToday();
+    const allocations = [];
+    let totalDue = 0;
+    let validationError = null;
+    let remaining = amount;
+    const tx = db.transaction(() => {
+      const invoices = db.prepare(`SELECT id, number, date, total, paid_amount, due_amount
+        FROM documents
+        WHERE business_id = ? AND party_id = ? AND type = 'sale' AND status = 'active' AND due_amount > 0
+        ORDER BY date ASC, id ASC`).all(req.business.id, doc.party_id);
+      totalDue = round2(invoices.reduce((sum, invoice) => sum + Number(invoice.due_amount || 0), 0));
+      if (totalDue <= 0) { validationError = 'This customer has no outstanding invoices.'; return; }
+      if (amount > totalDue + 0.005) {
+        validationError = `Amount exceeds the customer's total due of ${totalDue.toFixed(2)}.`;
+        return;
+      }
+      for (const invoice of invoices) {
+        if (remaining <= 0.005) break;
+        const due = round2(Number(invoice.due_amount || 0));
+        if (due <= 0) continue;
+        const applied = round2(Math.min(due, remaining));
+        const paid = round2(Number(invoice.paid_amount || 0) + applied);
+        const newDue = round2(Math.max(0, Number(invoice.total) - paid));
+        db.prepare(`INSERT INTO transactions (business_id, party_id, type, amount, date, mode, document_id, notes)
+          VALUES (?,?,?,?,?,?,?,?)`)
+          .run(req.business.id, doc.party_id, 'you_got', applied, date, mode, invoice.id, `Payment received · ${invoice.number}`);
+        db.prepare('UPDATE documents SET paid_amount = ?, due_amount = ?, payment_status = ? WHERE id = ?')
+          .run(paid, newDue, newDue <= 0.005 ? 'paid' : 'partial', invoice.id);
+        allocations.push({ documentId: invoice.id, number: invoice.number, amount: applied, dueRemaining: newDue });
+        remaining = round2(remaining - applied);
+      }
+      logActivity(req.business.id, req.user.id, 'payment.recorded', `Customer ${doc.party_name} paid ${amount} across ${allocations.length} invoice(s)`);
+    });
+    tx();
+    if (validationError) return res.status(400).json({ error: validationError });
+    const totalDueAfter = round2(totalDue - amount);
+    return res.json({
+      document: getDoc(req, doc.id),
+      totalReceived: amount,
+      totalDueBefore: totalDue,
+      totalDueAfter,
+      allocations,
+      allocationOrder: 'oldest-first'
+    });
+  }
+
   const mode = req.body?.mode || 'cash';
   const todayIST = istToday();
   const date = (req.isAdmin && req.body?.date) ? req.body.date : todayIST;

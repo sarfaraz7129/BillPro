@@ -117,6 +117,26 @@ async function run() {
   ok('customer remains available after blocked delete', (await call('GET', `/api/parties/${kerala.id}`)).status === 200);
   ok('amount in words is filled', /Rupees.*Only/.test(d.amount_in_words), d.amount_in_words);
 
+  console.log('\n--- collect all customer due invoices ---');
+  const inv2 = await call('POST', '/api/documents', {
+    type: 'sale', partyId: kerala.id, partyName: kerala.name, partyGstin: kerala.gstin, partyStateCode: kerala.state_code,
+    items: [{ name: 'Consultation service', hsn: '9983', unit: 'service', qty: 1, rate: 1000, gstRate: 0 }],
+    roundOff: false, paidAmount: 0
+  });
+  ok('creates a second unpaid invoice without changing stock', inv2.status === 201, inv2.status);
+  const secondDoc = inv2.body.document;
+  const dueSummary = await call('GET', `/api/documents/party/${kerala.id}/outstanding`);
+  ok('full balance includes every active due invoice for customer', dueSummary.status === 200 && dueSummary.body.invoiceCount >= 2 && dueSummary.body.invoices.some((x) => x.id === d.id) && dueSummary.body.invoices.some((x) => x.id === secondDoc.id) && near(dueSummary.body.totalDue, dueSummary.body.invoices.reduce((sum, x) => sum + x.due_amount, 0)), dueSummary.body);
+  const firstAllocation = await call('POST', `/api/documents/${d.id}/payment`, { amount: 1, mode: 'cash', allDue: true });
+  ok('partial customer receipt is applied to the oldest due bill first', firstAllocation.status === 200 && firstAllocation.body.allocations[0]?.documentId === dueSummary.body.invoices[0]?.id && near(firstAllocation.body.allocations[0]?.amount, 1), firstAllocation.body);
+  const refreshedDue = await call('GET', `/api/documents/party/${kerala.id}/outstanding`);
+  const fullCollection = await call('POST', `/api/documents/${d.id}/payment`, { amount: refreshedDue.body.totalDue, mode: 'upi', allDue: true });
+  ok('one customer receipt allocates across all unpaid invoices', fullCollection.status === 200 && fullCollection.body.allocations.length === refreshedDue.body.invoiceCount && near(fullCollection.body.totalDueAfter, 0), fullCollection.body);
+  const settledDocs = await Promise.all(refreshedDue.body.invoices.map((x) => call('GET', `/api/documents/${x.id}`)));
+  ok('every due bill is marked paid after full-balance collection', settledDocs.every((x) => x.status === 200 && x.body.document.payment_status === 'paid' && near(x.body.document.due_amount, 0)), settledDocs.map((x) => x.body.document && ({ number: x.body.document.number, status: x.body.document.payment_status, due: x.body.document.due_amount })));
+  const overCollection = await call('POST', `/api/documents/${d.id}/payment`, { amount: 1, mode: 'cash', allDue: true });
+  ok('prevents collecting more than the customer total due', overCollection.status === 400, overCollection.body);
+
   console.log('\n--- inventory posting ---');
   const after = await call('GET', '/api/products');
   const riceAfter = after.body.products.find((p) => p.id === rice.id);
