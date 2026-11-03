@@ -242,19 +242,50 @@ router.get(['/profit', '/profit-loss'], (req, res) => {
     months.push(cursor.toISOString().slice(0, 7));
     cursor.setUTCMonth(cursor.getUTCMonth() + 1);
   }
+
+  // Purchases are not automatically the cost of goods sold: unsold stock remains inventory.
+  // Estimate COGS from sold quantities and the item's current catalog purchase price. For
+  // older documents without a stored cost snapshot, this is necessarily an estimate.
+  const productCosts = new Map(db.prepare('SELECT id, purchase_price FROM products WHERE business_id=?').all(req.business.id)
+    .map((p) => [Number(p.id), Number(p.purchase_price) || 0]));
+  const cogsByMonth = new Map(months.map((m) => [m, 0]));
+  const saleDocs = db.prepare(`SELECT date, items FROM documents
+    WHERE business_id=? AND type='sale' AND status='active'
+      AND date BETWEEN ? AND ?`).all(req.business.id, from, to);
+  let uncostedLines = 0;
+  for (const doc of saleDocs) {
+    const month = String(doc.date || '').slice(0, 7);
+    if (!cogsByMonth.has(month)) continue;
+    let items = [];
+    try { items = JSON.parse(doc.items || '[]'); } catch {}
+    for (const item of items) {
+      const productId = Number(item.product_id) || 0;
+      if (!productId) { uncostedLines++; continue; }
+      const lineCost = item.cost_price ?? item.purchase_price;
+      const hasSnapshot = lineCost !== undefined && lineCost !== null && Number.isFinite(Number(lineCost));
+      if (!hasSnapshot && !productCosts.has(productId)) { uncostedLines++; continue; }
+      const unitCost = hasSnapshot ? Number(lineCost) : productCosts.get(productId);
+      const qty = Math.abs(Number(item.qty) || 0);
+      const sign = item.isReturn || item.is_return || Number(item.qty) < 0 ? -1 : 1;
+      cogsByMonth.set(month, cogsByMonth.get(month) + sign * qty * unitCost);
+    }
+  }
+
   const rows = months.map((m) => {
     const mFrom = m + '-01';
     const mTo = m + '-31';
     const sales = round2(db.prepare("SELECT COALESCE(SUM(taxable_value),0) s FROM documents WHERE business_id=? AND type='sale' AND status='active' AND date BETWEEN ? AND ?").get(req.business.id, mFrom, mTo).s);
     const purchases = round2(db.prepare("SELECT COALESCE(SUM(taxable_value),0) s FROM documents WHERE business_id=? AND type='purchase' AND status='active' AND date BETWEEN ? AND ?").get(req.business.id, mFrom, mTo).s);
+    const cogs = round2(cogsByMonth.get(m) || 0);
     const expenses = round2(db.prepare("SELECT COALESCE(SUM(total),0) s FROM documents WHERE business_id=? AND type='expense' AND status='active' AND date BETWEEN ? AND ?").get(req.business.id, mFrom, mTo).s);
-    return { month: m, sales, purchases, expenses, grossProfit: round2(sales - purchases), netProfit: round2(sales - purchases - expenses), margin: sales ? round2(((sales - purchases) / sales) * 100) : 0 };
+    const grossProfit = round2(sales - cogs);
+    return { month: m, sales, purchases, cogs, expenses, grossProfit, netProfit: round2(grossProfit - expenses), margin: sales ? round2((grossProfit / sales) * 100) : 0 };
   });
   const total = rows.reduce((a, r) => ({
-    sales: round2(a.sales + r.sales), purchases: round2(a.purchases + r.purchases),
+    sales: round2(a.sales + r.sales), purchases: round2(a.purchases + r.purchases), cogs: round2(a.cogs + r.cogs),
     expenses: round2(a.expenses + r.expenses), grossProfit: round2(a.grossProfit + r.grossProfit), netProfit: round2(a.netProfit + r.netProfit)
-  }), { sales: 0, purchases: 0, expenses: 0, grossProfit: 0, netProfit: 0 });
-  res.json({ period: { from, to }, rows, total });
+  }), { sales: 0, purchases: 0, cogs: 0, expenses: 0, grossProfit: 0, netProfit: 0 });
+  res.json({ period: { from, to }, rows, total, costBasis: 'Estimated from current catalog purchase prices', uncostedLines });
 });
 
 /** Receivables ageing buckets (0-30, 31-60, 61-90, 90+ days). */

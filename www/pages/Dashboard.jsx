@@ -76,8 +76,8 @@ export default function Dashboard({ business, goto, toast }) {
             <b className="moc-stat-v">{money(d.monthSales)}</b>
           </div>
           <div className="moc-stat" onClick={() => goto('reports')}>
-            <span className="moc-stat-k">Net GST</span>
-            <b className="moc-stat-v">{money(d.netTax)}</b>
+            <span className="moc-stat-k">GST position</span>
+            <b className="moc-stat-v" style={{ color: d.netTax > 0 ? 'var(--red)' : d.netTax < 0 ? 'var(--amber)' : 'var(--muted)' }}>{money(d.netTax)}</b>
           </div>
         </div>
       </div>
@@ -104,7 +104,7 @@ export default function Dashboard({ business, goto, toast }) {
         />
         <Stat label="To collect" value={money(d.receivable)} foot={`${d.overdueCount} overdue (${moneyShort(d.overdueAmount)})`} icon={Icon.wallet} color="#dc2626" soft="var(--red-soft)" onClick={() => goto('khata')} warn={d.overdueCount > 0} />
         <Stat label="To pay" value={money(d.payable)} foot="Supplier bills pending" icon={Icon.arrowUp} color="#d97706" soft="var(--amber-soft)" onClick={() => goto('billing', { type: 'purchase' })} />
-        <Stat label="Net GST payable" value={money(d.netTax)} foot="Output tax less ITC" icon={Icon.shield} color="#059669" soft="var(--green-soft)" onClick={() => goto('reports')} />
+        <Stat label="GST position (all records)" value={money(d.netTax)} foot={d.netTax < 0 ? `Recorded purchase tax exceeds sales tax by ${moneyShort(Math.abs(d.netTax))}; check GSTR-3B` : 'Output tax less recorded purchase tax; verify in GSTR-3B'} icon={Icon.shield} color={d.netTax > 0 ? '#dc2626' : '#d97706'} soft={d.netTax > 0 ? 'var(--red-soft)' : 'var(--amber-soft)'} onClick={() => goto('reports')} />
       </div>
 
       {/* Mobile App Quick Actions */}

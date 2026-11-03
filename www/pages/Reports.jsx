@@ -153,7 +153,8 @@ function TaxTable({ rows, total }) {
 }
 
 function Kpi({ label, value, foot, tone }) {
-  return <div className="stat"><div className="lbl">{label}</div><div className={`val ${tone || ''}`} style={{ fontSize: 19 }}>{value}</div><div className="foot">{foot}</div></div>;
+  const toneColor = tone === 'pos' ? 'var(--green)' : tone === 'neg' ? 'var(--red)' : undefined;
+  return <div className="stat"><div className="lbl">{label}</div><div className={`val ${tone || ''}`} style={{ fontSize: 19, color: toneColor }}>{value}</div><div className="foot">{foot}</div></div>;
 }
 
 function Gstr1({ d }) {
@@ -258,21 +259,24 @@ function Profit({ d }) {
     <>
       <div className="grid g5" style={{ marginBottom: 14 }}>
         <Kpi label="Sales" value={money(d.total.sales)} foot="Taxable value" />
-        <Kpi label="Purchases" value={money(d.total.purchases)} foot="Cost of goods" tone="neg" />
+        <Kpi label="Estimated COGS" value={money(d.total.cogs)} foot="Cost of items sold" tone="neg" />
         <Kpi label="Expenses" value={money(d.total.expenses)} foot="Overheads" tone="neg" />
-        <Kpi label="Gross profit" value={money(d.total.grossProfit)} foot={`${d.total.sales ? ((d.total.grossProfit / d.total.sales) * 100).toFixed(1) : 0}% margin`} tone="pos" />
+        <Kpi label="Gross profit" value={money(d.total.grossProfit)} foot={`${d.total.sales ? ((d.total.grossProfit / d.total.sales) * 100).toFixed(1) : 0}% margin`} tone={d.total.grossProfit >= 0 ? 'pos' : 'neg'} />
         <Kpi label="Net profit" value={money(d.total.netProfit)} foot="After expenses" tone={d.total.netProfit >= 0 ? 'pos' : 'neg'} />
+      </div>
+      <div className="hint" style={{ marginBottom: 12 }}>
+        Purchases are not all an expense when bought; unsold goods remain inventory. Estimated COGS uses current product purchase prices, so historical results may change if item costs are edited. {d.uncostedLines ? `${d.uncostedLines} sold item line(s) had no cost and were excluded.` : ''}
       </div>
       <Card title="Month-wise profit & loss" sub={`${d.period.from} to ${d.period.to}`}>
         {d.rows.length === 0 ? <Empty title="No data in this period" /> : (
           <div className="tbl-wrap">
             <table className="tbl">
-              <thead><tr><th>Month</th><th className="num">Sales</th><th className="num">Purchases</th><th className="num">Expenses</th><th className="num">Gross profit</th><th className="num">Margin</th><th className="num">Net profit</th><th style={{ width: 150 }} /></tr></thead>
+              <thead><tr><th>Month</th><th className="num">Sales</th><th className="num">Est. COGS</th><th className="num">Expenses</th><th className="num">Gross profit</th><th className="num">Margin</th><th className="num">Net profit</th><th style={{ width: 150 }} /></tr></thead>
               <tbody>{d.rows.map((r) => (
                 <tr key={r.month}>
                   <td className="strong">{r.month}</td>
-                  <td className="num">{money(r.sales)}</td><td className="num muted">{money(r.purchases)}</td><td className="num muted">{money(r.expenses)}</td>
-                  <td className="num">{money(r.grossProfit)}</td>
+                  <td className="num">{money(r.sales)}</td><td className="num muted">{money(r.cogs)}</td><td className="num muted">{money(r.expenses)}</td>
+                  <td className={`num strong ${r.grossProfit >= 0 ? 'pos' : 'neg'}`}>{money(r.grossProfit)}</td>
                   <td className="num"><span className={`pill ${r.margin >= 20 ? 'green' : r.margin > 0 ? 'grey' : 'red'}`}>{r.margin}%</span></td>
                   <td className={`num strong ${r.netProfit >= 0 ? 'pos' : 'neg'}`}>{money(r.netProfit)}</td>
                   <td><div className="bar-track"><div className="bar-fill" style={{ width: `${(r.sales / max) * 100}%`, background: r.netProfit >= 0 ? 'var(--green)' : 'var(--red)' }} /></div></td>

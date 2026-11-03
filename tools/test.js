@@ -187,6 +187,10 @@ async function run() {
   const pmtCsv = await fetch(base + '/api/reports/export/payments', { headers: { Authorization: 'Bearer ' + token } });
   const pmtCsvText = await pmtCsv.text();
   ok('payments CSV export works', pmtCsv.status === 200 && pmtCsvText.includes('"Receipt ID"'), pmtCsvText.slice(0, 40));
+  const pnl = await call('GET', '/api/reports/profit?from=2000-01-01&to=2099-12-31');
+  ok('profit report separates purchases from estimated COGS', pnl.status === 200 && typeof pnl.body.total.cogs === 'number', pnl.body.total);
+  ok('gross profit is sales less estimated COGS', near(pnl.body.total.grossProfit, pnl.body.total.sales - pnl.body.total.cogs), pnl.body.total);
+  ok('net profit is gross profit less expenses', near(pnl.body.total.netProfit, pnl.body.total.grossProfit - pnl.body.total.expenses), pnl.body.total);
   const g1 = await call('GET', '/api/reports/gstr1');
   ok('GSTR-1 has B2B rows', g1.body.b2b.length > 0, g1.body.b2b.length);
   ok('GSTR-1 HSN summary is populated', g1.body.hsn.length > 0, g1.body.hsn.length);
