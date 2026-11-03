@@ -222,7 +222,7 @@ function Ledger({ partyId, business, onClose, onEdit, onChanged, toast }) {
 
       <div className="card" style={{ boxShadow: 'none' }}>
         <div className="card-b" style={{ padding: '12px 16px' }}>
-          <div className="stmt-entry" style={{ fontWeight: 700, fontSize: 11, textTransform: 'uppercase', color: 'var(--muted)', letterSpacing: '.05em' }}>
+          <div className="stmt-entry stmt-header" style={{ fontWeight: 700, fontSize: 11, textTransform: 'uppercase', color: 'var(--muted)', letterSpacing: '.05em' }}>
             <div className="dt">Date</div><div>Particulars</div><div className="num" style={{ textAlign: 'right', width: 92 }}>Debit</div>
             <div className="num" style={{ textAlign: 'right', width: 92 }}>Credit</div><div className="bal">Balance</div>
           </div>
