@@ -147,6 +147,9 @@ export default function DocumentEditor({ business, type, doc, user, onClose, onS
     if (type !== 'expense' && !form.partyId && !String(form.partyName || '').trim()) {
       return setErr('Choose a customer/supplier, or type a name for a walk-in party.');
     }
+    // Open the print tab synchronously from the tap. Opening it only after the API
+    // request completes is blocked by Android/Chrome popup protection.
+    const printWindow = andPrint ? window.open('about:blank', '_blank') : null;
     setSaving(true);
     try {
       const finalDate = isUserAdmin ? form.date : (doc ? doc.date : today());
@@ -177,12 +180,17 @@ export default function DocumentEditor({ business, type, doc, user, onClose, onS
       };
       const res = doc ? await api.updateDocument(doc.id, payload) : await api.createDocument(payload);
       const savedDoc = res.document;
-      if (andPrint && savedDoc && savedDoc.id) {
-        window.open(pdfUrl(`invoice/${savedDoc.id}`), '_blank');
+      if (andPrint && savedDoc && savedDoc.id && printWindow) {
+        printWindow.location.replace(pdfUrl(`invoice/${savedDoc.id}`));
       }
       onSaved(savedDoc);
+      if (andPrint && !printWindow) {
+        toast('Estimate saved. The PDF popup was blocked—open the saved bill and tap Print.', 'err');
+      }
     } catch (e) {
-      setErr(e.message);
+      if (printWindow && !printWindow.closed) printWindow.close();
+      setErr(e.message || 'Could not save this document. Please try again.');
+      toast(e.message || 'Could not save this document. Please try again.', 'err');
     } finally {
       setSaving(false);
     }
