@@ -10,11 +10,11 @@ let esbuild;
 try {
   esbuild = require('esbuild');
 } catch (e) {
-  if (fs.existsSync(outfile)) {
-    console.log('[Build] esbuild module not found; using existing pre-bundled www/app.js');
+  if (fs.existsSync(outfile) && process.env.NODE_ENV !== 'production') {
+    console.log('[Build] esbuild module not found in development; using existing pre-bundled www/app.js');
     process.exit(0);
   }
-  console.error('[Build] esbuild required to build www/app.js:', e.message);
+  console.error('[Build] esbuild is required to build www/app.js; refusing to deploy a stale bundle:', e.message);
   process.exit(1);
 }
 
