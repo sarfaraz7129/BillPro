@@ -45,11 +45,11 @@ router.get('/statement/:partyId', async (req, res, next) => {
     if (!party) return res.status(404).json({ error: 'Party not found' });
     const from = req.query.from || '1900-01-01';
     const to = req.query.to || '2999-12-31';
-    const docs = db.prepare(`SELECT id, type, number, date, total, due_amount, paid_amount, payment_status
+    const docs = db.prepare(`SELECT id, type, number, date, total, due_amount, paid_amount, payment_status, payment_mode
       FROM documents WHERE business_id = ? AND party_id = ? AND status = 'active'
         AND type IN ('sale', 'purchase', 'sale_return') AND date BETWEEN ? AND ? ORDER BY date, id`)
       .all(req.business.id, party.id, from, to);
-    const txns = db.prepare(`SELECT t.id, t.type, t.amount, t.date, t.mode, t.reference, t.notes, d.number AS doc_number
+    const txns = db.prepare(`SELECT t.id, t.type, t.amount, t.date, t.mode, t.reference, t.notes, t.document_id, d.number AS doc_number
       FROM transactions t LEFT JOIN documents d ON d.id = t.document_id AND d.business_id = t.business_id
       WHERE t.business_id = ? AND t.party_id = ? AND t.date BETWEEN ? AND ? ORDER BY t.date, t.id`)
       .all(req.business.id, party.id, from, to);
@@ -62,9 +62,23 @@ router.get('/statement/:partyId', async (req, res, next) => {
       credit: party.balance_type === 'CR' ? party.opening_balance : 0,
       balance: running
     });
+    const linkedPaid = new Map(db.prepare(`SELECT document_id, type, COALESCE(SUM(amount), 0) amount
+      FROM transactions WHERE business_id = ? AND party_id = ? AND document_id IS NOT NULL GROUP BY document_id, type`)
+      .all(req.business.id, party.id).map((r) => [`${r.document_id}:${r.type}`, Number(r.amount || 0)]));
     const merged = [
-      ...docs.map((d) => ({ sort: `${d.date}T1:${String(d.id).padStart(12, '0')}`, eventKind: 'document', ...d })),
-      ...txns.map((t) => ({ sort: `${t.date}T2:${String(t.id).padStart(12, '0')}`, eventKind: 'transaction', ...t }))
+      ...docs.flatMap((d) => {
+        const expectedType = d.type === 'sale' ? 'you_got' : 'you_gave';
+        const linked = Number(linkedPaid.get(`${d.id}:${expectedType}`) || 0);
+        const untrackedPaid = round2(Math.max(0, Number(d.paid_amount || 0) - linked));
+        const billEvent = { sort: `${d.date}T1:${String(d.id).padStart(12, '0')}`, eventKind: 'document', ...d };
+        if (untrackedPaid <= 0.005) return [billEvent];
+        return [billEvent, {
+          sort: `${d.date}T2:0:${String(d.id).padStart(12, '0')}`, eventKind: 'transaction',
+          type: expectedType, amount: untrackedPaid, date: d.date, mode: d.payment_mode,
+          reference: d.number, doc_number: d.number, legacy_payment: true
+        }];
+      }),
+      ...txns.map((t) => ({ sort: `${t.date}T2:1:${String(t.id).padStart(12, '0')}`, eventKind: 'transaction', ...t }))
     ].sort((a, b) => a.sort.localeCompare(b.sort));
     merged.forEach((r) => {
       if (r.eventKind === 'document' && r.type === 'sale') {
@@ -78,10 +92,10 @@ router.get('/statement/:partyId', async (req, res, next) => {
         entries.push({ date: r.date, label: `Sales return ${r.number}`, reference: r.number, debit: 0, credit: r.total, balance: running });
       } else if (r.eventKind === 'transaction' && r.type === 'you_gave') {
         running = round2(running + r.amount);
-        entries.push({ date: r.date, label: r.doc_number ? 'Payment made' : 'You Gave', reference: r.doc_number || r.reference || r.mode, debit: r.amount, credit: 0, balance: running });
+        entries.push({ date: r.date, label: r.legacy_payment ? 'Payment on bill (date unavailable)' : r.doc_number ? 'Payment made' : 'You Gave', reference: r.doc_number || r.reference || r.mode, debit: r.amount, credit: 0, balance: running });
       } else if (r.eventKind === 'transaction' && r.type === 'you_got') {
         running = round2(running - r.amount);
-        entries.push({ date: r.date, label: r.doc_number ? 'Payment received' : 'You Got', reference: r.doc_number || r.reference || r.mode, debit: 0, credit: r.amount, balance: running });
+        entries.push({ date: r.date, label: r.legacy_payment ? 'Payment on bill (date unavailable)' : r.doc_number ? 'Payment received' : 'You Got', reference: r.doc_number || r.reference || r.mode, debit: 0, credit: r.amount, balance: running });
       } else if (r.eventKind === 'transaction') {
         running = round2(running + r.amount);
         entries.push({ date: r.date, label: r.type === 'interest' ? 'Interest charged' : 'Adjustment', reference: r.mode || '', debit: r.amount, credit: 0, balance: running });

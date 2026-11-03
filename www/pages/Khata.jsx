@@ -227,6 +227,9 @@ function Ledger({ partyId, business, onClose, onEdit, onChanged, toast }) {
         <span className="hint">Debit total {money(data.totals.debit)} · Credit total {money(data.totals.credit)}</span>
       </div>
 
+      {data.entries.some((e) => e.legacy_payment) && <div className="hint" style={{ margin: '0 0 8px', fontSize: 11 }}>
+        Some older bill payments have no separate receipt date saved; they’re included on the bill date so the running balance reconciles.
+      </div>}
       <div className="card" style={{ boxShadow: 'none' }}>
         <div className="card-b stmt-scroll" style={{ padding: '10px 8px' }}>
           <div className="stmt-entry stmt-header" style={{ fontWeight: 700, fontSize: 12, textTransform: 'uppercase', color: 'var(--muted)', letterSpacing: '.02em' }}>

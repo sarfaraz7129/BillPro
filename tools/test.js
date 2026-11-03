@@ -155,11 +155,20 @@ async function run() {
   ok('low-stock filter returns only items at/below threshold', lowRes.body.products.every((p) => p.stock <= p.low_stock_at), lowRes.body.products.length);
 
   console.log('\n--- khata ---');
+  const legacyBill = await call('POST', '/api/documents', {
+    type: 'sale', partyId: kerala.id, partyName: kerala.name, partyGstin: kerala.gstin, partyStateCode: kerala.state_code,
+    items: [{ name: 'Legacy paid service', hsn: '9983', unit: 'service', qty: 1, rate: 1000, gstRate: 0 }],
+    paidAmount: 300, paymentMode: 'cash', roundOff: false
+  });
+  ok('creates an invoice with an initial partial payment for legacy reconciliation test', legacyBill.status === 201, legacyBill.status);
+  db.prepare('DELETE FROM transactions WHERE document_id = ?').run(legacyBill.body.document.id);
   const stmt = await call('GET', `/api/parties/${kerala.id}/statement`);
   const invoiceEntry = stmt.body.entries.find((e) => e.kind === 'invoice' && e.id === d.id);
   ok('statement lists the full invoice debit on the bill date', !!invoiceEntry && invoiceEntry.date === d.date && near(invoiceEntry.debit, d.total) && near(invoiceEntry.credit, 0), invoiceEntry);
   const receiptEntry = stmt.body.entries.find((e) => e.kind === 'txn' && String(e.notes || '').includes('cash counter receipt'));
   ok('statement lists the receipt as a separate credit on its actual receipt date', !!receiptEntry && receiptEntry.label === 'Payment received' && receiptEntry.date === dueSummary.body.today && near(receiptEntry.credit, 1), receiptEntry);
+  const legacyCredit = stmt.body.entries.find((e) => e.legacy_payment && e.document_number === legacyBill.body.document.number);
+  ok('unlinked legacy paid amount is shown as a bill-date credit so balances reconcile', !!legacyCredit && legacyCredit.date === legacyBill.body.document.date && near(legacyCredit.credit, 300), legacyCredit);
   ok('statement running balance matches the party balance', near(stmt.body.running, stmt.body.party.balance), { running: stmt.body.running, balance: stmt.body.party.balance });
 
   const pay = await call('POST', '/api/transactions', { partyId: kerala.id, type: 'you_got', amount: 4662, mode: 'upi', reference: 'UTR-TEST-1' });
