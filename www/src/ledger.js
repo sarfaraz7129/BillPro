@@ -76,7 +76,8 @@ function prepareLedgerRows(entries = []) {
     else running = roundLedger(running + Number(row.debit || 0) - Number(row.credit || 0));
     row.balance = running;
   }
-  return rows;
+  // Keep historical balances attached to each row, but show the newest entry first.
+  return rows.reverse();
 }
 
 module.exports = { prepareLedgerRows };

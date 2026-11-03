@@ -188,8 +188,8 @@ async function run() {
     { kind: 'txn', id: 991, document_id: 987, date: '2026-11-01', debit: 0, credit: 200, mode: 'cash', notes: 'Payment received at bill creation · EST-1' },
     { kind: 'txn', id: 992, document_id: 987, date: '2026-11-03', debit: 0, credit: 100, mode: 'upi', notes: 'Payment received · EST-1' }
   ]);
-  ok('payment taken at bill creation is shown with bill debit on one row', receiptRows.length === 2 && receiptRows[0].kind === 'invoice' && near(receiptRows[0].debit, 360) && near(receiptRows[0].credit, 200) && near(receiptRows[0].balance, 160), receiptRows[0]);
-  ok('a later payment remains a separate credit row dated on receipt', receiptRows[1].kind === 'txn' && receiptRows[1].date === '2026-11-03' && near(receiptRows[1].credit, 100) && near(receiptRows[1].balance, 60), receiptRows[1]);
+  ok('payment taken at bill creation is shown with bill debit on one row', receiptRows.length === 2 && receiptRows[1].kind === 'invoice' && near(receiptRows[1].debit, 360) && near(receiptRows[1].credit, 200) && near(receiptRows[1].balance, 160), receiptRows[1]);
+  ok('the newest later payment appears first as a separate dated credit row', receiptRows[0].kind === 'txn' && receiptRows[0].date === '2026-11-03' && near(receiptRows[0].credit, 100) && near(receiptRows[0].balance, 60), receiptRows[0]);
   const partialGroupedRows = prepareLedgerRows([
     { kind: 'invoice', id: 300, date: '2026-11-01', debit: 300, credit: 0, balance: 300, reference: 'EST-2' },
     { kind: 'invoice', id: 500, date: '2026-11-02', debit: 500, credit: 0, balance: 800, reference: 'EST-3' },
