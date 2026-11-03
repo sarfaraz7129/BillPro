@@ -27,6 +27,12 @@ export default function Dashboard({ business, goto, toast }) {
     color: ['#4f46e5', '#0891b2', '#059669', '#d97706', '#dc2626'][i % 5],
     display: moneyShort(t.taxable)
   }));
+  const queueRows = overdue ? [
+    ...(overdue.overdue || []).map((r) => ({ ...r, queueLabel: `${r.daysOverdue}d overdue`, queueTone: 'red' })),
+    ...(overdue.dueSoon || []).map((r) => ({ ...r, queueLabel: r.daysToDue === 0 ? 'Due today' : `Due in ${r.daysToDue}d`, queueTone: 'amber' })),
+    ...(overdue.upcoming || []).map((r) => ({ ...r, queueLabel: `Due ${fmtDate(r.due_date)}`, queueTone: 'grey' })),
+    ...(overdue.noDueDate || []).map((r) => ({ ...r, queueLabel: 'Due date not set', queueTone: 'grey' }))
+  ] : [];
 
   return (
     <>
@@ -238,26 +244,26 @@ export default function Dashboard({ business, goto, toast }) {
         </div>
 
         <div className="card">
-          <div className="card-h"><Icon.clock size={16} /><div><h3>Collection queue</h3><div className="sub">Overdue first</div></div>
+          <div className="card-h"><Icon.clock size={16} /><div><h3>Collection queue</h3><div className="sub">Overdue → due soon → no due date</div></div>
             <div className="spacer" /><button className="btn sm" onClick={() => goto('khata')}>Open khata</button></div>
           <div className="card-b tight">
-            {!overdue || overdue.overdue.length === 0 ? (
-              <Empty title="Nothing overdue" hint="Every invoice is within its due date." icon={Icon.check} />
+            {queueRows.length === 0 ? (
+              <Empty title="No outstanding invoices" hint="Unpaid invoices will appear here, with their due-date status." icon={Icon.check} />
             ) : (
               <div className="tbl-wrap">
                 <table className="tbl">
                   <tbody>
-                    {overdue.overdue.slice(0, 6).map((r) => (
+                    {queueRows.slice(0, 8).map((r) => (
                       <tr key={r.id} className="clickable" onClick={() => goto('khata', { partyId: r.party_id })}>
                         <td>
                           <div className="strong">{r.party_display || r.party_name}</div>
-                          <div className="muted">{r.number} · {r.daysOverdue}d overdue</div>
+                          <div className="muted">{r.number} · <span className={`pill ${r.queueTone}`}>{r.queueLabel}</span></div>
                         </td>
                         <td className="num strong neg">{money(r.due_amount)}</td>
                       </tr>
                     ))}
                   </tbody>
-                  <tfoot><tr><td>Total overdue</td><td className="num">{money(overdue.overdue.reduce((s, r) => s + r.due_amount, 0))}</td></tr></tfoot>
+                  <tfoot><tr><td>Total pending</td><td className="num">{money(overdue.totalDue)}</td></tr></tfoot>
                 </table>
               </div>
             )}

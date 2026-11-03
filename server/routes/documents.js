@@ -74,16 +74,17 @@ router.get('/', (req, res) => {
 
 /** Overdue invoices across the business - drives the reminder queue. */
 router.get('/reminders/overdue', (req, res) => {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = istToday();
   const rows = db.prepare(`SELECT d.*, p.name AS party_display, p.phone FROM documents d LEFT JOIN parties p ON p.id = d.party_id
     WHERE d.business_id = ? AND d.type = 'sale' AND d.status = 'active' AND d.due_amount > 0
     ORDER BY d.due_date IS NULL, d.due_date ASC, d.date ASC`).all(req.business.id);
-  const buckets = { overdue: [], dueSoon: [], unpaid: [] };
+  const buckets = { overdue: [], dueSoon: [], upcoming: [], noDueDate: [] };
   rows.forEach((r) => {
     const days = r.due_date ? Math.floor((new Date(today) - new Date(r.due_date)) / 86400000) : null;
-    if (days !== null && days > 0) buckets.overdue.push({ ...hydrate(r), daysOverdue: days });
-    else if (days !== null && days >= -7) buckets.dueSoon.push({ ...hydrate(r), daysToDue: -days });
-    else buckets.unpaid.push(hydrate(r));
+    if (days === null) buckets.noDueDate.push(hydrate(r));
+    else if (days > 0) buckets.overdue.push({ ...hydrate(r), daysOverdue: days });
+    else if (days >= -7) buckets.dueSoon.push({ ...hydrate(r), daysToDue: -days });
+    else buckets.upcoming.push({ ...hydrate(r), daysToDue: -days });
   });
   res.json({ ...buckets, totalDue: round2(rows.reduce((s, r) => s + r.due_amount, 0)) });
 });

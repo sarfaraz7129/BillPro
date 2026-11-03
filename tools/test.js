@@ -206,6 +206,18 @@ async function run() {
   console.log('\n--- reminders ---');
   const rem = await call('GET', '/api/documents/reminders/overdue');
   ok('overdue reminder endpoint responds', rem.status === 200 && typeof rem.body.totalDue === 'number', rem.status);
+  const undatedInvoice = await call('POST', '/api/documents', {
+    type: 'sale', partyName: 'Collection Queue - No Due Date', dueDate: null,
+    items: [{ name: 'Undated collection test', qty: 1, rate: 125, gstRate: 0 }]
+  });
+  const overdueInvoice = await call('POST', '/api/documents', {
+    type: 'sale', partyName: 'Collection Queue - Overdue', dueDate: '2000-01-01',
+    items: [{ name: 'Overdue collection test', qty: 1, rate: 250, gstRate: 0 }]
+  });
+  const queue = await call('GET', '/api/documents/reminders/overdue');
+  ok('collection queue includes undated unpaid invoices', queue.body.noDueDate?.some((r) => r.id === undatedInvoice.body.document.id));
+  ok('collection queue sorts overdue invoices into the overdue bucket', queue.body.overdue?.some((r) => r.id === overdueInvoice.body.document.id));
+  ok('collection queue exposes upcoming and due-soon buckets', Array.isArray(queue.body.upcoming) && Array.isArray(queue.body.dueSoon));
 
   console.log('\n--- new business isolation ---');
   const subscriptionBeforeBusiness = db.prepare('SELECT plan FROM users WHERE lower(email)=lower(?)').get(EMAIL)?.plan;
