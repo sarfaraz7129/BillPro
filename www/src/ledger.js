@@ -17,6 +17,7 @@ function prepareLedgerRows(entries = []) {
   }
 
   const rows = [];
+  const receiptGroups = new Map();
   for (const entry of entries) {
     if (BILL_KINDS.has(entry.kind)) {
       rows.push(bills.get(String(entry.id)));
@@ -31,13 +32,43 @@ function prepareLedgerRows(entries = []) {
       bill.debit = roundLedger(bill.debit + Number(entry.debit || 0));
       bill.credit = roundLedger(bill.credit + Number(entry.credit || 0));
       bill.initialPayments.push(entry);
-    } else {
-      rows.push({ ...entry });
+      continue;
     }
+
+    if (entry.kind === 'txn' && entry.receipt_group) {
+      const groupId = String(entry.receipt_group);
+      let receipt = receiptGroups.get(groupId);
+      if (!receipt) {
+        receipt = {
+          kind: 'txn', id: `receipt-${groupId}`, receipt_group: groupId,
+          date: entry.date, label: 'Payment received', mode: entry.mode,
+          debit: 0, credit: 0, receiptAllocations: []
+        };
+        receiptGroups.set(groupId, receipt);
+        rows.push(receipt);
+      }
+      receipt.debit = roundLedger(receipt.debit + Number(entry.debit || 0));
+      receipt.credit = roundLedger(receipt.credit + Number(entry.credit || 0));
+      receipt.receiptAllocations.push({
+        document_number: entry.document_number || entry.reference || null,
+        amount: Number(entry.credit || entry.debit || 0),
+        notes: entry.notes || ''
+      });
+      continue;
+    }
+
+    rows.push({ ...entry });
   }
 
-  // Recalculate balances after combining only the amount received at bill creation.
-  // Later receipts remain independent entries on their actual transaction dates.
+  for (const receipt of receiptGroups.values()) {
+    const billNumbers = [...new Set(receipt.receiptAllocations.map((allocation) => allocation.document_number).filter(Boolean))];
+    receipt.label = billNumbers.length > 1
+      ? `Receipt · ${billNumbers.length} bills`
+      : billNumbers.length === 1 ? `Receipt · ${billNumbers[0]}` : 'Payment received';
+  }
+
+  // Recalculate balances after combining bill-creation payments and collapsing
+  // the bill allocations from one receipt into one dated ledger row.
   let running = 0;
   for (const row of rows) {
     if (row.kind === 'opening') running = Number(row.balance || 0);

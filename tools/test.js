@@ -140,6 +140,10 @@ async function run() {
   const refreshedDue = await call('GET', `/api/documents/party/${kerala.id}/outstanding`);
   const fullCollection = await call('POST', `/api/documents/${d.id}/payment`, { amount: refreshedDue.body.totalDue, mode: 'upi', allDue: true });
   ok('one customer receipt allocates across all unpaid invoices', fullCollection.status === 200 && fullCollection.body.allocations.length === refreshedDue.body.invoiceCount && near(fullCollection.body.totalDueAfter, 0), fullCollection.body);
+  const fullReceiptStatement = await call('GET', `/api/parties/${kerala.id}/statement`);
+  const fullReceiptDocIds = new Set(fullCollection.body.allocations.map((allocation) => String(allocation.documentId)));
+  const groupedReceiptAllocations = fullReceiptStatement.body.entries.filter((entry) => entry.kind === 'txn' && entry.receipt_group && entry.mode === 'upi' && fullReceiptDocIds.has(String(entry.document_id)) && String(entry.notes || '').startsWith('Payment received ·'));
+  ok('all invoice allocations for one collection share a receipt group and total the amount received', groupedReceiptAllocations.length === fullCollection.body.allocations.length && new Set(groupedReceiptAllocations.map((entry) => entry.receipt_group)).size === 1 && near(groupedReceiptAllocations.reduce((sum, entry) => sum + entry.credit, 0), refreshedDue.body.totalDue), groupedReceiptAllocations);
   const settledDocs = await Promise.all(refreshedDue.body.invoices.map((x) => call('GET', `/api/documents/${x.id}`)));
   ok('every due bill is marked paid after full-balance collection', settledDocs.every((x) => x.status === 200 && x.body.document.payment_status === 'paid' && near(x.body.document.due_amount, 0)), settledDocs.map((x) => x.body.document && ({ number: x.body.document.number, status: x.body.document.payment_status, due: x.body.document.due_amount })));
   const editedPaidDoc = settledDocs[0].body.document;
@@ -168,6 +172,22 @@ async function run() {
   ]);
   ok('payment taken at bill creation is shown with bill debit on one row', receiptRows.length === 2 && receiptRows[0].kind === 'invoice' && near(receiptRows[0].debit, 360) && near(receiptRows[0].credit, 200) && near(receiptRows[0].balance, 160), receiptRows[0]);
   ok('a later payment remains a separate credit row dated on receipt', receiptRows[1].kind === 'txn' && receiptRows[1].date === '2026-11-03' && near(receiptRows[1].credit, 100) && near(receiptRows[1].balance, 60), receiptRows[1]);
+  const partialGroupedRows = prepareLedgerRows([
+    { kind: 'invoice', id: 300, date: '2026-11-01', debit: 300, credit: 0, balance: 300, reference: 'EST-2' },
+    { kind: 'invoice', id: 500, date: '2026-11-02', debit: 500, credit: 0, balance: 800, reference: 'EST-3' },
+    { kind: 'txn', id: 501, document_id: 300, document_number: 'EST-2', receipt_group: 'receipt-400', date: '2026-11-03', debit: 0, credit: 300, mode: 'cash' },
+    { kind: 'txn', id: 502, document_id: 500, document_number: 'EST-3', receipt_group: 'receipt-400', date: '2026-11-03', debit: 0, credit: 100, mode: 'cash' }
+  ]);
+  const onePartialReceipt = partialGroupedRows.find((row) => row.receipt_group === 'receipt-400');
+  ok('a ₹400 receipt across ₹300 and ₹500 invoices appears once and leaves ₹400 due', partialGroupedRows.length === 3 && near(onePartialReceipt?.credit, 400) && near(onePartialReceipt?.balance, 400), onePartialReceipt);
+  const fullGroupedRows = prepareLedgerRows([
+    { kind: 'invoice', id: 300, date: '2026-11-01', debit: 300, credit: 0, balance: 300, reference: 'EST-2' },
+    { kind: 'invoice', id: 500, date: '2026-11-02', debit: 500, credit: 0, balance: 800, reference: 'EST-3' },
+    { kind: 'txn', id: 503, document_id: 300, document_number: 'EST-2', receipt_group: 'receipt-800', date: '2026-11-03', debit: 0, credit: 300, mode: 'upi' },
+    { kind: 'txn', id: 504, document_id: 500, document_number: 'EST-3', receipt_group: 'receipt-800', date: '2026-11-03', debit: 0, credit: 500, mode: 'upi' }
+  ]);
+  const oneFullReceipt = fullGroupedRows.find((row) => row.receipt_group === 'receipt-800');
+  ok('a single ₹800 receipt appears once and clears the ₹800 balance', fullGroupedRows.length === 3 && near(oneFullReceipt?.credit, 800) && near(oneFullReceipt?.balance, 0), oneFullReceipt);
   const legacyBill = await call('POST', '/api/documents', {
     type: 'sale', partyId: kerala.id, partyName: kerala.name, partyGstin: kerala.gstin, partyStateCode: kerala.state_code,
     items: [{ name: 'Legacy paid service', hsn: '9983', unit: 'service', qty: 1, rate: 1000, gstRate: 0 }],

@@ -1,5 +1,6 @@
 'use strict';
 const express = require('express');
+const crypto = require('crypto');
 const QRCode = require('qrcode');
 const { db } = require('../db');
 const { auth, loadBusiness } = require('../middleware');
@@ -263,6 +264,7 @@ router.post('/:id/payment', (req, res) => {
     const mode = validModes.includes(req.body?.mode) ? req.body.mode : 'cash';
     const date = (req.isAdmin && req.body?.date) ? req.body.date : istToday();
     const receiptNote = String(req.body?.notes || '').trim().slice(0, 500);
+    const receiptGroup = crypto.randomUUID();
     const allocations = [];
     let totalDue = 0;
     let validationError = null;
@@ -285,9 +287,9 @@ router.post('/:id/payment', (req, res) => {
         const applied = round2(Math.min(due, remaining));
         const paid = round2(Number(invoice.paid_amount || 0) + applied);
         const newDue = round2(Math.max(0, Number(invoice.total) - paid));
-        db.prepare(`INSERT INTO transactions (business_id, party_id, type, amount, date, mode, document_id, notes)
-          VALUES (?,?,?,?,?,?,?,?)`)
-          .run(req.business.id, doc.party_id, 'you_got', applied, date, mode, invoice.id, `Payment received · ${invoice.number}${receiptNote ? ` · ${receiptNote}` : ''}`);
+        db.prepare(`INSERT INTO transactions (business_id, party_id, type, amount, date, mode, document_id, receipt_group, notes)
+          VALUES (?,?,?,?,?,?,?,?,?)`)
+          .run(req.business.id, doc.party_id, 'you_got', applied, date, mode, invoice.id, receiptGroup, `Payment received · ${invoice.number}${receiptNote ? ` · ${receiptNote}` : ''}`);
         db.prepare('UPDATE documents SET paid_amount = ?, due_amount = ?, payment_status = ? WHERE id = ?')
           .run(paid, newDue, newDue <= 0.005 ? 'paid' : 'partial', invoice.id);
         allocations.push({ documentId: invoice.id, number: invoice.number, amount: applied, dueRemaining: newDue });

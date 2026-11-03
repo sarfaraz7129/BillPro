@@ -188,6 +188,7 @@ CREATE TABLE IF NOT EXISTS transactions (
   mode         TEXT DEFAULT 'cash',    -- cash | upi | bank | card | cheque | credit
   reference    TEXT,
   document_id  INTEGER REFERENCES documents(id) ON DELETE SET NULL,
+  receipt_group TEXT,
   notes        TEXT,
   created_at   TEXT NOT NULL DEFAULT (datetime('now', '+330 minutes'))
 );
@@ -276,6 +277,13 @@ try {
     db.exec("UPDATE users SET initial_password = 'demo1234' WHERE email IN ('zoheb@billpro.in', 'demo@billpro.in', 'demo.user@billpro.in')");
     db.exec("UPDATE users SET initial_password = 'BillPro@123' WHERE initial_password IS NULL");
   }
+
+  // Migration: add a receipt-level key so bill allocations from one collection can be shown as one receipt.
+  const transactionCols = db.prepare('PRAGMA table_info(transactions)').all().map((c) => c.name);
+  if (!transactionCols.includes('receipt_group')) {
+    db.exec('ALTER TABLE transactions ADD COLUMN receipt_group TEXT');
+  }
+  db.exec('CREATE INDEX IF NOT EXISTS idx_txn_receipt_group ON transactions(receipt_group)');
 
   // Migration: Ensure documents table has transportation, loading_charges, bag_charges, bags_count, extra_charges
   const docCols = db.prepare('PRAGMA table_info(documents)').all().map((c) => c.name);

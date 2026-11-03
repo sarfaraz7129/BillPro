@@ -249,9 +249,10 @@ function Ledger({ partyId, business, onClose, onEdit, onChanged, toast }) {
               ? `${paymentModes[0] || 'PAID'} ${compactLedgerDate(initialPayments[0].date)}`
               : initialPayments.length > 1 ? paymentModes.join('/') : (e.mode ? String(e.mode).toUpperCase() : '');
             const initialPaymentTitle = initialPayments.map((payment) => `${String(payment.mode || 'MODE NOT RECORDED').toUpperCase()} ${fmtDate(payment.date)} ${money(payment.credit || payment.debit || 0)}`).join(' · ');
+            const receiptAllocationTitle = (e.receiptAllocations || []).map((allocation) => `${allocation.document_number || 'Bill'}: ${money(allocation.amount)}`).join(' · ');
             return <div className="stmt-entry" key={`${e.kind}-${e.id ?? i}`}>
               <div className="dt" title={fmtDate(e.date)}><span className="date-long">{fmtDate(e.date)}</span><span className="date-short">{compactLedgerDate(e.date)}</span></div>
-              <div className="stmt-ref" title={[e.label, reference, initialPaymentTitle || modeSummary, e.legacy_payment ? 'Receipt date not separately saved' : ''].filter(Boolean).join(' · ')}>
+              <div className="stmt-ref" title={[e.label, reference, initialPaymentTitle || modeSummary, receiptAllocationTitle, e.legacy_payment ? 'Receipt date not separately saved' : ''].filter(Boolean).join(' · ')}>
                 <span className="stmt-ref-no">{reference || '—'}</span>
                 {modeSummary && <span className="stmt-mode">{modeSummary}</span>}
               </div>
@@ -355,7 +356,7 @@ function CustomerReceiptModal({ initialParty, onClose, onSaved, toast }) {
     try {
       if (hasInvoices) {
         const result = await api.payDocument(summary.invoices[0].id, { amount: value, mode, allDue: true, notes: notes.trim() });
-        toast(`${money(value)} received from ${party.name} on ${fmtDate(result.paymentDate || summary.today)}; applied to ${result.allocations?.length || 0} bill(s).`, 'ok');
+        toast(`${money(value)} received from ${party.name} on ${fmtDate(result.paymentDate || summary.today)}; recorded once in Khata.`, 'ok');
       } else {
         await api.createTransaction({ partyId: party.id, type: 'you_got', amount: value, mode, notes: notes.trim() });
         toast(`${money(value)} received from ${party.name} on ${fmtDate(summary.today)} and added to Khata.`, 'ok');
@@ -367,7 +368,7 @@ function CustomerReceiptModal({ initialParty, onClose, onSaved, toast }) {
   };
 
   return (
-    <Modal title="Receive payment from customer" sub="Partial or full payment · allocated to oldest due bill first" onClose={onClose}
+    <Modal title="Receive payment from customer" sub="One dated receipt in Khata · bill balances update oldest first" onClose={onClose}
       footer={<>
         <button className="btn" onClick={onClose} disabled={saving}>Cancel</button>
         <button className="btn green" onClick={save} disabled={saving || dueBusy || !party || !summary || !amount || Number(amount) <= 0 || (hasInvoices && Number(amount) > totalDue + 0.005)}>
@@ -406,7 +407,7 @@ function CustomerReceiptModal({ initialParty, onClose, onSaved, toast }) {
           </div>
           <div className="btn-row" style={{ gridColumn: '1 / -1' }}>
             <button className="btn sm" type="button" disabled={dueBusy || !hasInvoices} onClick={() => setAmount(String(totalDue))}>Full balance</button>
-            {summary?.invoiceCount > 1 && <span className="hint">Payment will be split across due bills, oldest first.</span>}
+            {summary?.invoiceCount > 1 && <span className="hint">Khata records the receipt once; bill balances update oldest first.</span>}
           </div>
         </>}
       </div>
