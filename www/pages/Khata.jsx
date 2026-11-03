@@ -221,24 +221,24 @@ function Ledger({ partyId, business, onClose, onEdit, onChanged, toast }) {
       </div>
 
       <div className="card" style={{ boxShadow: 'none' }}>
-        <div className="card-b" style={{ padding: '12px 16px' }}>
-          <div className="stmt-entry stmt-header" style={{ fontWeight: 700, fontSize: 11, textTransform: 'uppercase', color: 'var(--muted)', letterSpacing: '.05em' }}>
-            <div className="dt">Date</div><div>Particulars</div><div className="num" style={{ textAlign: 'right', width: 92 }}>Debit</div>
-            <div className="num" style={{ textAlign: 'right', width: 92 }}>Credit</div><div className="bal">Balance</div>
+        <div className="card-b stmt-scroll" style={{ padding: '12px 16px' }}>
+          <div className="stmt-entry stmt-header" style={{ fontWeight: 700, fontSize: 12, textTransform: 'uppercase', color: 'var(--muted)', letterSpacing: '.03em' }}>
+            <div className="dt">Date</div><div>Invoice No.</div>
+            <div className="num credit-col">Credit</div><div className="num debit-col">Debit</div><div className="bal">Balance</div>
           </div>
           {data.entries.length === 0 && <div className="hint" style={{ padding: '14px 0' }}>No entries yet. Bill this party or record a payment.</div>}
-          {data.entries.map((e, i) => (
-            <div className="stmt-entry" key={i}>
+          {data.entries.map((e, i) => {
+            const reference = ['invoice', 'bill', 'sale_return'].includes(e.kind)
+              ? e.reference
+              : (e.document_number || e.reference || e.label);
+            return <div className="stmt-entry" key={i}>
               <div className="dt">{fmtDate(e.date)}</div>
-              <div>
-                <b style={{ fontSize: 12.5 }}>{e.label}</b>
-                {(e.kind === 'txn' ? (e.reference || e.mode || e.notes) : e.payment_status) && <div className="muted">{[e.kind === 'txn' ? e.reference : '', e.mode ? String(e.mode).toUpperCase() : '', e.notes || '', e.payment_status ? `${String(e.payment_status).toUpperCase()} · Due ${money(e.due_amount || 0)}` : ''].filter(Boolean).join(' · ')}</div>}
-              </div>
-              <div className="num neg" style={{ textAlign: 'right', width: 92 }}>{e.debit ? money(e.debit) : ''}</div>
-              <div className="num pos" style={{ textAlign: 'right', width: 92 }}>{e.credit ? money(e.credit) : ''}</div>
+              <div className="stmt-ref" title={reference}>{reference || '—'}</div>
+              <div className="num pos credit-col">{e.credit ? money(e.credit) : '—'}</div>
+              <div className="num neg debit-col">{e.debit ? money(e.debit) : '—'}</div>
               <div className="bal" style={{ color: e.balance >= 0 ? 'var(--red)' : 'var(--green)' }}>{money(e.balance)}</div>
-            </div>
-          ))}
+            </div>;
+          })}
         </div>
       </div>
 
