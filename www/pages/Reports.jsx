@@ -301,19 +301,19 @@ function Aging({ d }) {
   return (
     <>
       <div className="grid grid-split" style={{ marginBottom: 14 }}>
-        <Card title="Receivables ageing" sub={`Total outstanding ${money(d.total)}`}>
+        <Card title="Receivables ageing" sub={`Customer ledger balances · total ${money(d.total)}`}>
           <Donut segments={segs.filter((s) => s.value > 0)} center={moneyShort(d.total)} />
         </Card>
-        <Card title="Follow-up list" sub="Oldest first - start collecting here">
+        <Card title="Follow-up list" sub="Customer balances bucketed by earliest bill due date">
           {d.items.length === 0 ? <Empty title="Nothing outstanding" icon={Icon.check} /> : (
             <div className="tbl-wrap" style={{ maxHeight: 280, overflowY: 'auto' }}>
               <table className="tbl">
-                <thead><tr><th>Party</th><th>Invoice</th><th>Due date</th><th className="num">Days</th><th className="num">Due</th></tr></thead>
+                <thead><tr><th>Party</th><th>Earliest bill ref</th><th>Due date</th><th className="num">Days</th><th className="num">Khata balance</th></tr></thead>
                 <tbody>{d.items.slice(0, 25).map((r) => (
                   <tr key={r.id}><td className="strong">{r.party}</td><td className="muted">{r.number}</td>
                     <td className="muted">{r.dueDate ? fmtDate(r.dueDate) : '—'}</td>
                     <td className="num"><span className={`pill ${r.age > 60 ? 'red' : r.age > 30 ? 'amber' : 'green'}`}>{r.age}d</span></td>
-                    <td className="num strong neg">{money(r.due)}</td></tr>
+                    <td className="num strong neg">{money(r.balance)}</td></tr>
                 ))}</tbody>
               </table>
             </div>

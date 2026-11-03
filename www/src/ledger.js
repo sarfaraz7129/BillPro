@@ -76,8 +76,8 @@ function prepareLedgerRows(entries = []) {
     else running = roundLedger(running + Number(row.debit || 0) - Number(row.credit || 0));
     row.balance = running;
   }
-  // Keep historical balances attached to each row, but show the newest entry first.
-  return rows.reverse();
+  // Keep the ledger in chronological order: earliest transaction first.
+  return rows;
 }
 
 module.exports = { prepareLedgerRows };

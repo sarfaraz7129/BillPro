@@ -4,7 +4,7 @@ const bcrypt = require('bcryptjs');
 const { db } = require('../db');
 const { auth, loadBusiness, getUserBusinesses, getEffectiveRole, isAdminRole, PERMISSIONS } = require('../middleware');
 const { normaliseGstin } = require('../lib/gst');
-const { logActivity } = require('../lib/service');
+const { logActivity, partyBalance, ledgerCollectionQueue } = require('../lib/service');
 const { istToday } = require('../lib/time');
 const { ALL_PERMS } = require('./auth');
 
@@ -295,13 +295,19 @@ function businessStats(businessId) {
   const monthSales = one("SELECT COALESCE(SUM(total),0) s FROM documents WHERE business_id=? AND type='sale' AND status='active' AND date >= ?", businessId, monthStart).s;
   const todaySales = one("SELECT COALESCE(SUM(total),0) s FROM documents WHERE business_id=? AND type='sale' AND status='active' AND date = ?", businessId, today).s;
   const purchases = one("SELECT COALESCE(SUM(total),0) s FROM documents WHERE business_id=? AND type='purchase' AND status='active'", businessId).s;
-  const receivable = one("SELECT COALESCE(SUM(due_amount),0) s FROM documents WHERE business_id=? AND type='sale' AND status='active'", businessId).s;
-  const payable = one("SELECT COALESCE(SUM(due_amount),0) s FROM documents WHERE business_id=? AND type='purchase' AND status='active'", businessId).s;
+  const ledgerParties = db.prepare("SELECT id, type FROM parties WHERE business_id=? AND type IN ('customer','supplier')").all(businessId);
+  let receivable = 0;
+  let payable = 0;
+  for (const party of ledgerParties) {
+    const balance = Number(partyBalance(businessId, party.id)?.balance || 0);
+    if (party.type === 'customer') receivable += Math.max(0, balance);
+    else payable += Math.max(0, -balance);
+  }
   const outputTax = one("SELECT COALESCE(SUM(cgst+sgst+igst+cess),0) s FROM documents WHERE business_id=? AND type='sale' AND status='active'", businessId).s;
   const inputTax = one("SELECT COALESCE(SUM(cgst+sgst+igst+cess),0) s FROM documents WHERE business_id=? AND type='purchase' AND status='active'", businessId).s;
   const stockValue = one('SELECT COALESCE(SUM(stock*purchase_price),0) s FROM products WHERE business_id=?', businessId).s;
   const lowStock = one('SELECT COUNT(*) n FROM products WHERE business_id=? AND low_stock_at > 0 AND stock <= low_stock_at', businessId).n;
-  const overdue = one("SELECT COALESCE(SUM(due_amount),0) s FROM documents WHERE business_id=? AND type='sale' AND status='active' AND due_amount>0 AND due_date < ?", businessId, today).s;
+  const overdue = ledgerCollectionQueue(businessId, today).overdueAmount;
   const customers = one("SELECT COUNT(*) n FROM parties WHERE business_id=? AND type='customer' AND inactive=0", businessId).n;
   const expenses = one("SELECT COALESCE(SUM(total),0) s FROM documents WHERE business_id=? AND type='expense' AND status='active'", businessId).s;
   return {

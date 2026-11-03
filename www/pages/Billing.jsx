@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { api, money, fmtDate, pdfUrl, today } from '../src/api.js';
+import { api, money, fmtDate, pdfUrl } from '../src/api.js';
 import { Icon } from '../src/ui.jsx';
-import { Modal, PayPill, Empty, Confirm, DateRange, Field } from '../src/components.jsx';
+import { Modal, Empty, Confirm, DateRange, Field } from '../src/components.jsx';
 import DocumentEditor, { TYPE_LABEL } from '../src/DocumentEditor.jsx';
 import ThermalReceiptModal from '../src/ThermalReceipt.jsx';
 import WhatsAppModal from '../src/WhatsAppModal.jsx';
@@ -18,7 +18,6 @@ export default function Billing({ business, user, initialType, initialDocId, got
   const [rows, setRows] = useState([]);
   const [totals, setTotals] = useState(null);
   const [q, setQ] = useState('');
-  const [status, setStatus] = useState('');
   const [billMode, setBillMode] = useState('');
   const [range, setRange] = useState({ from: '2000-01-01', to: '2999-12-31' });
   const [editor, setEditor] = useState(null);
@@ -37,12 +36,12 @@ export default function Billing({ business, user, initialType, initialDocId, got
     setLoading(true);
     try {
       const isEstParam = billMode === 'estimate' ? 1 : (billMode === 'gst' ? 0 : undefined);
-      const r = await api.documents({ type, q, status, from: range.from, to: range.to, is_estimate: isEstParam });
+      const r = await api.documents({ type, q, from: range.from, to: range.to, is_estimate: isEstParam });
       setRows(r.documents);
       setTotals(r.totals);
     } catch (e) { toast(e.message, 'err'); } finally { setLoading(false); }
   };
-  useEffect(() => { load(); }, [type, q, status, billMode, range.from, range.to, business.id]);
+  useEffect(() => { load(); }, [type, q, billMode, range.from, range.to, business.id]);
 
   useEffect(() => {
     if (initialDocId && initialDocId !== 'new' && !view) {
@@ -94,22 +93,14 @@ export default function Billing({ business, user, initialType, initialDocId, got
             <option value="gst">🏛️ GST Invoices (~20%)</option>
           </select>
         )}
-        {type !== 'expense' && (
-          <select className="input" style={{ width: 135 }} value={status} onChange={(e) => setStatus(e.target.value)}>
-            <option value="">All statuses</option><option value="paid">Paid</option><option value="partial">Partial</option><option value="unpaid">Unpaid</option>
-          </select>
-        )}
         <DateRange from={range.from === '2000-01-01' ? '' : range.from} to={range.to === '2999-12-31' ? '' : range.to} onChange={(r) => setRange({ from: r.from || '2000-01-01', to: r.to || '2999-12-31' })} />
         <button className="btn primary" onClick={() => setEditor({ type })}><Icon.plus size={15} /> New {type === 'sale' && business.default_bill_mode !== 'gst' ? 'Estimate Bill' : TYPE_LABEL[type].toLowerCase()}</button>
       </div>
 
       {totals && rows.length > 0 && (
-        <div className="grid g4" style={{ marginBottom: 14 }}>
-          <MiniStat label={`${rows.length} ${TABS.find((t) => t.id === type).label.toLowerCase()}`} value={money(totals.billed)} />
-          {type !== 'expense' && <MiniStat label="Outstanding" value={money(totals.due)} tone={totals.due > 0 ? 'neg' : ''} />}
+        <div className="grid g2" style={{ marginBottom: 14 }}>
+          <MiniStat label={`${rows.length} ${TABS.find((t) => t.id === type).label.toLowerCase()} · Total`} value={money(totals.billed)} tone={type === 'expense' ? 'neg' : ''} />
           {type !== 'expense' && <MiniStat label="Tax on these" value={money(totals.tax)} />}
-          {type !== 'expense' && <MiniStat label="Paid / partial / unpaid" value={`${totals.paid} / ${totals.partial} / ${totals.unpaid}`} />}
-          {type === 'expense' && <MiniStat label="Total spent" value={money(totals.billed)} tone="neg" />}
         </div>
       )}
 
@@ -119,7 +110,7 @@ export default function Billing({ business, user, initialType, initialDocId, got
             <Empty
               icon={Icon[TABS.find((t) => t.id === type).icon]}
               title={`No ${TABS.find((t) => t.id === type).label.toLowerCase()} yet`}
-              hint="Create one and it will appear here with its GST breakup, payment status and PDF."
+              hint="Create one and it will appear here with its GST breakup and PDF."
               action={<button className="btn primary sm" onClick={() => setEditor({ type })}><Icon.plus size={14} /> New {TYPE_LABEL[type].toLowerCase()}</button>}
             />
           ) : (
@@ -140,13 +131,7 @@ export default function Billing({ business, user, initialType, initialDocId, got
                             🏛️ GST
                           </span>
                         ) : null}
-                        {r.status === 'cancelled' ? (
-                          <span className="pill sm red">Cancelled</span>
-                        ) : type === 'expense' ? (
-                          <span className="pill sm grey">—</span>
-                        ) : (
-                          <PayPill status={r.payment_status} />
-                        )}
+                        {r.status === 'cancelled' && <span className="pill sm red">Cancelled</span>}
                       </div>
                       <b className="mic-total">{money(r.total)}</b>
                     </div>
@@ -214,8 +199,7 @@ export default function Billing({ business, user, initialType, initialDocId, got
                 <thead>
                   <tr>
                     <th>Number</th><th>Party</th><th>Date</th>{type !== 'expense' && <th>Due date</th>}
-                    <th className="num">Taxable</th><th className="num">Tax</th><th className="num">Total</th>
-                    <th>Status</th><th />
+                    <th className="num">Taxable</th><th className="num">Tax</th><th className="num">Total</th><th />
                   </tr>
                 </thead>
                 <tbody>
@@ -247,7 +231,6 @@ export default function Billing({ business, user, initialType, initialDocId, got
                       <td className="num">{money(r.taxable_value)}</td>
                       <td className="num muted">{money(r.cgst + r.sgst + r.igst + r.cess)}</td>
                       <td className="num strong">{money(r.total)}</td>
-                      <td>{r.status === 'cancelled' ? <span className="pill grey">Cancelled</span> : type === 'expense' ? <span className="pill grey">—</span> : <PayPill status={r.payment_status} />}</td>
                       <td onClick={(e) => e.stopPropagation()}>
                         <div className="row-actions">
                           {Boolean(r.is_estimate) && (
@@ -322,7 +305,7 @@ export default function Billing({ business, user, initialType, initialDocId, got
           setThermalWidth(w || localStorage.getItem('billpro.receipt_width') || '80');
         }}
         onConvertToGst={convertToGst}
-        onPaid={async (d, amount, mode, allDue) => { try { await api.payDocument(d.id, { amount, mode, allDue }); toast(allDue ? 'Payment allocated across customer due bills, oldest first' : 'Payment recorded', 'ok'); const fresh = await api.document(d.id); setView(fresh); load(); } catch (e) { toast(e.message, 'err'); } }}
+        onPaid={async (d, amount, mode) => { try { await api.createTransaction({ partyId: d.party_id, type: d.type === 'purchase' ? 'you_gave' : 'you_got', amount, mode, notes: `Receipt from ${d.number}` }); toast(d.type === 'purchase' ? 'Payment recorded once in the supplier ledger' : 'Receipt recorded once in the customer ledger', 'ok'); const fresh = await api.document(d.id); setView(fresh); load(); } catch (e) { toast(e.message, 'err'); } }}
         onEwb={async (d, body) => { try { const r = await api.ewaybill(d.id, body); toast(`E-Way Bill ${r.ewaybillNo} generated`, 'ok'); setView(await api.document(d.id)); } catch (e) { toast(e.message, 'err'); } }}
         onEinv={async (d) => { try { const r = await api.einvoice(d.id); toast(`e-Invoice IRN generated: ${r.ackNo}`, 'ok'); setView(await api.document(d.id)); } catch (e) { toast(e.message, 'err'); } }}
         onDuplicate={async (d) => { try { const r = await api.duplicateDocument(d.id); toast(`Copied to ${r.document.number}`, 'ok'); setView(r); load(); } catch (e) { toast(e.message, 'err'); } }}
@@ -373,9 +356,10 @@ function MiniStat({ label, value, tone }) {
 function DocViewer({ doc, party, payments, business, onClose, onEdit, onShare, onWhatsApp, onThermal, onPaid, onEwb, onEinv, onDuplicate, onConvertToGst, toast }) {
   const [payOpen, setPayOpen] = useState(false);
   const [ewbOpen, setEwbOpen] = useState(false);
-  const [payAmt, setPayAmt] = useState(doc.due_amount || 0);
+  const [payAmt, setPayAmt] = useState(0);
   const [payMode, setPayMode] = useState('upi');
-  const [customerDueTotal, setCustomerDueTotal] = useState(doc.due_amount || 0);
+  const [partyBalanceLimit, setPartyBalanceLimit] = useState(0);
+  const [currentLedgerBalance, setCurrentLedgerBalance] = useState(Number(party?.balance) || 0);
   const [dueLoading, setDueLoading] = useState(false);
   const [ewb, setEwb] = useState({ vehicleNo: doc.vehicle_no || '', transportDocNo: doc.transport_doc_no || '', validDays: 4 });
   const isSale = doc.type === 'sale';
@@ -383,20 +367,25 @@ function DocViewer({ doc, party, payments, business, onClose, onEdit, onShare, o
   const isEstimate = Boolean(doc.is_estimate);
   const openPayment = async () => {
     setPayOpen(true);
-    setPayAmt(doc.due_amount || 0);
-    setCustomerDueTotal(doc.due_amount || 0);
-    if (isSale && doc.party_id) {
-      setDueLoading(true);
-      try {
+    setPayAmt(0);
+    setDueLoading(true);
+    try {
+      let balance = Number(party?.balance) || 0;
+      if (doc.party_id && isSale) {
         const summary = await api.partyOutstanding(doc.party_id);
-        const total = Math.max(0, Number(summary.totalDue) || 0);
-        setCustomerDueTotal(total);
-        setPayAmt(total);
-      } catch (e) {
-        toast(e.message || 'Could not load customer due bills', 'err');
-      } finally {
-        setDueLoading(false);
+        balance = Number(summary.balance) || 0;
+      } else if (doc.party_id && isPurchase) {
+        const result = await api.party(doc.party_id);
+        balance = Number(result.party?.balance) || balance;
       }
+      const limit = isPurchase ? Math.max(0, -balance) : Math.max(0, balance);
+      setCurrentLedgerBalance(balance);
+      setPartyBalanceLimit(limit);
+      setPayAmt(limit);
+    } catch (e) {
+      toast(e.message || 'Could not load party ledger balance', 'err');
+    } finally {
+      setDueLoading(false);
     }
   };
 
@@ -424,8 +413,8 @@ function DocViewer({ doc, party, payments, business, onClose, onEdit, onShare, o
                 🏛️ Convert to GST Invoice
               </button>
             )}
-            {isSale && doc.due_amount > 0 && doc.status === 'active' && <button className="btn green" onClick={openPayment}><Icon.rupee size={14} /> Receive payment</button>}
-            {isPurchase && doc.due_amount > 0 && doc.status === 'active' && <button className="btn red" onClick={openPayment}><Icon.rupee size={14} /> Pay supplier</button>}
+            {isSale && Number(party?.balance) > 0.005 && doc.status === 'active' && <button className="btn green" onClick={openPayment}><Icon.rupee size={14} /> Receive payment</button>}
+            {isPurchase && Number(party?.balance) < -0.005 && doc.status === 'active' && <button className="btn red" onClick={openPayment}><Icon.rupee size={14} /> Pay supplier</button>}
             <button className="btn" onClick={() => onDuplicate(doc)}><Icon.copy size={14} /> Duplicate</button>
             <button className="btn" onClick={() => onEdit(doc)}><Icon.edit size={14} /> Edit</button>
             <button
@@ -561,11 +550,9 @@ function DocViewer({ doc, party, payments, business, onClose, onEdit, onShare, o
           </div>
         )}
 
-        <div className="grid g4" style={{ marginBottom: 14 }}>
-          <MiniStat label="Bill total" value={money(doc.total)} />
-          <MiniStat label="Paid" value={money(doc.paid_amount)} tone="pos" />
-          <MiniStat label="Balance" value={money(doc.due_amount)} tone={doc.due_amount > 0 ? 'neg' : ''} />
-          <MiniStat label="Status" value={<PayPill status={doc.payment_status} />} />
+        <div className="grid g2" style={{ marginBottom: 14 }}>
+          <MiniStat label="Current Bill Total" value={money(doc.total)} />
+          <MiniStat label="Amount Received at Bill Creation" value={money(doc.paid_amount)} tone="pos" />
         </div>
 
         {party && (
@@ -697,15 +684,8 @@ function DocViewer({ doc, party, payments, business, onClose, onEdit, onShare, o
               {party && party.balance !== undefined ? (() => {
                 const netBal = Number(party.balance) || 0;
                 const paid = Number(doc.paid_amount || 0);
-                const prevBal = Math.round((netBal - (Number(doc.total) - paid)) * 100) / 100;
                 return (
                   <>
-                    {Math.abs(prevBal) > 0.01 && (
-                      <div className="kv">
-                        <span className="k">{prevBal > 0 ? 'Previous Due' : 'Previous Advance'}</span>
-                        <span className={`v ${prevBal > 0 ? 'neg' : 'pos'}`}>{money(Math.abs(prevBal))}</span>
-                      </div>
-                    )}
                     <div className="kv">
                       <span className="k">Amount Received</span>
                       <span className="v pos">{money(paid)}</span>
@@ -737,24 +717,7 @@ function DocViewer({ doc, party, payments, business, onClose, onEdit, onShare, o
                     <span className="k">Amount Received</span>
                     <span className="v pos">{money(doc.paid_amount || 0)}</span>
                   </div>
-                  {doc.due_amount > 0 && (
-                    <div style={{
-                      marginTop: 8,
-                      padding: '8px 10px',
-                      borderRadius: 8,
-                      background: '#fef2f2',
-                      border: '1px solid #fecaca',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      fontWeight: 700,
-                      fontSize: 13,
-                      color: '#b91c1c'
-                    }}>
-                      <span>Net Balance Due:</span>
-                      <span>{money(doc.due_amount)}</span>
-                    </div>
-                  )}
+
                 </>
               )}
             </div>
@@ -774,13 +737,13 @@ function DocViewer({ doc, party, payments, business, onClose, onEdit, onShare, o
       </Modal>
 
       {payOpen && (
-        <Modal title={isPurchase ? 'Pay supplier bill' : 'Receive payment'} sub={`${doc.party_name || 'Customer'} · ${isSale && doc.party_id ? `all due ${money(customerDueTotal)}` : `balance ${money(doc.due_amount)}`}`} onClose={() => setPayOpen(false)}
+        <Modal title={isPurchase ? 'Pay supplier' : 'Receive payment'} sub={`${doc.party_name || 'Party'} · ledger balance ${money(Math.abs(currentLedgerBalance))}`} onClose={() => setPayOpen(false)}
           footer={<>
             <button className="btn" onClick={() => setPayOpen(false)}>Cancel</button>
-            <button className={`btn ${isPurchase ? 'red' : 'green'}`} onClick={() => { onPaid(doc, payAmt, payMode, isSale && !!doc.party_id); setPayOpen(false); }} disabled={dueLoading || !payAmt || payAmt <= 0 || payAmt > (isSale && doc.party_id ? customerDueTotal : doc.due_amount) + 0.005}>Save payment</button>
+            <button className={`btn ${isPurchase ? 'red' : 'green'}`} onClick={() => { onPaid(doc, payAmt, payMode); setPayOpen(false); }} disabled={dueLoading || !payAmt || payAmt <= 0 || payAmt > partyBalanceLimit + 0.005}>Save payment</button>
           </>}>
           <div className="form-grid">
-            <Field label={isPurchase ? 'Amount paid' : 'Amount received'} req><input className="input" type="number" min="0.01" max={isSale && doc.party_id ? customerDueTotal : doc.due_amount} step="0.01" value={payAmt} disabled={dueLoading} onChange={(e) => setPayAmt(Number(e.target.value))} /></Field>
+            <Field label={isPurchase ? 'Amount paid' : 'Amount received'} req><input className="input" type="number" min="0.01" max={partyBalanceLimit || undefined} step="0.01" value={payAmt} disabled={dueLoading} onChange={(e) => setPayAmt(Number(e.target.value))} /></Field>
             <Field label="Mode">
               <select className="input" value={payMode} onChange={(e) => setPayMode(e.target.value)}>
                 {['upi', 'cash', 'bank', 'card', 'cheque'].map((m) => <option key={m} value={m}>{m.toUpperCase()}</option>)}
@@ -788,21 +751,14 @@ function DocViewer({ doc, party, payments, business, onClose, onEdit, onShare, o
             </Field>
           </div>
           <div className="btn-row" style={{ marginTop: 10 }}>
-            <button className="btn sm" disabled={dueLoading} onClick={() => setPayAmt(Math.round((isSale && doc.party_id ? customerDueTotal : doc.due_amount) * 100) / 100)}>
-              {isPurchase ? 'Full bill balance' : 'Full balance'}
-            </button>
-            {dueLoading && <span className="hint">Loading customer due bills…</span>}
+            <button className="btn sm" disabled={dueLoading || partyBalanceLimit <= 0} onClick={() => setPayAmt(Math.round(partyBalanceLimit * 100) / 100)}>Full ledger balance</button>
+            {dueLoading && <span className="hint">Loading party ledger balance…</span>}
           </div>
           <div className="hint" style={{ marginTop: 8 }}>
-            {isPurchase
-              ? 'This payment applies only to this purchase bill.'
-              : doc.party_id
-                ? 'Full balance includes this customer’s unpaid sales invoices. Payments are applied to the oldest due bill first.'
-                : 'Without a selected customer, payment applies only to this invoice.'}
+            Saved as one standalone {isPurchase ? 'You Gave' : 'You Got'} entry. It changes the party ledger balance and is not allocated to this bill.
           </div>
         </Modal>
       )}
-
       {ewbOpen && (
         <Modal title="Generate E-Way Bill" sub="Part-A details; a 12-digit EWB number is issued" onClose={() => setEwbOpen(false)}
           footer={<>

@@ -4,7 +4,7 @@ const crypto = require('crypto');
 const QRCode = require('qrcode');
 const { db } = require('../db');
 const { auth, loadBusiness } = require('../middleware');
-const { buildDocument, DOC_COLS, DOC_PLACEHOLDERS, docValues, postStock, unwindStock, logActivity, partyBalance, takeNumber } = require('../lib/service');
+const { buildDocument, DOC_COLS, DOC_PLACEHOLDERS, docValues, postStock, unwindStock, logActivity, partyBalance, ledgerCollectionQueue, takeNumber } = require('../lib/service');
 const { buildEinvoicePayload, buildEwayBillPayload, round2, hsnSummary } = require('../lib/gst');
 const { istToday, istTime, istIso, istAddDays, formatIstDateTime } = require('../lib/time');
 
@@ -90,7 +90,7 @@ router.get('/', (req, res) => {
   });
 });
 
-/** Outstanding sales invoices for a customer; used by the consolidated receive-payment dialog. */
+/** Customer ledger balance summary used by account-level receipt workflows. */
 router.get('/party/:partyId/outstanding', (req, res) => {
   const party = db.prepare('SELECT id FROM parties WHERE id = ? AND business_id = ?')
     .get(req.params.partyId, req.business.id);
@@ -101,25 +101,14 @@ router.get('/party/:partyId/outstanding', (req, res) => {
     ORDER BY date ASC, id ASC`).all(req.business.id, party.id);
   const totalDue = round2(invoices.reduce((sum, invoice) => sum + Number(invoice.due_amount || 0), 0));
   const balance = Number(partyBalance(req.business.id, party.id)?.balance || 0);
-  const collectableAmount = Math.max(totalDue, Math.max(0, balance));
+  // Receipt collection is customer-ledger based; invoice due fields are not used to cap it.
+  const collectableAmount = Math.max(0, balance);
   res.json({ partyId: party.id, totalDue, invoiceCount: invoices.length, invoices, balance, collectableAmount, today: istToday() });
 });
 
-/** Overdue invoices across the business - drives the reminder queue. */
+/** Customer-ledger balances bucketed using each account’s earliest invoice due date. */
 router.get('/reminders/overdue', (req, res) => {
-  const today = istToday();
-  const rows = db.prepare(`SELECT d.*, p.name AS party_display, p.phone FROM documents d LEFT JOIN parties p ON p.id = d.party_id
-    WHERE d.business_id = ? AND d.type = 'sale' AND d.status = 'active' AND d.due_amount > 0
-    ORDER BY d.due_date IS NULL, d.due_date ASC, d.date ASC`).all(req.business.id);
-  const buckets = { overdue: [], dueSoon: [], upcoming: [], noDueDate: [] };
-  rows.forEach((r) => {
-    const days = r.due_date ? Math.floor((new Date(today) - new Date(r.due_date)) / 86400000) : null;
-    if (days === null) buckets.noDueDate.push(hydrate(r));
-    else if (days > 0) buckets.overdue.push({ ...hydrate(r), daysOverdue: days });
-    else if (days >= -7) buckets.dueSoon.push({ ...hydrate(r), daysToDue: -days });
-    else buckets.upcoming.push({ ...hydrate(r), daysToDue: -days });
-  });
-  res.json({ ...buckets, totalDue: round2(rows.reduce((s, r) => s + r.due_amount, 0)) });
+  res.json(ledgerCollectionQueue(req.business.id, istToday()));
 });
 
 router.get('/:id', (req, res) => {
@@ -280,97 +269,40 @@ router.post('/:id/duplicate', (req, res) => {
 router.post('/:id/payment', (req, res) => {
   const doc = getDoc(req, req.params.id);
   if (!doc) return res.status(404).json({ error: 'Document not found' });
+  if (!['sale', 'purchase'].includes(doc.type) || doc.status !== 'active' || !doc.party_id) {
+    return res.status(400).json({ error: 'Ledger payment requires an active sales or purchase document with a party.' });
+  }
   const amount = round2(Number(req.body?.amount));
   if (!amount || amount <= 0) return res.status(400).json({ error: 'Enter a payment amount' });
-
-  if (req.body?.allDue === true) {
-    if (doc.type !== 'sale' || !doc.party_id || doc.status !== 'active') {
-      return res.status(400).json({ error: 'Collect all due bills is available only from an active customer invoice.' });
-    }
-    const validModes = ['cash', 'upi', 'bank', 'card', 'cheque'];
-    const mode = validModes.includes(req.body?.mode) ? req.body.mode : 'cash';
-    const date = (req.isAdmin && req.body?.date) ? req.body.date : istToday();
-    const receiptNote = String(req.body?.notes || '').trim().slice(0, 500);
-    const receiptGroup = crypto.randomUUID();
-    const allocations = [];
-    let totalDue = 0;
-    let customerBalanceBefore = 0;
-    let unallocatedAmount = 0;
-    let validationError = null;
-    let remaining = amount;
-    const tx = db.transaction(() => {
-      const invoices = db.prepare(`SELECT id, number, date, total, paid_amount, due_amount
-        FROM documents
-        WHERE business_id = ? AND party_id = ? AND type = 'sale' AND status = 'active' AND due_amount > 0
-        ORDER BY date ASC, id ASC`).all(req.business.id, doc.party_id);
-      totalDue = round2(invoices.reduce((sum, invoice) => sum + Number(invoice.due_amount || 0), 0));
-      customerBalanceBefore = round2(Number(partyBalance(req.business.id, doc.party_id)?.balance || 0));
-      const maxReceipt = round2(Math.max(totalDue, Math.max(0, customerBalanceBefore)));
-      if (totalDue <= 0) { validationError = 'This customer has no outstanding invoices.'; return; }
-      if (amount > maxReceipt + 0.005) {
-        validationError = `Amount exceeds the customer's collectable balance of ${maxReceipt.toFixed(2)}.`;
-        return;
-      }
-      for (const invoice of invoices) {
-        if (remaining <= 0.005) break;
-        const due = round2(Number(invoice.due_amount || 0));
-        if (due <= 0) continue;
-        const applied = round2(Math.min(due, remaining));
-        const paid = round2(Number(invoice.paid_amount || 0) + applied);
-        const newDue = round2(Math.max(0, Number(invoice.total) - paid));
-        db.prepare(`INSERT INTO transactions (business_id, party_id, type, amount, date, mode, document_id, receipt_group, notes)
-          VALUES (?,?,?,?,?,?,?,?,?)`)
-          .run(req.business.id, doc.party_id, 'you_got', applied, date, mode, invoice.id, receiptGroup, `Payment received · ${invoice.number}${receiptNote ? ` · ${receiptNote}` : ''}`);
-        db.prepare('UPDATE documents SET paid_amount = ?, due_amount = ?, payment_status = ? WHERE id = ?')
-          .run(paid, newDue, newDue <= 0.005 ? 'paid' : 'partial', invoice.id);
-        allocations.push({ documentId: invoice.id, number: invoice.number, amount: applied, dueRemaining: newDue });
-        remaining = round2(remaining - applied);
-      }
-      if (remaining > 0.005) {
-        unallocatedAmount = remaining;
-        db.prepare(`INSERT INTO transactions (business_id, party_id, type, amount, date, mode, document_id, receipt_group, notes)
-          VALUES (?,?,?,?,?,?,?,?,?)`)
-          .run(req.business.id, doc.party_id, 'you_got', remaining, date, mode, null, receiptGroup, `Payment received${receiptNote ? ` · ${receiptNote}` : ''}`);
-      }
-      logActivity(req.business.id, req.user.id, 'payment.recorded', `Customer ${doc.party_name} paid ${amount} across ${allocations.length} invoice(s)`);
-    });
-    tx();
-    if (validationError) return res.status(400).json({ error: validationError });
-    const totalAllocated = round2(allocations.reduce((sum, allocation) => sum + allocation.amount, 0));
-    const totalDueAfter = round2(Math.max(0, totalDue - totalAllocated));
-    const customerBalanceAfter = round2(Number(partyBalance(req.business.id, doc.party_id)?.balance || 0));
-    return res.json({
-      document: getDoc(req, doc.id),
-      totalReceived: amount,
-      totalDueBefore: totalDue,
-      totalDueAfter,
-      customerBalanceBefore,
-      customerBalanceAfter,
-      unallocatedAmount,
-      allocations,
-      allocationOrder: 'oldest-first',
-      paymentDate: date
-    });
-  }
-
-  const mode = req.body?.mode || 'cash';
-  const todayIST = istToday();
-  const date = (req.isAdmin && req.body?.date) ? req.body.date : todayIST;
+  const mode = ['cash', 'upi', 'bank', 'card', 'cheque'].includes(req.body?.mode) ? req.body.mode : 'cash';
+  const date = (req.isAdmin && req.body?.date) ? req.body.date : istToday();
+  const type = doc.type === 'purchase' ? 'you_gave' : 'you_got';
+  const note = String(req.body?.notes || '').trim().slice(0, 500) || `${type === 'you_got' ? 'Customer receipt' : 'Supplier payment'} · ${doc.number}`;
+  let balanceBefore = 0;
+  let validationError = null;
   const tx = db.transaction(() => {
-    if (doc.party_id) {
-      db.prepare(`INSERT INTO transactions (business_id, party_id, type, amount, date, mode, document_id, reference, notes)
-        VALUES (?,?,?,?,?,?,?,?,?)`)
-        .run(req.business.id, doc.party_id, doc.type === 'sale' ? 'you_got' : 'you_gave', amount, date, mode, doc.id, req.body?.reference || null, `Payment against ${doc.number}`);
+    balanceBefore = round2(Number(partyBalance(req.business.id, doc.party_id)?.balance || 0));
+    const collectable = doc.type === 'purchase' ? Math.max(0, -balanceBefore) : Math.max(0, balanceBefore);
+    if (amount > collectable + 0.005) {
+      validationError = `Amount exceeds the party's ledger balance of ${collectable.toFixed(2)}.`;
+      return;
     }
-    const paid = doc.party_id
-      ? db.prepare("SELECT COALESCE(SUM(amount),0) s FROM transactions WHERE document_id = ? AND type IN ('you_got','you_gave')").get(doc.id).s
-      : round2(doc.paid_amount + amount);
-    const newPaid = round2(paid);
-    db.prepare('UPDATE documents SET paid_amount = ?, due_amount = ?, payment_status = ? WHERE id = ?')
-      .run(newPaid, round2(Math.max(0, doc.total - newPaid)), newPaid <= 0 ? 'unpaid' : newPaid >= doc.total - 0.005 ? 'paid' : 'partial', doc.id);
+    // New payments are standalone ledger entries. Invoice paid/due fields are intentionally untouched.
+    db.prepare(`INSERT INTO transactions (business_id, party_id, type, amount, date, mode, document_id, reference, notes)
+      VALUES (?,?,?,?,?,?,?,?,?)`)
+      .run(req.business.id, doc.party_id, type, amount, date, mode, null, req.body?.reference || null, note);
+    logActivity(req.business.id, req.user.id, 'payment.recorded', `${type === 'you_got' ? 'Customer receipt' : 'Supplier payment'} of ${amount} recorded for ${doc.party_name}`);
   });
   tx();
-  res.json({ document: getDoc(req, doc.id) });
+  if (validationError) return res.status(400).json({ error: validationError });
+  const balanceAfter = round2(Number(partyBalance(req.business.id, doc.party_id)?.balance || 0));
+  return res.json({
+    document: getDoc(req, doc.id), totalReceived: amount,
+    customerBalanceBefore: balanceBefore, customerBalanceAfter: balanceAfter,
+    totalDueBefore: Math.max(0, doc.type === 'purchase' ? -balanceBefore : balanceBefore),
+    totalDueAfter: Math.max(0, doc.type === 'purchase' ? -balanceAfter : balanceAfter),
+    unallocatedAmount: amount, allocations: [], allocationOrder: null, paymentDate: date
+  });
 });
 
 /** Convert an Estimate Bill into an official GST Tax Invoice. */
@@ -479,8 +411,9 @@ router.get('/:id/share', (req, res) => {
   const money = (n) => '₹' + Number(n).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
   let body;
-  if (doc.type === 'sale' && doc.due_amount > 0) {
-    body = `Dear ${doc.party_name},\n\nPayment Reminder: ${money(doc.due_amount)} is pending against Tax Invoice *${doc.number}* dated ${doc.date}${doc.due_date ? ` (due ${doc.due_date})` : ''}.\n\n📄 View / Download Bill: ${pdfUrl}\n💳 Pay via UPI: ${req.business.upi_id || 'Contact store'}\n\nThank you,\n*${req.business.name}*`;
+  const ledgerBalance = doc.party_id ? Number(partyBalance(req.business.id, doc.party_id)?.balance || 0) : 0;
+  if (doc.type === 'sale' && ledgerBalance > 0.005) {
+    body = `Dear ${doc.party_name},\n\nYour customer account has a balance of ${money(ledgerBalance)}. This is the total Khata balance, not an amount allocated to this invoice. Invoice *${doc.number}* total: ${money(doc.total)}.\n\n📄 View / Download Bill: ${pdfUrl}\n💳 Pay via UPI: ${req.business.upi_id || 'Contact store'}\n\nThank you,\n*${req.business.name}*`;
   } else if (doc.type === 'sale') {
     body = `Dear ${doc.party_name},\n\nThank you for shopping with us! Here is your Tax Invoice *${doc.number}* dated ${doc.date} for *${money(doc.total)}*.\n\n📄 View / Download Bill: ${pdfUrl}\n\nThank you,\n*${req.business.name}*`;
   } else if (doc.type === 'quotation') {

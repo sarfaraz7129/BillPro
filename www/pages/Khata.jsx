@@ -336,17 +336,15 @@ function CustomerReceiptModal({ initialParty, onClose, onSaved, toast }) {
       setSummary(data);
       setAmount(Number(data.collectableAmount) > 0 ? String(data.collectableAmount) : '');
     }).catch((e) => {
-      if (alive) setErr(e.message || 'Could not load customer due bills');
+      if (alive) setErr(e.message || 'Could not load customer ledger balance');
     }).finally(() => { if (alive) setDueBusy(false); });
     return () => { alive = false; };
   }, [party?.id]);
 
   const chooseParty = (p) => { setParty(p); setQuery(p.name); setMatches([]); };
   const changeParty = () => { setParty(null); setSummary(null); setAmount(''); setQuery(''); setErr(''); };
-  const totalDue = Number(summary?.totalDue) || 0;
   const customerBalance = Number(summary?.balance) || 0;
   const collectableAmount = Number(summary?.collectableAmount) || 0;
-  const hasInvoices = (summary?.invoices || []).length > 0;
 
   const save = async () => {
     setErr('');
@@ -356,13 +354,8 @@ function CustomerReceiptModal({ initialParty, onClose, onSaved, toast }) {
     if (collectableAmount > 0 && value > collectableAmount + 0.005) return setErr(`Amount cannot exceed the customer's balance of ${money(collectableAmount)}.`);
     setSaving(true);
     try {
-      if (hasInvoices) {
-        const result = await api.payDocument(summary.invoices[0].id, { amount: value, mode, allDue: true, notes: notes.trim() });
-        toast(`${money(value)} received from ${party.name} on ${fmtDate(result.paymentDate || summary.today)}; recorded once in Khata.`, 'ok');
-      } else {
-        await api.createTransaction({ partyId: party.id, type: 'you_got', amount: value, mode, notes: notes.trim() });
-        toast(`${money(value)} received from ${party.name} on ${fmtDate(summary.today)} and added to Khata.`, 'ok');
-      }
+      await api.createTransaction({ partyId: party.id, type: 'you_got', amount: value, mode, notes: notes.trim() });
+      toast(`${money(value)} received from ${party.name} on ${fmtDate(summary.today)} and added as one customer-ledger receipt.`, 'ok');
       if (onSaved) await onSaved();
       onClose();
     } catch (e) { setErr(e.message || 'Could not record this payment'); }
@@ -370,7 +363,7 @@ function CustomerReceiptModal({ initialParty, onClose, onSaved, toast }) {
   };
 
   return (
-    <Modal title="Receive payment from customer" sub="One dated receipt in Khata · bill balances update oldest first" onClose={onClose}
+    <Modal title="Receive payment from customer" sub="One dated customer-ledger receipt · not allocated to individual bills" onClose={onClose}
       footer={<>
         <button className="btn" onClick={onClose} disabled={saving}>Cancel</button>
         <button className="btn green" onClick={save} disabled={saving || dueBusy || !party || !summary || !amount || Number(amount) <= 0 || (collectableAmount > 0 && Number(amount) > collectableAmount + 0.005)}>
@@ -404,14 +397,11 @@ function CustomerReceiptModal({ initialParty, onClose, onSaved, toast }) {
           </Field>
           <Field label="Payment note" full><input className="input" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Optional note or reference" maxLength={500} /></Field>
           <div className="hint" style={{ gridColumn: '1 / -1' }}>
-            {dueBusy ? 'Loading customer balance…' : hasInvoices
-              ? `Customer balance: ${money(customerBalance)} · Invoice due: ${money(totalDue)} · Max receipt: ${money(collectableAmount)}`
-              : collectableAmount > 0 ? `Customer ledger balance: ${money(customerBalance)}; receipt will be recorded directly in Khata.` : 'No unpaid invoices; a receipt will be recorded as a customer Khata advance.'}
-            {summary?.today ? ` · Received date: ${fmtDate(summary.today)} (IST, automatic)` : ''}
+            {dueBusy ? 'Loading customer ledger balance…' : `Customer ledger balance: ${money(customerBalance)} · Receipt is saved once as “You Got”, independent of any bill.`}
+            {summary?.today ? ` · Date: ${fmtDate(summary.today)} (IST, automatic)` : ''}
           </div>
           <div className="btn-row" style={{ gridColumn: '1 / -1' }}>
             <button className="btn sm" type="button" disabled={dueBusy || !summary || collectableAmount <= 0} onClick={() => setAmount(String(collectableAmount))}>Full balance</button>
-            {summary?.invoiceCount > 1 && <span className="hint">Khata records the receipt once; bill balances update oldest first.</span>}
           </div>
         </>}
       </div>

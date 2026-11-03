@@ -729,24 +729,7 @@ export default function DocumentEditor({ business, type, doc, user, onClose, onS
             {doc && <div className="hint" style={{ marginTop: 5, fontSize: 10.5 }}>
               To record a new receipt with its actual date and optional note, use Receive payment from Khata (or Pay supplier for a purchase bill).
             </div>}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4, fontSize: 11.5, paddingTop: 4, borderTop: '1px dashed var(--line)' }}>
-              <span style={{ color: 'var(--muted)', fontWeight: 600 }}>This bill due:</span>
-              <span style={{
-                fontWeight: 750,
-                fontSize: 12,
-                color: (t.total - (Number(form.paidAmount) || 0)) > 0.005 ? '#dc2626' : '#16a34a'
-              }}>
-                {(t.total - (Number(form.paidAmount) || 0)) > 0.005
-                  ? `${money(Math.max(0, t.total - (Number(form.paidAmount) || 0)))} (Due)`
-                  : '₹0.00 (Fully Paid)'}
-              </span>
-            </div>
-            {Number(form.paidAmount) > t.total + 0.005 && (
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 2, fontSize: 11, color: '#16a34a', fontWeight: 600 }}>
-                <span>Paid towards previous due:</span>
-                <span>+{money(Number(form.paidAmount) - t.total)}</span>
-              </div>
-            )}
+
           </div>
 
           {selectedParty && type === 'sale' && (

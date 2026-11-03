@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { api, money, moneyShort, fmtDate } from '../src/api.js';
 import { Icon } from '../src/ui.jsx';
-import { Bars, Donut, PayPill, Empty } from '../src/components.jsx';
+import { Bars, Donut, Empty } from '../src/components.jsx';
 
 export default function Dashboard({ business, goto, toast }) {
   const [d, setD] = useState(null);
@@ -49,7 +49,7 @@ export default function Dashboard({ business, goto, toast }) {
               {money(d.receivable)}
             </div>
             <div className="moc-sub">
-              {d.overdueCount > 0 ? `${d.overdueCount} overdue (${moneyShort(d.overdueAmount)})` : 'All accounts regular'}
+              {d.overdueCount > 0 ? `${d.overdueCount} customer accounts overdue (${moneyShort(d.overdueAmount)})` : 'No overdue account balances'}
             </div>
           </div>
 
@@ -108,7 +108,7 @@ export default function Dashboard({ business, goto, toast }) {
           soft="var(--blue-soft)"
           onClick={() => goto('billing')}
         />
-        <Stat label="To collect" value={money(d.receivable)} foot={`${d.overdueCount} overdue (${moneyShort(d.overdueAmount)})`} icon={Icon.wallet} color="#dc2626" soft="var(--red-soft)" onClick={() => goto('khata')} warn={d.overdueCount > 0} />
+        <Stat label="To collect" value={money(d.receivable)} foot={`${d.overdueCount} overdue customer accounts (${moneyShort(d.overdueAmount)})`} icon={Icon.wallet} color="#dc2626" soft="var(--red-soft)" onClick={() => goto('khata')} warn={d.overdueCount > 0} />
         <Stat label="To pay" value={money(d.payable)} foot="Supplier bills pending" icon={Icon.arrowUp} color="#d97706" soft="var(--amber-soft)" onClick={() => goto('billing', { type: 'purchase' })} />
         <Stat label="GST position (all records)" value={money(d.netTax)} foot={d.netTax < 0 ? `Recorded purchase tax exceeds sales tax by ${moneyShort(Math.abs(d.netTax))}; check GSTR-3B` : 'Output tax less recorded purchase tax; verify in GSTR-3B'} icon={Icon.shield} color={d.netTax > 0 ? '#dc2626' : '#d97706'} soft={d.netTax > 0 ? 'var(--red-soft)' : 'var(--amber-soft)'} onClick={() => goto('reports')} />
       </div>
@@ -211,9 +211,6 @@ export default function Dashboard({ business, goto, toast }) {
                   </div>
                   <div className="mti-right">
                     <div className="mti-amount">{money(r.total)}</div>
-                    <div className="mti-pill">
-                      {r.type === 'expense' ? <span className="pill sm grey">—</span> : <PayPill status={r.payment_status} />}
-                    </div>
                   </div>
                 </div>
               ))
@@ -223,7 +220,7 @@ export default function Dashboard({ business, goto, toast }) {
           {/* Desktop Table View */}
           <div className="card-b tight tbl-wrap desktop-only">
             <table className="tbl">
-              <thead><tr><th>Document</th><th>Party</th><th>Date</th><th className="num">Amount</th><th>Status</th></tr></thead>
+              <thead><tr><th>Document</th><th>Party</th><th>Date</th><th className="num">Amount</th></tr></thead>
               <tbody>
                 {d.recentDocs.map((r) => (
                   <tr key={r.id} className="clickable" onClick={() => goto('billing', { type: r.type, docId: r.id })}>
@@ -234,21 +231,20 @@ export default function Dashboard({ business, goto, toast }) {
                     <td>{r.party_name}</td>
                     <td className="muted">{fmtDate(r.date)}</td>
                     <td className="num strong">{money(r.total)}</td>
-                    <td>{r.type === 'expense' ? <span className="pill grey">—</span> : <PayPill status={r.payment_status} />}</td>
                   </tr>
                 ))}
-                {d.recentDocs.length === 0 && <tr><td colSpan="5"><Empty title="Nothing billed yet" hint="Create your first invoice to see it here." action={<button className="btn primary sm" onClick={() => goto('billing', { type: 'sale', docId: 'new' })}>New invoice</button>} /></td></tr>}
+                {d.recentDocs.length === 0 && <tr><td colSpan="4"><Empty title="Nothing billed yet" hint="Create your first invoice to see it here." action={<button className="btn primary sm" onClick={() => goto('billing', { type: 'sale', docId: 'new' })}>New invoice</button>} /></td></tr>}
               </tbody>
             </table>
           </div>
         </div>
 
         <div className="card">
-          <div className="card-h"><Icon.clock size={16} /><div><h3>Collection queue</h3><div className="sub">Overdue → due soon → no due date</div></div>
+          <div className="card-h"><Icon.clock size={16} /><div><h3>Collection queue</h3><div className="sub">Customer ledger balance · earliest bill due date</div></div>
             <div className="spacer" /><button className="btn sm" onClick={() => goto('khata')}>Open khata</button></div>
           <div className="card-b tight">
             {queueRows.length === 0 ? (
-              <Empty title="No outstanding invoices" hint="Unpaid invoices will appear here, with their due-date status." icon={Icon.check} />
+              <Empty title="No customer balance to collect" hint="Positive Khata balances appear here; receipts reduce the account balance, not individual bills." icon={Icon.check} />
             ) : (
               <div className="tbl-wrap">
                 <table className="tbl">
@@ -257,9 +253,9 @@ export default function Dashboard({ business, goto, toast }) {
                       <tr key={r.id} className="clickable" onClick={() => goto('khata', { partyId: r.party_id })}>
                         <td>
                           <div className="strong">{r.party_display || r.party_name}</div>
-                          <div className="muted">{r.number} · <span className={`pill ${r.queueTone}`}>{r.queueLabel}</span></div>
+                          <div className="muted">Khata balance · <span className={`pill ${r.queueTone}`}>{r.queueLabel}</span></div>
                         </td>
-                        <td className="num strong neg">{money(r.due_amount)}</td>
+                        <td className="num strong neg">{money(r.ledger_balance)}</td>
                       </tr>
                     ))}
                   </tbody>

@@ -37,6 +37,51 @@ function partyBalance(businessId, partyId) {
   };
 }
 
+function ledgerCollectionQueue(businessId, today = istToday()) {
+  const parties = db.prepare(`SELECT id, name, phone FROM parties
+    WHERE business_id = ? AND type = 'customer' ORDER BY name`).all(businessId);
+  const docs = db.prepare(`SELECT id, party_id, number, date, due_date FROM documents
+    WHERE business_id = ? AND type = 'sale' AND status = 'active' AND party_id IS NOT NULL
+    ORDER BY CASE WHEN due_date IS NULL OR due_date = '' THEN 1 ELSE 0 END, due_date ASC, date ASC, id ASC`).all(businessId);
+  const byParty = new Map();
+  for (const doc of docs) {
+    if (!byParty.has(String(doc.party_id))) byParty.set(String(doc.party_id), doc);
+  }
+  const buckets = { overdue: [], dueSoon: [], upcoming: [], noDueDate: [] };
+  let totalDue = 0;
+  for (const party of parties) {
+    const balance = round2(Number(partyBalance(businessId, party.id)?.balance || 0));
+    if (balance <= 0.005) continue;
+    const earliest = byParty.get(String(party.id)) || null;
+    const row = {
+      id: earliest?.id || `party-${party.id}`,
+      party_id: party.id,
+      party_name: party.name,
+      party_display: party.name,
+      phone: party.phone,
+      number: earliest?.number || 'Khata balance',
+      date: earliest?.date || today,
+      due_date: earliest?.due_date || null,
+      ledger_balance: balance
+    };
+    totalDue = round2(totalDue + balance);
+    if (!row.due_date) {
+      buckets.noDueDate.push(row);
+      continue;
+    }
+    const days = Math.floor((new Date(today) - new Date(row.due_date)) / 86400000);
+    if (days > 0) buckets.overdue.push({ ...row, daysOverdue: days });
+    else if (days >= -7) buckets.dueSoon.push({ ...row, daysToDue: -days });
+    else buckets.upcoming.push({ ...row, daysToDue: -days });
+  }
+  return {
+    ...buckets,
+    totalDue,
+    overdueCount: buckets.overdue.length,
+    overdueAmount: round2(buckets.overdue.reduce((sum, row) => sum + row.ledger_balance, 0))
+  };
+}
+
 function documentTotals(partyId) {
   const rows = db.prepare("SELECT type, COALESCE(SUM(total),0) billed, COALESCE(SUM(due_amount),0) due, COUNT(*) n FROM documents WHERE party_id = ? AND status='active' GROUP BY type").all(partyId);
   return rows.reduce((a, r) => { a[r.type] = { billed: r.billed, due: r.due, count: r.n }; return a; }, {});
@@ -218,6 +263,7 @@ function logActivity(businessId, userId, action, detail) {
 
 module.exports = {
   partyBalance,
+  ledgerCollectionQueue,
   documentTotals,
   refreshPaymentStatus,
   takeNumber,

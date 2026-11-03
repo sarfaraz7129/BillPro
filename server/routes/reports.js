@@ -4,7 +4,7 @@ const { db } = require('../db');
 const { auth, loadBusiness } = require('../middleware');
 const { round2, hsnSummary, financialYear, stateName } = require('../lib/gst');
 const { istToday, istFinancialYear, istAddDays } = require('../lib/time');
-const { partyBalance } = require('../lib/service');
+const { partyBalance, ledgerCollectionQueue } = require('../lib/service');
 
 const router = express.Router();
 router.use(auth, loadBusiness);
@@ -103,21 +103,30 @@ router.get('/dashboard', (req, res) => {
     rateMap.set(k, cur);
   }));
 
+  const ledgerParties = db.prepare("SELECT id, type FROM parties WHERE business_id=? AND type IN ('customer','supplier')").all(biz);
+  let receivable = 0;
+  let payable = 0;
+  for (const party of ledgerParties) {
+    const balance = Number(partyBalance(biz, party.id)?.balance || 0);
+    if (party.type === 'customer') receivable += Math.max(0, balance);
+    else payable += Math.max(0, -balance);
+  }
+  const collectionQueue = ledgerCollectionQueue(biz, today);
   res.json({
     today,
     todaySales: round2(db.prepare("SELECT COALESCE(SUM(total),0) s FROM documents WHERE business_id=? AND type='sale' AND status='active' AND date=?").get(biz, today).s),
     monthSales: round2(db.prepare("SELECT COALESCE(SUM(total),0) s FROM documents WHERE business_id=? AND type='sale' AND status='active' AND date>=?").get(biz, monthStart).s),
-    receivable: round2(db.prepare("SELECT COALESCE(SUM(due_amount),0) s FROM documents WHERE business_id=? AND type='sale' AND status='active'").get(biz).s),
-    payable: round2(db.prepare("SELECT COALESCE(SUM(due_amount),0) s FROM documents WHERE business_id=? AND type='purchase' AND status='active'").get(biz).s),
+    receivable: round2(receivable),
+    payable: round2(payable),
     netTax: round2(
       db.prepare("SELECT COALESCE(SUM(cgst+sgst+igst+cess),0) s FROM documents WHERE business_id=? AND type='sale' AND status='active'").get(biz).s -
       db.prepare("SELECT COALESCE(SUM(cgst+sgst+igst+cess),0) s FROM documents WHERE business_id=? AND type='purchase' AND status='active'").get(biz).s
     ),
     invoiceCount: db.prepare("SELECT COUNT(*) n FROM documents WHERE business_id=? AND type='sale' AND status='active'").get(biz).n,
     lowStock: db.prepare('SELECT id, name, stock, low_stock_at, unit FROM products WHERE business_id=? AND low_stock_at>0 AND stock<=low_stock_at ORDER BY stock LIMIT 10').all(biz),
-    overdueCount: db.prepare("SELECT COUNT(*) n FROM documents WHERE business_id=? AND type='sale' AND status='active' AND due_amount>0 AND due_date<?").get(biz, today).n,
-    overdueAmount: round2(db.prepare("SELECT COALESCE(SUM(due_amount),0) s FROM documents WHERE business_id=? AND type='sale' AND status='active' AND due_amount>0 AND due_date<?").get(biz, today).s),
-    recentDocs: db.prepare('SELECT id, type, number, party_name, date, total, payment_status FROM documents WHERE business_id=? ORDER BY id DESC LIMIT 8').all(biz),
+    overdueCount: collectionQueue.overdueCount,
+    overdueAmount: collectionQueue.overdueAmount,
+    recentDocs: db.prepare('SELECT id, type, number, party_name, date, total FROM documents WHERE business_id=? ORDER BY id DESC LIMIT 8').all(biz),
     salesSeries: days,
     topProducts: [...productSales.values()].sort((a, b) => b.value - a.value).slice(0, 5),
     topCustomers: topCustomers.map((c) => ({ ...c, s: round2(c.s) })),
@@ -291,17 +300,17 @@ router.get(['/profit', '/profit-loss'], (req, res) => {
 /** Receivables ageing buckets (0-30, 31-60, 61-90, 90+ days). */
 router.get('/aging', (req, res) => {
   const today = istToday();
-  const rows = db.prepare(`SELECT d.*, COALESCE(p.name, d.party_name) party FROM documents d LEFT JOIN parties p ON p.id=d.party_id
-    WHERE d.business_id=? AND d.type='sale' AND d.status='active' AND d.due_amount>0 ORDER BY d.date`).all(req.business.id);
+  const queue = ledgerCollectionQueue(req.business.id, today);
+  const rows = [...queue.overdue, ...queue.dueSoon, ...queue.upcoming, ...queue.noDueDate];
   const buckets = { '0-30': 0, '31-60': 0, '61-90': 0, '90+': 0 };
   const items = rows.map((r) => {
     const rawAge = r.due_date ? Math.floor((new Date(today) - new Date(r.due_date)) / 86400000) : Math.floor((new Date(today) - new Date(r.date)) / 86400000);
     const age = Math.max(0, rawAge);
     const bucket = age <= 30 ? '0-30' : age <= 60 ? '31-60' : age <= 90 ? '61-90' : '90+';
-    buckets[bucket] = round2(buckets[bucket] + r.due_amount);
-    return { id: r.id, number: r.number, party: r.party, date: r.date, dueDate: r.due_date, total: r.total, due: r.due_amount, age, bucket };
+    buckets[bucket] = round2(buckets[bucket] + r.ledger_balance);
+    return { id: r.id, partyId: r.party_id, number: r.number, party: r.party_display, date: r.date, dueDate: r.due_date, balance: r.ledger_balance, age, bucket };
   });
-  res.json({ items, buckets, total: round2(rows.reduce((s, r) => s + r.due_amount, 0)) });
+  res.json({ items, buckets, total: round2(rows.reduce((sum, row) => sum + row.ledger_balance, 0)) });
 });
 
 /** Payments & collections report (Cash vs UPI vs Bank vs other). */
@@ -435,13 +444,13 @@ router.get('/export/:report', (req, res) => {
     rows = data;
     filename = `GSTR1-${req.business.gstin || 'NA'}-${from.slice(0, 7)}.csv`;
   } else if (report === 'sales') {
-    rows = [['Invoice No', 'Date', 'Party', 'GSTIN', 'Taxable', 'CGST', 'SGST', 'IGST', 'CESS', 'Total', 'Paid', 'Due', 'Status']];
+    rows = [['Invoice No', 'Date', 'Party', 'GSTIN', 'Taxable', 'CGST', 'SGST', 'IGST', 'CESS', 'Current Bill Total', 'Amount Received at Bill Creation']];
     db.prepare("SELECT d.*, COALESCE(p.name, d.party_name) party FROM documents d LEFT JOIN parties p ON p.id=d.party_id WHERE d.business_id=? AND d.type='sale' AND d.status='active' AND d.date BETWEEN ? AND ? ORDER BY d.date").all(req.business.id, from, to)
-      .forEach((r) => rows.push([r.number, r.date, r.party, r.party_gstin || '', r.taxable_value, r.cgst, r.sgst, r.igst, r.cess, r.total, r.paid_amount, r.due_amount, r.payment_status]));
+      .forEach((r) => rows.push([r.number, r.date, r.party, r.party_gstin || '', r.taxable_value, r.cgst, r.sgst, r.igst, r.cess, r.total, r.paid_amount]));
   } else if (report === 'purchases') {
-    rows = [['Bill No', 'Date', 'Supplier', 'GSTIN', 'Taxable', 'CGST', 'SGST', 'IGST', 'CESS', 'Total', 'Status']];
+    rows = [['Bill No', 'Date', 'Supplier', 'GSTIN', 'Taxable', 'CGST', 'SGST', 'IGST', 'CESS', 'Current Bill Total']];
     db.prepare("SELECT d.*, COALESCE(p.name, d.party_name) party FROM documents d LEFT JOIN parties p ON p.id=d.party_id WHERE d.business_id=? AND d.type='purchase' AND d.status='active' AND d.date BETWEEN ? AND ? ORDER BY d.date").all(req.business.id, from, to)
-      .forEach((r) => rows.push([r.number, r.date, r.party, r.party_gstin || '', r.taxable_value, r.cgst, r.sgst, r.igst, r.cess, r.total, r.payment_status]));
+      .forEach((r) => rows.push([r.number, r.date, r.party, r.party_gstin || '', r.taxable_value, r.cgst, r.sgst, r.igst, r.cess, r.total]));
   } else if (report === 'hsn') {
     rows = [['HSN/SAC', 'Description', 'UQC', 'Total Qty', 'Taxable Value', 'CGST', 'SGST', 'IGST', 'CESS']];
     const lines = [];

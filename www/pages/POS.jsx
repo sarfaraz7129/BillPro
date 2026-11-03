@@ -395,14 +395,9 @@ export default function POS({ business, toast }) {
           <div className="grid g2" style={{ marginBottom: 12 }}>
             <div className="kv"><span className="k">Customer</span><span className="v">{lastDoc.party_name}</span></div>
             <div className="kv"><span className="k">Items</span><span className="v">{lastDoc.items.length}</span></div>
-            <div className="kv"><span className="k">Paid</span><span className="v pos">{money(lastDoc.paid_amount)}</span></div>
-            <div className="kv"><span className="k">Balance</span><span className="v neg">{money(lastDoc.due_amount)}</span></div>
+            <div className="kv"><span className="k">Current Bill Total</span><span className="v">{money(lastDoc.total)}</span></div>
+            <div className="kv"><span className="k">Amount Received</span><span className="v pos">{money(lastDoc.paid_amount)}</span></div>
           </div>
-          {lastDoc.due_amount > 0 && (
-            <div className="hint" style={{ marginBottom: 14 }}>
-              The balance of {money(lastDoc.due_amount)} has been added to customer's khata.
-            </div>
-          )}
 
           {/* Quick WhatsApp Share Box directly in POS completion */}
           <div style={{

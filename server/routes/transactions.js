@@ -39,10 +39,11 @@ router.post('/', (req, res) => {
   if (!party) return res.status(404).json({ error: 'Party not found' });
   const mode = MODES.includes(b.mode) ? b.mode : 'cash';
   const entryDate = (req.isAdmin && b.date) ? b.date : istToday();
+  // Receipts/payments are customer-ledger entries, never invoice allocations.
   const info = db.prepare(`INSERT INTO transactions (business_id, party_id, type, amount, date, mode, reference, document_id, notes)
     VALUES (?,?,?,?,?,?,?,?,?)`)
     .run(req.business.id, party.id, b.type === 'you_gave' ? 'you_gave' : 'you_got', amount,
-      entryDate, mode, b.reference || null, b.documentId || null, b.notes || null);
+      entryDate, mode, b.reference || null, null, b.notes || null);
   logActivity(req.business.id, req.user.id, 'payment.recorded', `${party.name} ${b.type === 'you_gave' ? 'paid out' : 'received'} ${amount}`);
   res.status(201).json({
     transaction: db.prepare('SELECT * FROM transactions WHERE id = ?').get(info.lastInsertRowid),

@@ -275,7 +275,6 @@ function render(doc, business, party, accent) {
       pdf.moveTo(totalsX, totalsY - 2).lineTo(576, totalsY - 2).strokeColor(LINE).lineWidth(0.5).stroke();
 
       const paid = Number(doc.paid_amount) || 0;
-      const due = Number(doc.due_amount) || 0;
 
       // Calculate Previous Balance & Net Balance
       if (party && party.balance !== undefined) {
@@ -298,16 +297,7 @@ function render(doc, business, party, accent) {
         pdf.text(fmt(Math.abs(netBal)), totalsX + 112, totalsY + 5, { width: 68, align: 'right' });
         totalsY += 25;
       } else {
-        const due = Number(doc.due_amount) || 0;
         row('Amount Received', paid, false);
-        if (due > 0) {
-          totalsY += 3;
-          pdf.roundedRect(totalsX, totalsY - 1, 186, 21, 3).fillAndStroke('#f8fafc', '#cbd5e1');
-          pdf.font('Helvetica-Bold').fontSize(8.5).fillColor('#b91c1c');
-          pdf.text('NET BALANCE DUE', totalsX + 6, totalsY + 5, { width: 104 });
-          pdf.text(fmt(due), totalsX + 112, totalsY + 5, { width: 68, align: 'right' });
-          totalsY += 25;
-        }
       }
     }
 

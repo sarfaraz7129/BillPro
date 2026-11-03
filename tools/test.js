@@ -118,7 +118,7 @@ async function run() {
   ok('customer remains available after blocked delete', (await call('GET', `/api/parties/${kerala.id}`)).status === 200);
   ok('amount in words is filled', /Rupees.*Only/.test(d.amount_in_words), d.amount_in_words);
 
-  console.log('\n--- collect all customer due invoices ---');
+  console.log('\n--- customer-ledger-only receipts ---');
   const inv2 = await call('POST', '/api/documents', {
     type: 'sale', partyId: kerala.id, partyName: kerala.name, partyGstin: kerala.gstin, partyStateCode: kerala.state_code,
     items: [{ name: 'Consultation service', hsn: '9983', unit: 'service', qty: 1, rate: 1000, gstRate: 0 }],
@@ -127,23 +127,31 @@ async function run() {
   ok('creates a second unpaid invoice without changing stock', inv2.status === 201, inv2.status);
   const secondDoc = inv2.body.document;
   const dueSummary = await call('GET', `/api/documents/party/${kerala.id}/outstanding`);
-  ok('full balance includes every active due invoice for customer', dueSummary.status === 200 && dueSummary.body.invoiceCount >= 2 && dueSummary.body.invoices.some((x) => x.id === d.id) && dueSummary.body.invoices.some((x) => x.id === secondDoc.id) && near(dueSummary.body.totalDue, dueSummary.body.invoices.reduce((sum, x) => sum + x.due_amount, 0)), dueSummary.body);
-  const firstAllocation = await call('POST', `/api/documents/${d.id}/payment`, { amount: 1, mode: 'cash', allDue: true, notes: 'cash counter receipt' });
-  ok('partial customer receipt is applied to the oldest due bill first', firstAllocation.status === 200 && firstAllocation.body.paymentDate === dueSummary.body.today && firstAllocation.body.allocations[0]?.documentId === dueSummary.body.invoices[0]?.id && near(firstAllocation.body.allocations[0]?.amount, 1), firstAllocation.body);
-  const firstPaidDoc = await call('GET', `/api/documents/${dueSummary.body.invoices[0].id}`);
-  ok('receipt note and current IST payment date are saved', firstPaidDoc.body.payments.some((p) => p.date === dueSummary.body.today && String(p.notes).includes('cash counter receipt')), firstPaidDoc.body.payments);
-  const receiptStatement = await call('GET', `/api/parties/${kerala.id}/statement`);
-  const allocatedDocId = firstAllocation.body.allocations[0]?.documentId;
-  const billLedgerRow = receiptStatement.body.entries.find((e) => e.kind === 'invoice' && String(e.id) === String(allocatedDocId));
-  const paymentLedgerRow = receiptStatement.body.entries.find((e) => e.kind === 'txn' && String(e.document_id) === String(allocatedDocId) && String(e.notes || '').includes('cash counter receipt'));
-  ok('Khata keeps the original bill debit and current-date receipt as separate rows', !!billLedgerRow && near(billLedgerRow.credit, 0) && !!paymentLedgerRow && paymentLedgerRow.date === dueSummary.body.today && near(paymentLedgerRow.credit, 1), { bill: billLedgerRow, payment: paymentLedgerRow });
-  const refreshedDue = await call('GET', `/api/documents/party/${kerala.id}/outstanding`);
-  const fullCollection = await call('POST', `/api/documents/${d.id}/payment`, { amount: refreshedDue.body.totalDue, mode: 'upi', allDue: true });
-  ok('one customer receipt allocates across all unpaid invoices', fullCollection.status === 200 && fullCollection.body.allocations.length === refreshedDue.body.invoiceCount && near(fullCollection.body.totalDueAfter, 0), fullCollection.body);
-  const fullReceiptStatement = await call('GET', `/api/parties/${kerala.id}/statement`);
-  const fullReceiptDocIds = new Set(fullCollection.body.allocations.map((allocation) => String(allocation.documentId)));
-  const groupedReceiptAllocations = fullReceiptStatement.body.entries.filter((entry) => entry.kind === 'txn' && entry.receipt_group && entry.mode === 'upi' && fullReceiptDocIds.has(String(entry.document_id)) && String(entry.notes || '').startsWith('Payment received ·'));
-  ok('all invoice allocations for one collection share a receipt group and total the amount received', groupedReceiptAllocations.length === fullCollection.body.allocations.length && new Set(groupedReceiptAllocations.map((entry) => entry.receipt_group)).size === 1 && near(groupedReceiptAllocations.reduce((sum, entry) => sum + entry.credit, 0), refreshedDue.body.totalDue), groupedReceiptAllocations);
+  ok('collection limit is the positive customer ledger balance, independent of invoice due totals', dueSummary.status === 200 && dueSummary.body.invoiceCount >= 2 && dueSummary.body.invoices.some((x) => x.id === d.id) && dueSummary.body.invoices.some((x) => x.id === secondDoc.id) && near(dueSummary.body.collectableAmount, Math.max(0, dueSummary.body.balance)), dueSummary.body);
+  const originalDue = { [d.id]: d.due_amount, [secondDoc.id]: secondDoc.due_amount };
+  const firstReceipt = await call('POST', `/api/documents/${d.id}/payment`, { amount: 1, mode: 'cash', allDue: true, notes: 'cash counter receipt' });
+  ok('partial receipt is saved as one standalone account-level transaction', firstReceipt.status === 200 && firstReceipt.body.allocations.length === 0 && near(firstReceipt.body.unallocatedAmount, 1) && firstReceipt.body.paymentDate === dueSummary.body.today, firstReceipt.body);
+  const afterFirst = await call('GET', `/api/parties/${kerala.id}/statement`);
+  const standaloneReceipt = afterFirst.body.entries.find((e) => e.kind === 'txn' && String(e.notes || '').includes('cash counter receipt'));
+  ok('standalone You Got row retains current IST date and no invoice link', !!standaloneReceipt && standaloneReceipt.label === 'You Got' && standaloneReceipt.document_id == null && standaloneReceipt.date === dueSummary.body.today && near(standaloneReceipt.credit, 1), standaloneReceipt);
+  const unchangedD = await call('GET', `/api/documents/${d.id}`);
+  const unchangedSecond = await call('GET', `/api/documents/${secondDoc.id}`);
+  ok('receipt does not alter any invoice paid/due fields', near(unchangedD.body.document.due_amount, originalDue[d.id]) && near(unchangedSecond.body.document.due_amount, originalDue[secondDoc.id]) && near(unchangedD.body.document.paid_amount, d.paid_amount), { first: unchangedD.body.document, second: unchangedSecond.body.document });
+  const remainingBalance = Number(afterFirst.body.party.balance);
+  const fullCollection = await call('POST', `/api/documents/${d.id}/payment`, { amount: remainingBalance, mode: 'upi', allDue: true, notes: 'full customer ledger receipt' });
+  ok('one full-balance receipt clears the account without invoice allocations', fullCollection.status === 200 && fullCollection.body.allocations.length === 0 && near(fullCollection.body.customerBalanceAfter, 0) && near(fullCollection.body.unallocatedAmount, remainingBalance), fullCollection.body);
+  const afterFull = await call('GET', `/api/parties/${kerala.id}/statement`);
+  const allReceiptRows = afterFull.body.entries.filter((entry) => entry.kind === 'txn' && entry.label === 'You Got');
+  ok('separate receipts remain separate ledger entries at their actual amounts', allReceiptRows.length >= 2 && near(allReceiptRows.find((entry) => String(entry.notes || '').includes('cash counter receipt'))?.credit, 1) && near(allReceiptRows.find((entry) => String(entry.notes || '').includes('full customer ledger receipt'))?.credit, remainingBalance), allReceiptRows);
+  const unchangedAfterFull = await call('GET', `/api/documents/${d.id}`);
+  ok('full customer receipt leaves invoice due/status untouched by design', unchangedAfterFull.body.document.payment_status === d.payment_status && near(unchangedAfterFull.body.document.due_amount, d.due_amount), unchangedAfterFull.body.document);
+  const overCollection = await call('POST', `/api/documents/${d.id}/payment`, { amount: 1, mode: 'cash', allDue: true });
+  ok('prevents receipt above a positive customer ledger balance', overCollection.status === 400, overCollection.body);
+  const editWithChangedPaid = await call('PUT', `/api/documents/${d.id}`, { items: d.items, paidAmount: d.paid_amount + 1 });
+  ok('invoice edit cannot alter the original amount received at bill creation', editWithChangedPaid.status === 400, editWithChangedPaid.body);
+  const editKeepingPaid = await call('PUT', `/api/documents/${d.id}`, { items: d.items, paidAmount: d.paid_amount, notes: 'invoice details corrected' });
+  const afterBillEdit = await call('GET', `/api/documents/${d.id}`);
+  ok('editing invoice details preserves its original receipt history', editKeepingPaid.status === 200 && afterBillEdit.body.payments.some((p) => String(p.notes).includes('Payment received at bill creation')), afterBillEdit.body.payments);
 
   const receiptPartyRes = await call('POST', '/api/parties', { name: 'Receipt Balance Test', type: 'customer' });
   const receiptParty = receiptPartyRes.body.party;
@@ -152,26 +160,21 @@ async function run() {
     items: [{ name: 'Receipt balance service', hsn: '9983', unit: 'service', qty: 1, rate: 1000, gstRate: 0 }],
     paidAmount: 0, roundOff: false
   });
+  const forcedStandalone = await call('POST', '/api/transactions', { partyId: receiptParty.id, type: 'you_got', amount: 100, mode: 'cash', documentId: receiptBillRes.body.document.id, notes: 'Must stay standalone' });
+  ok('transaction endpoint ignores invoice id for new standalone receipts', forcedStandalone.status === 201 && forcedStandalone.body.transaction.document_id == null && near(forcedStandalone.body.balance, 900), forcedStandalone.body);
   await call('POST', '/api/transactions', { partyId: receiptParty.id, type: 'you_gave', amount: 4000, mode: 'cash', notes: 'Prior customer debit' });
   const receiptPartyDue = await call('GET', `/api/documents/party/${receiptParty.id}/outstanding`);
-  ok('receive-payment limit uses the full customer ledger balance, not just invoice dues', near(receiptPartyDue.body.totalDue, 1000) && near(receiptPartyDue.body.collectableAmount, 5000), receiptPartyDue.body);
-  const overNetBalanceReceipt = await call('POST', `/api/documents/${receiptBillRes.body.document.id}/payment`, { amount: 5001, mode: 'upi', allDue: true });
-  ok('prevents collecting above the full customer balance', overNetBalanceReceipt.status === 400, overNetBalanceReceipt.body);
-  const mixedBalanceReceipt = await call('POST', `/api/documents/${receiptBillRes.body.document.id}/payment`, { amount: 3000, mode: 'upi', allDue: true });
+  ok('ledger receipt limit includes all customer account debits, not invoice-only dues', near(receiptPartyDue.body.totalDue, 1000) && near(receiptPartyDue.body.collectableAmount, 4900), receiptPartyDue.body);
+  const overNetBalanceReceipt = await call('POST', `/api/documents/${receiptBillRes.body.document.id}/payment`, { amount: 4901, mode: 'upi', allDue: true });
+  ok('prevents collecting above the positive net customer ledger balance', overNetBalanceReceipt.status === 400, overNetBalanceReceipt.body);
+  const mixedBalanceReceipt = await call('POST', `/api/documents/${receiptBillRes.body.document.id}/payment`, { amount: 3000, mode: 'upi', allDue: true, notes: 'single customer receipt' });
+  const afterMixedSummary = await call('GET', `/api/documents/party/${receiptParty.id}/outstanding`);
   const mixedBalanceStatement = await call('GET', `/api/parties/${receiptParty.id}/statement`);
-  const groupedMixedReceipt = prepareLedgerRows(mixedBalanceStatement.body.entries).find((entry) => entry.receipt_group);
-  ok('receipt above invoice dues is accepted once, with excess reducing other customer balance', mixedBalanceReceipt.status === 200 && near(mixedBalanceReceipt.body.unallocatedAmount, 2000) && near(mixedBalanceReceipt.body.customerBalanceAfter, 2000) && near(groupedMixedReceipt?.credit, 3000) && near(groupedMixedReceipt?.balance, 2000), { response: mixedBalanceReceipt.body, receiptRow: groupedMixedReceipt });
-
-  const settledDocs = await Promise.all(refreshedDue.body.invoices.map((x) => call('GET', `/api/documents/${x.id}`)));
-  ok('every due bill is marked paid after full-balance collection', settledDocs.every((x) => x.status === 200 && x.body.document.payment_status === 'paid' && near(x.body.document.due_amount, 0)), settledDocs.map((x) => x.body.document && ({ number: x.body.document.number, status: x.body.document.payment_status, due: x.body.document.due_amount })));
-  const editedPaidDoc = settledDocs[0].body.document;
-  const editWithChangedPaid = await call('PUT', `/api/documents/${editedPaidDoc.id}`, { items: editedPaidDoc.items, paidAmount: editedPaidDoc.paid_amount + 1 });
-  ok('invoice edit cannot alter a recorded receipt amount', editWithChangedPaid.status === 400, editWithChangedPaid.body);
-  const editKeepingPaid = await call('PUT', `/api/documents/${editedPaidDoc.id}`, { items: editedPaidDoc.items, paidAmount: editedPaidDoc.paid_amount, notes: 'invoice details corrected' });
-  const afterBillEdit = await call('GET', `/api/documents/${editedPaidDoc.id}`);
-  ok('editing invoice details preserves the original receipt date and note', editKeepingPaid.status === 200 && afterBillEdit.body.payments.some((p) => p.date === dueSummary.body.today && String(p.notes).includes('cash counter receipt')), afterBillEdit.body.payments);
-  const overCollection = await call('POST', `/api/documents/${d.id}/payment`, { amount: 1, mode: 'cash', allDue: true });
-  ok('prevents collecting more than the customer total due', overCollection.status === 400, overCollection.body);
+  const mixedReceiptRow = mixedBalanceStatement.body.entries.find((entry) => String(entry.notes || '').includes('single customer receipt'));
+  const mixedBill = await call('GET', `/api/documents/${receiptBillRes.body.document.id}`);
+  ok('one account receipt reduces party balance without splitting or changing invoice due', mixedBalanceReceipt.status === 200 && near(mixedBalanceReceipt.body.customerBalanceAfter, 1900) && near(afterMixedSummary.body.collectableAmount, 1900) && near(mixedReceiptRow?.credit, 3000) && mixedReceiptRow?.document_id == null && near(mixedBill.body.document.due_amount, 1000), { response: mixedBalanceReceipt.body, nextLimit: afterMixedSummary.body.collectableAmount, row: mixedReceiptRow, invoice: mixedBill.body.document });
+  const finalAccountReceipt = await call('POST', `/api/documents/${receiptBillRes.body.document.id}/payment`, { amount: 1900, mode: 'cash' });
+  ok('the remaining account balance can be collected as a separate standalone receipt', finalAccountReceipt.status === 200 && near(finalAccountReceipt.body.customerBalanceAfter, 0) && near((await call('GET', `/api/documents/${receiptBillRes.body.document.id}`)).body.document.due_amount, 1000), finalAccountReceipt.body);
 
   console.log('\n--- inventory posting ---');
   const after = await call('GET', '/api/products');
@@ -188,8 +191,8 @@ async function run() {
     { kind: 'txn', id: 991, document_id: 987, date: '2026-11-01', debit: 0, credit: 200, mode: 'cash', notes: 'Payment received at bill creation · EST-1' },
     { kind: 'txn', id: 992, document_id: 987, date: '2026-11-03', debit: 0, credit: 100, mode: 'upi', notes: 'Payment received · EST-1' }
   ]);
-  ok('payment taken at bill creation is shown with bill debit on one row', receiptRows.length === 2 && receiptRows[1].kind === 'invoice' && near(receiptRows[1].debit, 360) && near(receiptRows[1].credit, 200) && near(receiptRows[1].balance, 160), receiptRows[1]);
-  ok('the newest later payment appears first as a separate dated credit row', receiptRows[0].kind === 'txn' && receiptRows[0].date === '2026-11-03' && near(receiptRows[0].credit, 100) && near(receiptRows[0].balance, 60), receiptRows[0]);
+  ok('bill debit and payment at bill creation share one row in chronological position', receiptRows.length === 2 && receiptRows[0].kind === 'invoice' && near(receiptRows[0].debit, 360) && near(receiptRows[0].credit, 200) && near(receiptRows[0].balance, 160), receiptRows[0]);
+  ok('later payment follows the bill as a separate dated credit row', receiptRows[1].kind === 'txn' && receiptRows[1].date === '2026-11-03' && near(receiptRows[1].credit, 100) && near(receiptRows[1].balance, 60), receiptRows[1]);
   const partialGroupedRows = prepareLedgerRows([
     { kind: 'invoice', id: 300, date: '2026-11-01', debit: 300, credit: 0, balance: 300, reference: 'EST-2' },
     { kind: 'invoice', id: 500, date: '2026-11-02', debit: 500, credit: 0, balance: 800, reference: 'EST-3' },
@@ -230,7 +233,7 @@ async function run() {
   const invoiceEntry = stmt.body.entries.find((e) => e.kind === 'invoice' && e.id === d.id);
   ok('statement lists the full invoice debit on the bill date', !!invoiceEntry && invoiceEntry.date === d.date && near(invoiceEntry.debit, d.total) && near(invoiceEntry.credit, 0), invoiceEntry);
   const receiptEntry = stmt.body.entries.find((e) => e.kind === 'txn' && String(e.notes || '').includes('cash counter receipt'));
-  ok('statement preserves the linked bill id and actual receipt date for payment details', !!receiptEntry && receiptEntry.label === 'Payment received' && receiptEntry.date === dueSummary.body.today && receiptEntry.document_id === firstAllocation.body.allocations[0]?.documentId && near(receiptEntry.credit, 1), receiptEntry);
+  ok('statement preserves the standalone customer receipt and actual date', !!receiptEntry && receiptEntry.label === 'You Got' && receiptEntry.date === dueSummary.body.today && receiptEntry.document_id == null && near(receiptEntry.credit, 1), receiptEntry);
   const legacyCredit = stmt.body.entries.find((e) => e.legacy_payment && e.document_number === legacyBill.body.document.number);
   ok('legacy paid amount keeps its bill id and is shown as a bill-date credit', !!legacyCredit && legacyCredit.document_id === legacyBill.body.document.id && legacyCredit.date === legacyBill.body.document.date && near(legacyCredit.credit, 300), legacyCredit);
   ok('statement running balance matches the party balance', near(stmt.body.running, stmt.body.party.balance), { running: stmt.body.running, balance: stmt.body.party.balance });
@@ -309,17 +312,26 @@ async function run() {
   console.log('\n--- reminders ---');
   const rem = await call('GET', '/api/documents/reminders/overdue');
   ok('overdue reminder endpoint responds', rem.status === 200 && typeof rem.body.totalDue === 'number', rem.status);
+  const undatedParty = (await call('POST', '/api/parties', { name: 'Collection Queue - No Due Date', type: 'customer' })).body.party;
+  const overdueParty = (await call('POST', '/api/parties', { name: 'Collection Queue - Overdue', type: 'customer' })).body.party;
   const undatedInvoice = await call('POST', '/api/documents', {
-    type: 'sale', partyName: 'Collection Queue - No Due Date', dueDate: null,
+    type: 'sale', partyId: undatedParty.id, partyName: undatedParty.name, dueDate: null,
     items: [{ name: 'Undated collection test', qty: 1, rate: 125, gstRate: 0 }]
   });
   const overdueInvoice = await call('POST', '/api/documents', {
-    type: 'sale', partyName: 'Collection Queue - Overdue', dueDate: '2000-01-01',
+    type: 'sale', partyId: overdueParty.id, partyName: overdueParty.name, dueDate: '2000-01-01',
     items: [{ name: 'Overdue collection test', qty: 1, rate: 250, gstRate: 0 }]
   });
   const queue = await call('GET', '/api/documents/reminders/overdue');
-  ok('collection queue includes undated unpaid invoices', queue.body.noDueDate?.some((r) => r.id === undatedInvoice.body.document.id));
-  ok('collection queue sorts overdue invoices into the overdue bucket', queue.body.overdue?.some((r) => r.id === overdueInvoice.body.document.id));
+  ok('collection queue includes customer ledger balance without a due date', queue.body.noDueDate?.some((r) => r.party_id === undatedParty.id && near(r.ledger_balance, 125)));
+  ok('collection queue buckets a positive customer balance using its earliest bill due date', queue.body.overdue?.some((r) => r.party_id === overdueParty.id && near(r.ledger_balance, 250)) && queue.body.overdueAmount >= 250);
+  const queuedParty = overdueParty;
+  const receivableBeforeReceipt = (await call('GET', '/api/reports/dashboard')).body.receivable;
+  const queueReceipt = await call('POST', '/api/transactions', { partyId: queuedParty.id, type: 'you_got', amount: 250, mode: 'cash' });
+  const queueAfterReceipt = await call('GET', '/api/documents/reminders/overdue');
+  const receivableAfterReceipt = (await call('GET', '/api/reports/dashboard')).body.receivable;
+  ok('customer-ledger receipt removes settled customer from collection queue despite stale bill due fields', queueReceipt.status === 201 && !queueAfterReceipt.body.overdue?.some((r) => r.party_id === queuedParty.id));
+  ok('dashboard receivables decrease by the account receipt amount', near(receivableBeforeReceipt - receivableAfterReceipt, 250), { before: receivableBeforeReceipt, after: receivableAfterReceipt });
   ok('collection queue exposes upcoming and due-soon buckets', Array.isArray(queue.body.upcoming) && Array.isArray(queue.body.dueSoon));
 
   console.log('\n--- new business isolation ---');

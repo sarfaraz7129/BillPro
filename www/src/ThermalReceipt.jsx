@@ -82,7 +82,7 @@ export default function ThermalReceiptModal({ doc, party, business, initialWidth
     };
 
     const hasPartyBal = partyData && partyData.balance !== undefined;
-    const netBal = hasPartyBal ? Number(partyData.balance) || 0 : Number(doc.due_amount) || 0;
+    const netBal = hasPartyBal ? Number(partyData.balance) || 0 : 0;
     const paid = Number(doc.paid_amount || 0);
     const prevBal = hasPartyBal ? Math.round((netBal - (Number(doc.total) - paid)) * 100) / 100 : 0;
     const isEstimate = Boolean(doc.is_estimate);
@@ -167,7 +167,7 @@ export default function ThermalReceiptModal({ doc, party, business, initialWidth
           Math.abs(prevBal) > 0.01 ? row(prevBal > 0 ? 'Previous Due:' : 'Previous Advance:', money(Math.abs(prevBal))) : '',
           row('Amount Received:', money(doc.paid_amount || 0)),
           line,
-          row(netBal > 0 ? 'NET BALANCE DUE:' : (netBal < 0 ? 'NET ADVANCE:' : 'NET BALANCE:'), money(Math.abs(netBal))),
+          hasPartyBal ? row(netBal > 0 ? 'NET BALANCE DUE:' : (netBal < 0 ? 'NET ADVANCE:' : 'NET BALANCE:'), money(Math.abs(netBal))) : '',
           double,
           center('Thank you! Visit again.'),
           double
@@ -202,7 +202,7 @@ export default function ThermalReceiptModal({ doc, party, business, initialWidth
           Math.abs(prevBal) > 0.01 ? row(prevBal > 0 ? 'Previous Due:' : 'Previous Advance:', money(Math.abs(prevBal))) : '',
           row('Amount Received:', money(doc.paid_amount || 0)),
           line,
-          row(netBal > 0 ? 'NET BALANCE DUE:' : (netBal < 0 ? 'NET ADVANCE:' : 'NET BALANCE:'), money(Math.abs(netBal))),
+          hasPartyBal ? row(netBal > 0 ? 'NET BALANCE DUE:' : (netBal < 0 ? 'NET ADVANCE:' : 'NET BALANCE:'), money(Math.abs(netBal))) : '',
           double,
           business.upi_id ? center(`UPI ID: ${business.upi_id}`) : '',
           center('Thank you! Visit again.'),
@@ -507,23 +507,7 @@ export default function ThermalReceiptModal({ doc, party, business, initialWidth
                 <span>Amount Received:</span>
                 <span>{money(doc.paid_amount || 0)}</span>
               </div>
-              {doc.due_amount > 0 && (
-                <div style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  fontWeight: 'bold',
-                  fontSize: '1em',
-                  padding: '4px 6px',
-                  marginTop: 4,
-                  borderRadius: 4,
-                  background: '#fef2f2',
-                  border: '1px solid #dc2626',
-                  color: '#b91c1c'
-                }}>
-                  <span>NET BALANCE DUE:</span>
-                  <span>{money(doc.due_amount)}</span>
-                </div>
-              )}
+
             </div>
           )}
 
