@@ -131,6 +131,11 @@ async function run() {
   ok('partial customer receipt is applied to the oldest due bill first', firstAllocation.status === 200 && firstAllocation.body.paymentDate === dueSummary.body.today && firstAllocation.body.allocations[0]?.documentId === dueSummary.body.invoices[0]?.id && near(firstAllocation.body.allocations[0]?.amount, 1), firstAllocation.body);
   const firstPaidDoc = await call('GET', `/api/documents/${dueSummary.body.invoices[0].id}`);
   ok('receipt note and current IST payment date are saved', firstPaidDoc.body.payments.some((p) => p.date === dueSummary.body.today && String(p.notes).includes('cash counter receipt')), firstPaidDoc.body.payments);
+  const receiptStatement = await call('GET', `/api/parties/${kerala.id}/statement`);
+  const allocatedDocId = firstAllocation.body.allocations[0]?.documentId;
+  const billLedgerRow = receiptStatement.body.entries.find((e) => e.kind === 'invoice' && String(e.id) === String(allocatedDocId));
+  const paymentLedgerRow = receiptStatement.body.entries.find((e) => e.kind === 'txn' && String(e.document_id) === String(allocatedDocId) && String(e.notes || '').includes('cash counter receipt'));
+  ok('Khata keeps the original bill debit and current-date receipt as separate rows', !!billLedgerRow && near(billLedgerRow.credit, 0) && !!paymentLedgerRow && paymentLedgerRow.date === dueSummary.body.today && near(paymentLedgerRow.credit, 1), { bill: billLedgerRow, payment: paymentLedgerRow });
   const refreshedDue = await call('GET', `/api/documents/party/${kerala.id}/outstanding`);
   const fullCollection = await call('POST', `/api/documents/${d.id}/payment`, { amount: refreshedDue.body.totalDue, mode: 'upi', allDue: true });
   ok('one customer receipt allocates across all unpaid invoices', fullCollection.status === 200 && fullCollection.body.allocations.length === refreshedDue.body.invoiceCount && near(fullCollection.body.totalDueAfter, 0), fullCollection.body);

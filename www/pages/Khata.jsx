@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { api, money, moneyShort, fmtDate, pdfUrl, today } from '../src/api.js';
 import { Icon, colorFor } from '../src/ui.jsx';
 import { Modal, Field, Empty, Confirm, Avatar } from '../src/components.jsx';
@@ -12,39 +12,6 @@ const compactLedgerDate = (value) => {
 };
 
 const compactLedgerAmount = (value) => new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 }).format(Number(value || 0));
-const roundLedger = (value) => Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100;
-
-function groupLedgerEntries(entries = []) {
-  const billKinds = new Set(['invoice', 'bill', 'sale_return']);
-  const rows = [];
-  const bills = new Map();
-  entries.forEach((entry, index) => {
-    if (!billKinds.has(entry.kind)) return;
-    const row = { ...entry, debit: Number(entry.debit || 0), credit: Number(entry.credit || 0), receipts: [], order: index };
-    bills.set(String(entry.id), row);
-    rows.push(row);
-  });
-  entries.forEach((entry, index) => {
-    if (billKinds.has(entry.kind)) return;
-    if (entry.kind === 'txn' && entry.document_id != null && bills.has(String(entry.document_id))) {
-      const bill = bills.get(String(entry.document_id));
-      bill.receipts.push(entry);
-      bill.debit = roundLedger(bill.debit + Number(entry.debit || 0));
-      bill.credit = roundLedger(bill.credit + Number(entry.credit || 0));
-      return;
-    }
-    rows.push({ ...entry, receipts: [], order: index });
-  });
-  rows.sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')) || a.order - b.order);
-  let running = 0;
-  rows.forEach((row) => {
-    if (row.kind === 'opening') running = Number(row.balance || 0);
-    else running = roundLedger(running + Number(row.debit || 0) - Number(row.credit || 0));
-    row.balance = running;
-  });
-  return rows;
-}
-
 export default function Khata({ business, initialType, initialPartyId, toast }) {
   const [type, setType] = useState(initialType || 'customer');
   const [rows, setRows] = useState([]);
@@ -230,7 +197,8 @@ function Ledger({ partyId, business, onClose, onEdit, onChanged, toast }) {
 
   const load = () => api.statement(partyId).then(setData).catch((e) => toast(e.message, 'err'));
   useEffect(() => { load(); }, [partyId]);
-  const ledgerRows = useMemo(() => groupLedgerEntries(data?.entries || []), [data?.entries]);
+  // Render every statement entry exactly as recorded; linked receipts retain their own dates.
+  const ledgerRows = data?.entries || [];
   if (!data) return null;
   const p = data.party;
 
@@ -274,15 +242,10 @@ function Ledger({ partyId, business, onClose, onEdit, onChanged, toast }) {
           {ledgerRows.map((e, i) => {
             const isBill = ['invoice', 'bill', 'sale_return'].includes(e.kind);
             const reference = isBill ? e.reference : (e.document_number || e.reference || e.label);
-            const receipts = e.receipts || [];
-            const modes = [...new Set(receipts.map((r) => String(r.mode || '').toUpperCase()).filter(Boolean))];
-            const modeSummary = receipts.length === 1
-              ? `${modes[0] || 'PAID'}${receipts[0].legacy_payment ? '*' : ` ${compactLedgerDate(receipts[0].date)}`}`
-              : receipts.length > 1 ? modes.join('/') : (e.mode ? String(e.mode).toUpperCase() : '');
-            const receiptTitle = receipts.map((r) => `${String(r.mode || 'MODE NOT RECORDED').toUpperCase()} ${r.legacy_payment ? 'receipt date not recorded' : fmtDate(r.date)} ${money(r.credit || r.debit || 0)}`).join(' · ');
+            const modeSummary = e.mode ? String(e.mode).toUpperCase() : '';
             return <div className="stmt-entry" key={`${e.kind}-${e.id ?? i}`}>
               <div className="dt" title={fmtDate(e.date)}><span className="date-long">{fmtDate(e.date)}</span><span className="date-short">{compactLedgerDate(e.date)}</span></div>
-              <div className="stmt-ref" title={[reference, receiptTitle || modeSummary, e.legacy_payment ? 'Receipt date not separately saved' : ''].filter(Boolean).join(' · ')}>
+              <div className="stmt-ref" title={[e.label, reference, modeSummary, e.legacy_payment ? 'Receipt date not separately saved' : ''].filter(Boolean).join(' · ')}>
                 <span className="stmt-ref-no">{reference || '—'}</span>
                 {modeSummary && <span className="stmt-mode">{modeSummary}</span>}
               </div>
