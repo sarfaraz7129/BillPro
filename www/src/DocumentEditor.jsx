@@ -670,7 +670,7 @@ export default function DocumentEditor({ business, type, doc, user, onClose, onS
               <label style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--ink)' }}>
                 {type === 'expense' ? 'Amount Paid' : type === 'purchase' ? 'Amount Paid' : 'Amount Received'}
               </label>
-              <div style={{ display: 'flex', gap: 3 }}>
+              {!doc && <div style={{ display: 'flex', gap: 3 }}>
                 <button
                   type="button"
                   className="btn xs"
@@ -689,18 +689,7 @@ export default function DocumentEditor({ business, type, doc, user, onClose, onS
                 >
                   Bill ({money(t.total)})
                 </button>
-                {selectedParty && Number(selectedParty.balance) > 0.01 && (
-                  <button
-                    type="button"
-                    className="btn xs"
-                    style={{ fontSize: 10, padding: '1px 5px', height: 20, background: '#fef2f2', color: '#b91c1c', borderColor: '#fca5a5', fontWeight: 650 }}
-                    onClick={() => set('paidAmount', Math.round((t.total + Number(selectedParty.balance)) * 100) / 100)}
-                    title="Pay Current Bill + Full Previous Balance"
-                  >
-                    All ({money(t.total + Number(selectedParty.balance))})
-                  </button>
-                )}
-              </div>
+              </div>}
             </div>
             {/* Amount received and Payment Type placed right beside each other near Total */}
             <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: 6, alignItems: 'center' }}>
@@ -714,6 +703,7 @@ export default function DocumentEditor({ business, type, doc, user, onClose, onS
                   style={{ paddingLeft: 22, height: 30, fontWeight: 700, fontSize: 13, color: 'var(--ink)', width: '100%' }}
                   value={form.paidAmount === 0 && form.paidAmount !== '' ? '0' : (form.paidAmount ?? '')}
                   onChange={(e) => set('paidAmount', e.target.value === '' ? '' : Number(e.target.value))}
+                  disabled={!!doc}
                   placeholder="0.00"
                 />
               </div>
@@ -724,6 +714,7 @@ export default function DocumentEditor({ business, type, doc, user, onClose, onS
                   style={{ height: 30, fontSize: 11.5, fontWeight: 600, padding: '2px 6px', width: '100%' }}
                   value={form.paymentMode}
                   onChange={(e) => set('paymentMode', e.target.value)}
+                  disabled={!!doc}
                   title="Payment Type"
                 >
                   <option value="upi">UPI / QR</option>
@@ -735,6 +726,9 @@ export default function DocumentEditor({ business, type, doc, user, onClose, onS
                 </select>
               </div>
             </div>
+            {doc && <div className="hint" style={{ marginTop: 5, fontSize: 10.5 }}>
+              To record a new receipt with its actual date and optional note, use Receive payment from Khata (or Pay supplier for a purchase bill).
+            </div>}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4, fontSize: 11.5, paddingTop: 4, borderTop: '1px dashed var(--line)' }}>
               <span style={{ color: 'var(--muted)', fontWeight: 600 }}>This bill due:</span>
               <span style={{

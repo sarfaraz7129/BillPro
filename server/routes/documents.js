@@ -82,7 +82,7 @@ router.get('/party/:partyId/outstanding', (req, res) => {
     WHERE business_id = ? AND party_id = ? AND type = 'sale' AND status = 'active' AND due_amount > 0
     ORDER BY date ASC, id ASC`).all(req.business.id, party.id);
   const totalDue = round2(invoices.reduce((sum, invoice) => sum + Number(invoice.due_amount || 0), 0));
-  res.json({ partyId: party.id, totalDue, invoiceCount: invoices.length, invoices });
+  res.json({ partyId: party.id, totalDue, invoiceCount: invoices.length, invoices, today: istToday() });
 });
 
 /** Overdue invoices across the business - drives the reminder queue. */
@@ -150,7 +150,7 @@ router.post('/', (req, res) => {
     if (doc.paid_amount > 0 && doc.party_id) {
       db.prepare(`INSERT INTO transactions (business_id, party_id, type, amount, date, mode, document_id, notes)
         VALUES (?,?,?,?,?,?,?,?)`)
-        .run(req.business.id, doc.party_id, type === 'sale' ? 'you_got' : 'you_gave', doc.paid_amount, doc.date, doc.payment_mode || 'cash', doc.id, `Payment against ${doc.number}`);
+        .run(req.business.id, doc.party_id, type === 'sale' ? 'you_got' : 'you_gave', doc.paid_amount, istToday(), doc.payment_mode || 'cash', doc.id, `Payment received at bill creation · ${doc.number}`);
     }
     logActivity(req.business.id, req.user.id, `${type}.created`, doc.number);
   });
@@ -162,6 +162,15 @@ router.put('/:id', (req, res) => {
   const existing = getDoc(req, req.params.id);
   if (!existing) return res.status(404).json({ error: 'Document not found' });
   const body = { ...(req.body || {}), type: existing.type };
+  const requestedPaid = body.paidAmount !== undefined ? Number(body.paidAmount) : body.paid_amount !== undefined ? Number(body.paid_amount) : Number(existing.paid_amount || 0);
+  if (existing.party_id && Math.abs(requestedPaid - Number(existing.paid_amount || 0)) > 0.005) {
+    return res.status(400).json({ error: 'Record payments from Receive payment / Pay supplier so the actual payment date and history are preserved.' });
+  }
+  const requestedPartyId = body.partyId !== undefined ? body.partyId : body.party_id;
+  const hasPayments = Number(db.prepare('SELECT COUNT(*) c FROM transactions WHERE document_id = ?').get(existing.id).c) > 0;
+  if (hasPayments && requestedPartyId !== undefined && String(requestedPartyId || '') !== String(existing.party_id || '')) {
+    return res.status(400).json({ error: 'This bill has payment history. The customer/supplier cannot be changed while keeping that history.' });
+  }
 
   // Role restriction: Only Admin/Owner can edit the bill date of an existing invoice/bill.
   if (!req.isAdmin) {
@@ -179,16 +188,11 @@ router.put('/:id', (req, res) => {
   const doc = buildDocument(req.business, body, existing.type, existing);
   const tx = db.transaction(() => {
     unwindStock(req.business.id, existing);
-    db.prepare('DELETE FROM transactions WHERE document_id = ?').run(existing.id);
     db.prepare(`UPDATE documents SET ${DOC_COLS.split(',').map((c) => `${c.trim()} = ?`).join(', ')} WHERE id = ?`)
       .run(...docValues(doc), existing.id);
     doc.id = existing.id;
     if (existing.type === 'sale' || existing.type === 'purchase' || existing.type === 'sale_return') postStock(req.business.id, doc, (existing.type === 'purchase' || existing.type === 'sale_return') ? 1 : -1);
-    if (doc.paid_amount > 0 && doc.party_id) {
-      db.prepare(`INSERT INTO transactions (business_id, party_id, type, amount, date, mode, document_id, notes)
-        VALUES (?,?,?,?,?,?,?,?)`)
-        .run(req.business.id, doc.party_id, existing.type === 'sale' ? 'you_got' : 'you_gave', doc.paid_amount, doc.date, doc.payment_mode || 'cash', doc.id, `Payment against ${doc.number}`);
-    }
+    // Preserve all existing payment transactions and their actual dates/notes when invoice details are edited.
     logActivity(req.business.id, req.user.id, `${existing.type}.updated`, doc.number);
   });
   tx();
@@ -258,6 +262,7 @@ router.post('/:id/payment', (req, res) => {
     const validModes = ['cash', 'upi', 'bank', 'card', 'cheque'];
     const mode = validModes.includes(req.body?.mode) ? req.body.mode : 'cash';
     const date = (req.isAdmin && req.body?.date) ? req.body.date : istToday();
+    const receiptNote = String(req.body?.notes || '').trim().slice(0, 500);
     const allocations = [];
     let totalDue = 0;
     let validationError = null;
@@ -282,7 +287,7 @@ router.post('/:id/payment', (req, res) => {
         const newDue = round2(Math.max(0, Number(invoice.total) - paid));
         db.prepare(`INSERT INTO transactions (business_id, party_id, type, amount, date, mode, document_id, notes)
           VALUES (?,?,?,?,?,?,?,?)`)
-          .run(req.business.id, doc.party_id, 'you_got', applied, date, mode, invoice.id, `Payment received · ${invoice.number}`);
+          .run(req.business.id, doc.party_id, 'you_got', applied, date, mode, invoice.id, `Payment received · ${invoice.number}${receiptNote ? ` · ${receiptNote}` : ''}`);
         db.prepare('UPDATE documents SET paid_amount = ?, due_amount = ?, payment_status = ? WHERE id = ?')
           .run(paid, newDue, newDue <= 0.005 ? 'paid' : 'partial', invoice.id);
         allocations.push({ documentId: invoice.id, number: invoice.number, amount: applied, dueRemaining: newDue });
@@ -299,7 +304,8 @@ router.post('/:id/payment', (req, res) => {
       totalDueBefore: totalDue,
       totalDueAfter,
       allocations,
-      allocationOrder: 'oldest-first'
+      allocationOrder: 'oldest-first',
+      paymentDate: date
     });
   }
 

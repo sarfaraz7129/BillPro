@@ -127,13 +127,21 @@ async function run() {
   const secondDoc = inv2.body.document;
   const dueSummary = await call('GET', `/api/documents/party/${kerala.id}/outstanding`);
   ok('full balance includes every active due invoice for customer', dueSummary.status === 200 && dueSummary.body.invoiceCount >= 2 && dueSummary.body.invoices.some((x) => x.id === d.id) && dueSummary.body.invoices.some((x) => x.id === secondDoc.id) && near(dueSummary.body.totalDue, dueSummary.body.invoices.reduce((sum, x) => sum + x.due_amount, 0)), dueSummary.body);
-  const firstAllocation = await call('POST', `/api/documents/${d.id}/payment`, { amount: 1, mode: 'cash', allDue: true });
-  ok('partial customer receipt is applied to the oldest due bill first', firstAllocation.status === 200 && firstAllocation.body.allocations[0]?.documentId === dueSummary.body.invoices[0]?.id && near(firstAllocation.body.allocations[0]?.amount, 1), firstAllocation.body);
+  const firstAllocation = await call('POST', `/api/documents/${d.id}/payment`, { amount: 1, mode: 'cash', allDue: true, notes: 'cash counter receipt' });
+  ok('partial customer receipt is applied to the oldest due bill first', firstAllocation.status === 200 && firstAllocation.body.paymentDate === dueSummary.body.today && firstAllocation.body.allocations[0]?.documentId === dueSummary.body.invoices[0]?.id && near(firstAllocation.body.allocations[0]?.amount, 1), firstAllocation.body);
+  const firstPaidDoc = await call('GET', `/api/documents/${dueSummary.body.invoices[0].id}`);
+  ok('receipt note and current IST payment date are saved', firstPaidDoc.body.payments.some((p) => p.date === dueSummary.body.today && String(p.notes).includes('cash counter receipt')), firstPaidDoc.body.payments);
   const refreshedDue = await call('GET', `/api/documents/party/${kerala.id}/outstanding`);
   const fullCollection = await call('POST', `/api/documents/${d.id}/payment`, { amount: refreshedDue.body.totalDue, mode: 'upi', allDue: true });
   ok('one customer receipt allocates across all unpaid invoices', fullCollection.status === 200 && fullCollection.body.allocations.length === refreshedDue.body.invoiceCount && near(fullCollection.body.totalDueAfter, 0), fullCollection.body);
   const settledDocs = await Promise.all(refreshedDue.body.invoices.map((x) => call('GET', `/api/documents/${x.id}`)));
   ok('every due bill is marked paid after full-balance collection', settledDocs.every((x) => x.status === 200 && x.body.document.payment_status === 'paid' && near(x.body.document.due_amount, 0)), settledDocs.map((x) => x.body.document && ({ number: x.body.document.number, status: x.body.document.payment_status, due: x.body.document.due_amount })));
+  const editedPaidDoc = settledDocs[0].body.document;
+  const editWithChangedPaid = await call('PUT', `/api/documents/${editedPaidDoc.id}`, { items: editedPaidDoc.items, paidAmount: editedPaidDoc.paid_amount + 1 });
+  ok('invoice edit cannot alter a recorded receipt amount', editWithChangedPaid.status === 400, editWithChangedPaid.body);
+  const editKeepingPaid = await call('PUT', `/api/documents/${editedPaidDoc.id}`, { items: editedPaidDoc.items, paidAmount: editedPaidDoc.paid_amount, notes: 'invoice details corrected' });
+  const afterBillEdit = await call('GET', `/api/documents/${editedPaidDoc.id}`);
+  ok('editing invoice details preserves the original receipt date and note', editKeepingPaid.status === 200 && afterBillEdit.body.payments.some((p) => p.date === dueSummary.body.today && String(p.notes).includes('cash counter receipt')), afterBillEdit.body.payments);
   const overCollection = await call('POST', `/api/documents/${d.id}/payment`, { amount: 1, mode: 'cash', allDue: true });
   ok('prevents collecting more than the customer total due', overCollection.status === 400, overCollection.body);
 

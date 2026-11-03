@@ -14,6 +14,7 @@ export default function Khata({ business, initialType, initialPartyId, toast }) 
   const [confirm, setConfirm] = useState(null);
   const [totals, setTotals] = useState(null);
   const [importOpen, setImportOpen] = useState(false);
+  const [receiptOpen, setReceiptOpen] = useState(false);
 
   useEffect(() => { if (initialType) setType(initialType); }, [initialType]);
 
@@ -59,6 +60,7 @@ export default function Khata({ business, initialType, initialPartyId, toast }) 
           <Icon.search size={15} />
           <input className="input" placeholder="Search name, phone, GSTIN or city…" value={q} onChange={(e) => setQ(e.target.value)} />
         </div>
+        {type === 'customer' && <button className="btn green" onClick={() => setReceiptOpen(true)}><Icon.rupee size={15} /> Receive payment</button>}
         <button className="btn" onClick={() => setImportOpen(true)} title={`Bulk upload ${type}s from Excel`}>
           <Icon.upload size={15} /> Import Excel
         </button>
@@ -155,6 +157,7 @@ export default function Khata({ business, initialType, initialPartyId, toast }) 
         </div>
       </div>
 
+      {receiptOpen && <CustomerReceiptModal onClose={() => setReceiptOpen(false)} onSaved={load} toast={toast} />}
       {open && <Ledger partyId={open.party.id} business={business} onClose={() => { setOpen(null); load(); }} onEdit={(party) => { setOpen(null); setEditor({ type, party }); }} onChanged={load} toast={toast} />}
       {editor && <PartyEditor business={business} type={editor.type} party={editor.party} toast={toast}
         onClose={() => setEditor(null)} onSaved={() => { setEditor(null); load(); }} />}
@@ -239,7 +242,9 @@ function Ledger({ partyId, business, onClose, onEdit, onChanged, toast }) {
         </div>
       </div>
 
-      {pay && <PayModal kind={pay} party={p} onClose={() => setPay(null)}
+      {pay === 'you_got' && <CustomerReceiptModal initialParty={p} onClose={() => setPay(null)}
+        onSaved={async () => { setPay(null); await load(); onChanged(); }} toast={toast} />}
+      {pay === 'you_gave' && <PayModal kind={pay} party={p} onClose={() => setPay(null)}
         onSaved={async () => { setPay(null); await load(); onChanged(); toast('Entry saved to the ledger', 'ok'); }} toast={toast} />}
 
       {intOpen && (
@@ -266,6 +271,126 @@ function Ledger({ partyId, business, onClose, onEdit, onChanged, toast }) {
 
 function Mini({ label, value, tone }) {
   return <div className="stat" style={{ padding: '11px 13px' }}><div className="lbl">{label}</div><div className={`val ${tone || ''}`} style={{ fontSize: 17 }}>{value}</div></div>;
+}
+
+
+function CustomerReceiptModal({ initialParty, onClose, onSaved, toast }) {
+  const [query, setQuery] = useState(initialParty?.name || '');
+  const [party, setParty] = useState(initialParty || null);
+  const [matches, setMatches] = useState([]);
+  const [searchBusy, setSearchBusy] = useState(false);
+  const [summary, setSummary] = useState(null);
+  const [dueBusy, setDueBusy] = useState(false);
+  const [amount, setAmount] = useState('');
+  const [mode, setMode] = useState('upi');
+  const [notes, setNotes] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState('');
+
+  useEffect(() => {
+    let alive = true;
+    if (party || query.trim().length < 2) { setMatches([]); return () => { alive = false; }; }
+    const timer = setTimeout(async () => {
+      setSearchBusy(true);
+      try {
+        const result = await api.parties({ type: 'customer', q: query.trim() });
+        if (alive) setMatches(result.parties || []);
+      } catch (e) {
+        if (alive) setErr(e.message || 'Could not search customers');
+      } finally {
+        if (alive) setSearchBusy(false);
+      }
+    }, 250);
+    return () => { alive = false; clearTimeout(timer); };
+  }, [query, party?.id]);
+
+  useEffect(() => {
+    let alive = true;
+    if (!party) { setSummary(null); setAmount(''); return () => { alive = false; }; }
+    setDueBusy(true);
+    setErr('');
+    api.partyOutstanding(party.id).then((data) => {
+      if (!alive) return;
+      setSummary(data);
+      setAmount(Number(data.totalDue) > 0 ? String(data.totalDue) : '');
+    }).catch((e) => {
+      if (alive) setErr(e.message || 'Could not load customer due bills');
+    }).finally(() => { if (alive) setDueBusy(false); });
+    return () => { alive = false; };
+  }, [party?.id]);
+
+  const chooseParty = (p) => { setParty(p); setQuery(p.name); setMatches([]); };
+  const changeParty = () => { setParty(null); setSummary(null); setAmount(''); setQuery(''); setErr(''); };
+  const totalDue = Number(summary?.totalDue) || 0;
+  const hasInvoices = (summary?.invoices || []).length > 0;
+
+  const save = async () => {
+    setErr('');
+    if (!party || !summary) return setErr('Select a customer first.');
+    const value = Number(amount);
+    if (!Number.isFinite(value) || value <= 0) return setErr('Enter a payment amount.');
+    if (hasInvoices && value > totalDue + 0.005) return setErr(`Amount cannot exceed the total due of ${money(totalDue)}.`);
+    setSaving(true);
+    try {
+      if (hasInvoices) {
+        const result = await api.payDocument(summary.invoices[0].id, { amount: value, mode, allDue: true, notes: notes.trim() });
+        toast(`${money(value)} received from ${party.name} on ${fmtDate(result.paymentDate || summary.today)}; applied to ${result.allocations?.length || 0} bill(s).`, 'ok');
+      } else {
+        await api.createTransaction({ partyId: party.id, type: 'you_got', amount: value, mode, notes: notes.trim() });
+        toast(`${money(value)} received from ${party.name} on ${fmtDate(summary.today)} and added to Khata.`, 'ok');
+      }
+      if (onSaved) await onSaved();
+      onClose();
+    } catch (e) { setErr(e.message || 'Could not record this payment'); }
+    finally { setSaving(false); }
+  };
+
+  return (
+    <Modal title="Receive payment from customer" sub="Partial or full payment · allocated to oldest due bill first" onClose={onClose}
+      footer={<>
+        <button className="btn" onClick={onClose} disabled={saving}>Cancel</button>
+        <button className="btn green" onClick={save} disabled={saving || dueBusy || !party || !summary || !amount || Number(amount) <= 0 || (hasInvoices && Number(amount) > totalDue + 0.005)}>
+          {saving ? 'Saving…' : 'Save payment'}
+        </button>
+      </>}>
+      {err && <div className="banner err"><Icon.alert size={15} />{err}</div>}
+      <div className="form-grid">
+        <Field label="Customer" req full>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <input className="input" value={query} disabled={!!party} onChange={(e) => { setQuery(e.target.value); setErr(''); }} placeholder="Search customer name or phone…" autoFocus={!initialParty} />
+            {party && <button className="btn sm" type="button" onClick={changeParty}>Change</button>}
+          </div>
+        </Field>
+        {!party && query.trim().length >= 2 && (
+          <div style={{ gridColumn: '1 / -1', display: 'grid', gap: 6, marginTop: -8 }}>
+            {searchBusy && <div className="hint">Searching customers…</div>}
+            {!searchBusy && matches.length === 0 && <div className="hint">No matching customer found.</div>}
+            {matches.map((p) => <button key={p.id} type="button" className="btn" style={{ justifyContent: 'space-between', textAlign: 'left' }} onClick={() => chooseParty(p)}>
+              <span><b>{p.name}</b>{p.phone ? <span className="muted"> · {p.phone}</span> : null}</span>
+              <span className="muted">{p.balance > 0 ? `Due ${money(p.balance)}` : 'No net due'}</span>
+            </button>)}
+          </div>
+        )}
+        {party && <>
+          <Field label="Amount received" req><input className="input" type="number" min="0.01" max={hasInvoices ? totalDue : undefined} step="0.01" value={amount} disabled={dueBusy || !summary} onChange={(e) => setAmount(e.target.value)} /></Field>
+          <Field label="Payment mode">
+            <select className="input" value={mode} onChange={(e) => setMode(e.target.value)}>
+              {['upi', 'cash', 'bank', 'card', 'cheque'].map((m) => <option key={m} value={m}>{m.toUpperCase()}</option>)}
+            </select>
+          </Field>
+          <Field label="Payment note" full><input className="input" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Optional note or reference" maxLength={500} /></Field>
+          <div className="hint" style={{ gridColumn: '1 / -1' }}>
+            {dueBusy ? 'Loading outstanding bills…' : hasInvoices ? `Total due: ${money(totalDue)} · ${summary?.invoiceCount || 0} unpaid bill(s)` : 'No unpaid invoices; this will be recorded as a customer Khata receipt/advance.'}
+            {summary?.today ? ` · Received date: ${fmtDate(summary.today)} (IST, automatic)` : ''}
+          </div>
+          <div className="btn-row" style={{ gridColumn: '1 / -1' }}>
+            <button className="btn sm" type="button" disabled={dueBusy || !hasInvoices} onClick={() => setAmount(String(totalDue))}>Full balance</button>
+            {summary?.invoiceCount > 1 && <span className="hint">Payment will be split across due bills, oldest first.</span>}
+          </div>
+        </>}
+      </div>
+    </Modal>
+  );
 }
 
 function PayModal({ kind, party, onClose, onSaved, toast }) {
