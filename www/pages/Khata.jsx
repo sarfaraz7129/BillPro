@@ -232,7 +232,7 @@ function Ledger({ partyId, business, onClose, onEdit, onChanged, toast }) {
               <div className="dt">{fmtDate(e.date)}</div>
               <div>
                 <b style={{ fontSize: 12.5 }}>{e.label}</b>
-                {(e.reference || e.mode || e.notes) && <div className="muted">{[e.reference, e.mode ? String(e.mode).toUpperCase() : '', e.notes].filter(Boolean).join(' · ')}</div>}
+                {(e.kind === 'txn' ? (e.reference || e.mode || e.notes) : e.payment_status) && <div className="muted">{[e.kind === 'txn' ? e.reference : '', e.mode ? String(e.mode).toUpperCase() : '', e.notes || '', e.payment_status ? `${String(e.payment_status).toUpperCase()} · Due ${money(e.due_amount || 0)}` : ''].filter(Boolean).join(' · ')}</div>}
               </div>
               <div className="num neg" style={{ textAlign: 'right', width: 92 }}>{e.debit ? money(e.debit) : ''}</div>
               <div className="num pos" style={{ textAlign: 'right', width: 92 }}>{e.credit ? money(e.credit) : ''}</div>

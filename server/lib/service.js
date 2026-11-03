@@ -25,7 +25,7 @@ function partyBalance(businessId, partyId) {
   const sales = db.prepare("SELECT COALESCE(SUM(total - paid_amount),0) s FROM documents WHERE party_id = ? AND type = 'sale' AND status = 'active'").get(partyId);
   const salesReturns = db.prepare("SELECT COALESCE(SUM(total - paid_amount),0) s FROM documents WHERE party_id = ? AND type = 'sale_return' AND status = 'active'").get(partyId);
   const purchases = db.prepare("SELECT COALESCE(SUM(total - paid_amount),0) s FROM documents WHERE party_id = ? AND type = 'purchase' AND status = 'active'").get(partyId);
-  const txns = db.prepare("SELECT COALESCE(SUM(CASE WHEN type='you_gave' THEN amount WHEN type='you_got' THEN -amount ELSE 0 END),0) s FROM transactions WHERE party_id = ? AND document_id IS NULL").get(partyId);
+  const txns = db.prepare("SELECT COALESCE(SUM(CASE WHEN type='you_gave' THEN amount WHEN type='you_got' THEN -amount WHEN type IN ('interest','adjustment') THEN amount ELSE 0 END),0) s FROM transactions WHERE party_id = ? AND document_id IS NULL").get(partyId);
   bal = round2(bal + sales.s - salesReturns.s + txns.s - purchases.s);
   return {
     party,

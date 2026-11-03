@@ -156,8 +156,10 @@ async function run() {
 
   console.log('\n--- khata ---');
   const stmt = await call('GET', `/api/parties/${kerala.id}/statement`);
-  const hasInvoice = stmt.body.entries.some((e) => e.reference === d.number);
-  ok('statement includes the new invoice', hasInvoice, stmt.body.entries.length);
+  const invoiceEntry = stmt.body.entries.find((e) => e.kind === 'invoice' && e.id === d.id);
+  ok('statement lists the full invoice debit on the bill date', !!invoiceEntry && invoiceEntry.date === d.date && near(invoiceEntry.debit, d.total) && near(invoiceEntry.credit, 0), invoiceEntry);
+  const receiptEntry = stmt.body.entries.find((e) => e.kind === 'txn' && String(e.notes || '').includes('cash counter receipt'));
+  ok('statement lists the receipt as a separate credit on its actual receipt date', !!receiptEntry && receiptEntry.label === 'Payment received' && receiptEntry.date === dueSummary.body.today && near(receiptEntry.credit, 1), receiptEntry);
   ok('statement running balance matches the party balance', near(stmt.body.running, stmt.body.party.balance), { running: stmt.body.running, balance: stmt.body.party.balance });
 
   const pay = await call('POST', '/api/transactions', { partyId: kerala.id, type: 'you_got', amount: 4662, mode: 'upi', reference: 'UTR-TEST-1' });

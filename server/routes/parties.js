@@ -140,8 +140,16 @@ router.get('/:id/statement', (req, res) => {
   const to = req.query.to || '2999-12-31';
 
   const docs = db.prepare(`SELECT id, type, number, date, total, due_amount, paid_amount, payment_status, status
-    FROM documents WHERE party_id = ? AND status = 'active' AND date BETWEEN ? AND ? ORDER BY date, id`).all(party.id, from, to);
-  const txns = db.prepare('SELECT id, type, amount, date, mode, reference, notes FROM transactions WHERE party_id = ? AND document_id IS NULL AND date BETWEEN ? AND ? ORDER BY date, id').all(party.id, from, to);
+    FROM documents WHERE business_id = ? AND party_id = ? AND status = 'active'
+      AND type IN ('sale', 'purchase', 'sale_return') AND date BETWEEN ? AND ? ORDER BY date, id`)
+    .all(req.business.id, party.id, from, to);
+  // Include both unlinked Khata receipts and payments allocated to individual bills.
+  // Linked payments must remain separate dated entries rather than being folded into bill date.
+  const txns = db.prepare(`SELECT t.id, t.type, t.amount, t.date, t.mode, t.reference, t.notes,
+      d.number AS doc_number
+    FROM transactions t LEFT JOIN documents d ON d.id = t.document_id AND d.business_id = t.business_id
+    WHERE t.business_id = ? AND t.party_id = ? AND t.date BETWEEN ? AND ? ORDER BY t.date, t.id`)
+    .all(req.business.id, party.id, from, to);
 
   let running = round2((party.balance_type === 'CR' ? -1 : 1) * party.opening_balance);
   const entries = [];
@@ -149,25 +157,27 @@ router.get('/:id/statement', (req, res) => {
     entries.push({ kind: 'opening', date: from > '1900-01-01' ? from : party.created_at.slice(0, 10), label: 'Opening balance', debit: party.balance_type === 'DR' ? party.opening_balance : 0, credit: party.balance_type === 'CR' ? party.opening_balance : 0, balance: running });
   }
   const merged = [
-    ...docs.map((d) => ({ sort: d.date + 'T00:00:01', ...d })),
-    ...txns.map((t) => ({ sort: t.date + 'T00:00:02', ...t }))
+    ...docs.map((d) => ({ sort: `${d.date}T00:00:01:${String(d.id).padStart(12, '0')}`, eventKind: 'document', ...d })),
+    ...txns.map((t) => ({ sort: `${t.date}T00:00:02:${String(t.id).padStart(12, '0')}`, eventKind: 'transaction', ...t }))
   ].sort((a, b) => a.sort.localeCompare(b.sort));
 
   merged.forEach((row) => {
-    if (row.type === 'sale') {
-      running = round2(running + row.total - row.paid_amount);
-      entries.push({ kind: 'invoice', id: row.id, date: row.date, label: `Invoice ${row.number}`, reference: row.number, debit: row.total, credit: row.paid_amount || 0, balance: running, payment_status: row.payment_status });
-    } else if (row.type === 'purchase') {
-      const netDue = round2(row.total - (row.paid_amount || 0));
-      running = round2(running - netDue);
-      entries.push({ kind: 'bill', id: row.id, date: row.date, label: `Purchase ${row.number}`, reference: row.number, debit: 0, credit: netDue, balance: running, payment_status: row.payment_status });
-    } else if (row.type === 'you_gave') {
+    if (row.eventKind === 'document' && row.type === 'sale') {
+      running = round2(running + row.total);
+      entries.push({ kind: 'invoice', id: row.id, date: row.date, label: `Invoice ${row.number}`, reference: row.number, debit: row.total, credit: 0, balance: running, payment_status: row.payment_status, due_amount: row.due_amount, paid_amount: row.paid_amount });
+    } else if (row.eventKind === 'document' && row.type === 'purchase') {
+      running = round2(running - row.total);
+      entries.push({ kind: 'bill', id: row.id, date: row.date, label: `Purchase ${row.number}`, reference: row.number, debit: 0, credit: row.total, balance: running, payment_status: row.payment_status, due_amount: row.due_amount, paid_amount: row.paid_amount });
+    } else if (row.eventKind === 'document' && row.type === 'sale_return') {
+      running = round2(running - row.total);
+      entries.push({ kind: 'sale_return', id: row.id, date: row.date, label: `Sales return ${row.number}`, reference: row.number, debit: 0, credit: row.total, balance: running, payment_status: row.payment_status, due_amount: row.due_amount, paid_amount: row.paid_amount });
+    } else if (row.eventKind === 'transaction' && row.type === 'you_gave') {
       running = round2(running + row.amount);
-      entries.push({ kind: 'txn', id: row.id, date: row.date, label: 'You Gave', reference: row.reference, mode: row.mode, notes: row.notes, debit: row.amount, credit: 0, balance: running });
-    } else if (row.type === 'you_got') {
+      entries.push({ kind: 'txn', id: row.id, date: row.date, label: row.doc_number ? 'Payment made' : 'You Gave', reference: row.reference || row.doc_number, document_number: row.doc_number, mode: row.mode, notes: row.notes, debit: row.amount, credit: 0, balance: running });
+    } else if (row.eventKind === 'transaction' && row.type === 'you_got') {
       running = round2(running - row.amount);
-      entries.push({ kind: 'txn', id: row.id, date: row.date, label: 'You Got', reference: row.reference, mode: row.mode, notes: row.notes, debit: 0, credit: row.amount, balance: running });
-    } else if (row.type === 'interest' || row.type === 'adjustment') {
+      entries.push({ kind: 'txn', id: row.id, date: row.date, label: row.doc_number ? 'Payment received' : 'You Got', reference: row.reference || row.doc_number, document_number: row.doc_number, mode: row.mode, notes: row.notes, debit: 0, credit: row.amount, balance: running });
+    } else if (row.eventKind === 'transaction' && (row.type === 'interest' || row.type === 'adjustment')) {
       running = round2(running + row.amount);
       entries.push({ kind: 'txn', id: row.id, date: row.date, label: row.type === 'interest' ? 'Interest charged' : 'Adjustment', notes: row.notes, debit: row.amount, credit: 0, balance: running });
     }

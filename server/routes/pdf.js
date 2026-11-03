@@ -45,19 +45,49 @@ router.get('/statement/:partyId', async (req, res, next) => {
     if (!party) return res.status(404).json({ error: 'Party not found' });
     const from = req.query.from || '1900-01-01';
     const to = req.query.to || '2999-12-31';
-    const docs = db.prepare("SELECT id, type, number, date, total, due_amount, paid_amount FROM documents WHERE party_id = ? AND status = 'active' AND date BETWEEN ? AND ? ORDER BY date, id").all(party.id, from, to);
-    const txns = db.prepare('SELECT id, type, amount, date, mode, reference FROM transactions WHERE party_id = ? AND document_id IS NULL AND date BETWEEN ? AND ? ORDER BY date, id').all(party.id, from, to);
+    const docs = db.prepare(`SELECT id, type, number, date, total, due_amount, paid_amount, payment_status
+      FROM documents WHERE business_id = ? AND party_id = ? AND status = 'active'
+        AND type IN ('sale', 'purchase', 'sale_return') AND date BETWEEN ? AND ? ORDER BY date, id`)
+      .all(req.business.id, party.id, from, to);
+    const txns = db.prepare(`SELECT t.id, t.type, t.amount, t.date, t.mode, t.reference, t.notes, d.number AS doc_number
+      FROM transactions t LEFT JOIN documents d ON d.id = t.document_id AND d.business_id = t.business_id
+      WHERE t.business_id = ? AND t.party_id = ? AND t.date BETWEEN ? AND ? ORDER BY t.date, t.id`)
+      .all(req.business.id, party.id, from, to);
     let running = round2((party.balance_type === 'CR' ? -1 : 1) * party.opening_balance);
     const entries = [];
-    const merged = [...docs.map((d) => ({ sort: d.date + 'T1', ...d })), ...txns.map((t) => ({ sort: t.date + 'T2', ...t }))].sort((a, b) => a.sort.localeCompare(b.sort));
-    merged.forEach((r) => {
-      if (r.type === 'sale') { running = round2(running + r.total - r.paid_amount); entries.push({ date: r.date, label: `Invoice ${r.number}`, debit: r.total, credit: r.paid_amount || 0, balance: running }); }
-      else if (r.type === 'purchase') { running = round2(running - r.paid_amount); entries.push({ date: r.date, label: `Purchase ${r.number}`, debit: 0, credit: r.paid_amount || 0, balance: running }); }
-      else if (r.type === 'you_gave') { running = round2(running + r.amount); entries.push({ date: r.date, label: 'You Gave', reference: r.reference || r.mode, debit: r.amount, credit: 0, balance: running }); }
-      else if (r.type === 'you_got') { running = round2(running - r.amount); entries.push({ date: r.date, label: 'You Got', reference: r.reference || r.mode, debit: 0, credit: r.amount, balance: running }); }
-      else { running = round2(running + r.amount); entries.push({ date: r.date, label: 'Interest / adjustment', debit: r.amount, credit: 0, balance: running }); }
+    if (party.opening_balance) entries.push({
+      date: from > '1900-01-01' ? from : party.created_at.slice(0, 10),
+      label: 'Opening balance', reference: party.balance_type,
+      debit: party.balance_type === 'DR' ? party.opening_balance : 0,
+      credit: party.balance_type === 'CR' ? party.opening_balance : 0,
+      balance: running
     });
-    const buf = await statementPdf(req.business, party, entries, party.opening_balance ? `Opening balance (${party.balance_type}) ${money(party.opening_balance)}` : null);
+    const merged = [
+      ...docs.map((d) => ({ sort: `${d.date}T1:${String(d.id).padStart(12, '0')}`, eventKind: 'document', ...d })),
+      ...txns.map((t) => ({ sort: `${t.date}T2:${String(t.id).padStart(12, '0')}`, eventKind: 'transaction', ...t }))
+    ].sort((a, b) => a.sort.localeCompare(b.sort));
+    merged.forEach((r) => {
+      if (r.eventKind === 'document' && r.type === 'sale') {
+        running = round2(running + r.total);
+        entries.push({ date: r.date, label: `Invoice ${r.number}`, reference: r.number, debit: r.total, credit: 0, balance: running });
+      } else if (r.eventKind === 'document' && r.type === 'purchase') {
+        running = round2(running - r.total);
+        entries.push({ date: r.date, label: `Purchase ${r.number}`, reference: r.number, debit: 0, credit: r.total, balance: running });
+      } else if (r.eventKind === 'document' && r.type === 'sale_return') {
+        running = round2(running - r.total);
+        entries.push({ date: r.date, label: `Sales return ${r.number}`, reference: r.number, debit: 0, credit: r.total, balance: running });
+      } else if (r.eventKind === 'transaction' && r.type === 'you_gave') {
+        running = round2(running + r.amount);
+        entries.push({ date: r.date, label: r.doc_number ? 'Payment made' : 'You Gave', reference: r.doc_number || r.reference || r.mode, debit: r.amount, credit: 0, balance: running });
+      } else if (r.eventKind === 'transaction' && r.type === 'you_got') {
+        running = round2(running - r.amount);
+        entries.push({ date: r.date, label: r.doc_number ? 'Payment received' : 'You Got', reference: r.doc_number || r.reference || r.mode, debit: 0, credit: r.amount, balance: running });
+      } else if (r.eventKind === 'transaction') {
+        running = round2(running + r.amount);
+        entries.push({ date: r.date, label: r.type === 'interest' ? 'Interest charged' : 'Adjustment', reference: r.mode || '', debit: r.amount, credit: 0, balance: running });
+      }
+    });
+    const buf = await statementPdf(req.business, party, entries, null);
     send(res, buf, `Statement-${party.name.replace(/\W+/g, '-')}.pdf`);
   } catch (e) { next(e); }
 });
