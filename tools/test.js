@@ -18,6 +18,7 @@ if (process.env.BILLPRO_DB) {
 const { seed, EMAIL, PASSWORD } = require('./seed-demo');
 seed();
 const { db } = require('../server/db');
+const { prepareLedgerRows } = require('../www/src/ledger');
 const { loadRegistry, saveToRegistry, removeFromRegistry, syncPersistentClients } = require('../server/lib/persistent-clients');
 
 const jwt = require('jsonwebtoken');
@@ -160,6 +161,13 @@ async function run() {
   ok('low-stock filter returns only items at/below threshold', lowRes.body.products.every((p) => p.stock <= p.low_stock_at), lowRes.body.products.length);
 
   console.log('\n--- khata ---');
+  const receiptRows = prepareLedgerRows([
+    { kind: 'invoice', id: 987, date: '2026-11-01', debit: 360, credit: 0, balance: 360, reference: 'EST-1' },
+    { kind: 'txn', id: 991, document_id: 987, date: '2026-11-01', debit: 0, credit: 200, mode: 'cash', notes: 'Payment received at bill creation · EST-1' },
+    { kind: 'txn', id: 992, document_id: 987, date: '2026-11-03', debit: 0, credit: 100, mode: 'upi', notes: 'Payment received · EST-1' }
+  ]);
+  ok('payment taken at bill creation is shown with bill debit on one row', receiptRows.length === 2 && receiptRows[0].kind === 'invoice' && near(receiptRows[0].debit, 360) && near(receiptRows[0].credit, 200) && near(receiptRows[0].balance, 160), receiptRows[0]);
+  ok('a later payment remains a separate credit row dated on receipt', receiptRows[1].kind === 'txn' && receiptRows[1].date === '2026-11-03' && near(receiptRows[1].credit, 100) && near(receiptRows[1].balance, 60), receiptRows[1]);
   const legacyBill = await call('POST', '/api/documents', {
     type: 'sale', partyId: kerala.id, partyName: kerala.name, partyGstin: kerala.gstin, partyStateCode: kerala.state_code,
     items: [{ name: 'Legacy paid service', hsn: '9983', unit: 'service', qty: 1, rate: 1000, gstRate: 0 }],

@@ -1,9 +1,10 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { api, money, moneyShort, fmtDate, pdfUrl, today } from '../src/api.js';
 import { Icon, colorFor } from '../src/ui.jsx';
 import { Modal, Field, Empty, Confirm, Avatar } from '../src/components.jsx';
 import ExcelImportModal from '../src/ExcelImportModal.jsx';
 import { exportPartiesToExcel } from '../src/excel.js';
+import { prepareLedgerRows } from '../src/ledger.js';
 
 
 const compactLedgerDate = (value) => {
@@ -197,8 +198,8 @@ function Ledger({ partyId, business, onClose, onEdit, onChanged, toast }) {
 
   const load = () => api.statement(partyId).then(setData).catch((e) => toast(e.message, 'err'));
   useEffect(() => { load(); }, [partyId]);
-  // Render every statement entry exactly as recorded; linked receipts retain their own dates.
-  const ledgerRows = data?.entries || [];
+  // Fold only bill-creation receipts into the bill; subsequent receipts keep their own rows and dates.
+  const ledgerRows = useMemo(() => prepareLedgerRows(data?.entries || []), [data?.entries]);
   if (!data) return null;
   const p = data.party;
 
@@ -242,10 +243,15 @@ function Ledger({ partyId, business, onClose, onEdit, onChanged, toast }) {
           {ledgerRows.map((e, i) => {
             const isBill = ['invoice', 'bill', 'sale_return'].includes(e.kind);
             const reference = isBill ? e.reference : (e.document_number || e.reference || e.label);
-            const modeSummary = e.mode ? String(e.mode).toUpperCase() : '';
+            const initialPayments = e.initialPayments || [];
+            const paymentModes = [...new Set(initialPayments.map((payment) => String(payment.mode || '').toUpperCase()).filter(Boolean))];
+            const modeSummary = initialPayments.length === 1
+              ? `${paymentModes[0] || 'PAID'} ${compactLedgerDate(initialPayments[0].date)}`
+              : initialPayments.length > 1 ? paymentModes.join('/') : (e.mode ? String(e.mode).toUpperCase() : '');
+            const initialPaymentTitle = initialPayments.map((payment) => `${String(payment.mode || 'MODE NOT RECORDED').toUpperCase()} ${fmtDate(payment.date)} ${money(payment.credit || payment.debit || 0)}`).join(' · ');
             return <div className="stmt-entry" key={`${e.kind}-${e.id ?? i}`}>
               <div className="dt" title={fmtDate(e.date)}><span className="date-long">{fmtDate(e.date)}</span><span className="date-short">{compactLedgerDate(e.date)}</span></div>
-              <div className="stmt-ref" title={[e.label, reference, modeSummary, e.legacy_payment ? 'Receipt date not separately saved' : ''].filter(Boolean).join(' · ')}>
+              <div className="stmt-ref" title={[e.label, reference, initialPaymentTitle || modeSummary, e.legacy_payment ? 'Receipt date not separately saved' : ''].filter(Boolean).join(' · ')}>
                 <span className="stmt-ref-no">{reference || '—'}</span>
                 {modeSummary && <span className="stmt-mode">{modeSummary}</span>}
               </div>
