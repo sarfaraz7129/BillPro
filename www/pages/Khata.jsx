@@ -5,6 +5,13 @@ import { Modal, Field, Empty, Confirm, Avatar } from '../src/components.jsx';
 import ExcelImportModal from '../src/ExcelImportModal.jsx';
 import { exportPartiesToExcel } from '../src/excel.js';
 
+
+const compactLedgerDate = (value) => {
+  const parts = String(value || '').slice(0, 10).split('-');
+  return parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0].slice(-2)}` : fmtDate(value);
+};
+const compactLedgerAmount = (value) => new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 }).format(Number(value || 0));
+
 export default function Khata({ business, initialType, initialPartyId, toast }) {
   const [type, setType] = useState(initialType || 'customer');
   const [rows, setRows] = useState([]);
@@ -221,8 +228,8 @@ function Ledger({ partyId, business, onClose, onEdit, onChanged, toast }) {
       </div>
 
       <div className="card" style={{ boxShadow: 'none' }}>
-        <div className="card-b stmt-scroll" style={{ padding: '12px 16px' }}>
-          <div className="stmt-entry stmt-header" style={{ fontWeight: 700, fontSize: 12, textTransform: 'uppercase', color: 'var(--muted)', letterSpacing: '.03em' }}>
+        <div className="card-b stmt-scroll" style={{ padding: '10px 8px' }}>
+          <div className="stmt-entry stmt-header" style={{ fontWeight: 700, fontSize: 12, textTransform: 'uppercase', color: 'var(--muted)', letterSpacing: '.02em' }}>
             <div className="dt">Date</div><div>Invoice No.</div>
             <div className="num credit-col">Credit</div><div className="num debit-col">Debit</div><div className="bal">Balance</div>
           </div>
@@ -232,11 +239,14 @@ function Ledger({ partyId, business, onClose, onEdit, onChanged, toast }) {
               ? e.reference
               : (e.document_number || e.reference || e.label);
             return <div className="stmt-entry" key={i}>
-              <div className="dt">{fmtDate(e.date)}</div>
-              <div className="stmt-ref" title={reference}>{reference || '—'}</div>
-              <div className="num pos credit-col">{e.credit ? money(e.credit) : '—'}</div>
-              <div className="num neg debit-col">{e.debit ? money(e.debit) : '—'}</div>
-              <div className="bal" style={{ color: e.balance >= 0 ? 'var(--red)' : 'var(--green)' }}>{money(e.balance)}</div>
+              <div className="dt" title={fmtDate(e.date)}><span className="date-long">{fmtDate(e.date)}</span><span className="date-short">{compactLedgerDate(e.date)}</span></div>
+              <div className="stmt-ref" title={[reference, e.mode].filter(Boolean).join(' · ')}>
+                <span className="stmt-ref-no">{reference || '—'}</span>
+                {e.mode && <span className="stmt-mode">{String(e.mode).toUpperCase()}</span>}
+              </div>
+              <div className="num pos credit-col">{e.credit ? <><span className="ledger-money-long">{money(e.credit)}</span><span className="ledger-money-short">{compactLedgerAmount(e.credit)}</span></> : '—'}</div>
+              <div className="num neg debit-col">{e.debit ? <><span className="ledger-money-long">{money(e.debit)}</span><span className="ledger-money-short">{compactLedgerAmount(e.debit)}</span></> : '—'}</div>
+              <div className="bal" style={{ color: e.balance >= 0 ? 'var(--red)' : 'var(--green)' }}><span className="ledger-money-long">{money(e.balance)}</span><span className="ledger-money-short">{compactLedgerAmount(e.balance)}</span></div>
             </div>;
           })}
         </div>
