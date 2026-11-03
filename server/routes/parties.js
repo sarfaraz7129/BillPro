@@ -168,7 +168,7 @@ router.get('/:id/statement', (req, res) => {
       if (untrackedPaid <= 0.005) return [billEvent];
       return [billEvent, {
         sort: `${d.date}T00:00:02:0:${String(d.id).padStart(12, '0')}`,
-        eventKind: 'transaction', id: `legacy-${d.id}`, type: expectedType, amount: untrackedPaid,
+        eventKind: 'transaction', id: `legacy-${d.id}`, document_id: d.id, type: expectedType, amount: untrackedPaid,
         date: d.date, mode: d.payment_mode, reference: d.number, doc_number: d.number,
         notes: 'Historical bill payment has no separate receipt date; shown on the bill date.', legacy_payment: true
       }];
@@ -188,10 +188,10 @@ router.get('/:id/statement', (req, res) => {
       entries.push({ kind: 'sale_return', id: row.id, date: row.date, label: `Sales return ${row.number}`, reference: row.number, debit: 0, credit: row.total, balance: running, payment_status: row.payment_status, due_amount: row.due_amount, paid_amount: row.paid_amount });
     } else if (row.eventKind === 'transaction' && row.type === 'you_gave') {
       running = round2(running + row.amount);
-      entries.push({ kind: 'txn', id: row.id, date: row.date, label: row.doc_number ? 'Payment made' : 'You Gave', reference: row.reference || row.doc_number, document_number: row.doc_number, mode: row.mode, notes: row.notes, legacy_payment: !!row.legacy_payment, debit: row.amount, credit: 0, balance: running });
+      entries.push({ kind: 'txn', id: row.id, date: row.date, label: row.doc_number ? 'Payment made' : 'You Gave', reference: row.reference || row.doc_number, document_id: row.document_id || null, document_number: row.doc_number, mode: row.mode, notes: row.notes, legacy_payment: !!row.legacy_payment, debit: row.amount, credit: 0, balance: running });
     } else if (row.eventKind === 'transaction' && row.type === 'you_got') {
       running = round2(running - row.amount);
-      entries.push({ kind: 'txn', id: row.id, date: row.date, label: row.doc_number ? 'Payment received' : 'You Got', reference: row.reference || row.doc_number, document_number: row.doc_number, mode: row.mode, notes: row.notes, legacy_payment: !!row.legacy_payment, debit: 0, credit: row.amount, balance: running });
+      entries.push({ kind: 'txn', id: row.id, date: row.date, label: row.doc_number ? 'Payment received' : 'You Got', reference: row.reference || row.doc_number, document_id: row.document_id || null, document_number: row.doc_number, mode: row.mode, notes: row.notes, legacy_payment: !!row.legacy_payment, debit: 0, credit: row.amount, balance: running });
     } else if (row.eventKind === 'transaction' && (row.type === 'interest' || row.type === 'adjustment')) {
       running = round2(running + row.amount);
       entries.push({ kind: 'txn', id: row.id, date: row.date, label: row.type === 'interest' ? 'Interest charged' : 'Adjustment', notes: row.notes, debit: row.amount, credit: 0, balance: running });

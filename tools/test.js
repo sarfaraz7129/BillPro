@@ -166,9 +166,9 @@ async function run() {
   const invoiceEntry = stmt.body.entries.find((e) => e.kind === 'invoice' && e.id === d.id);
   ok('statement lists the full invoice debit on the bill date', !!invoiceEntry && invoiceEntry.date === d.date && near(invoiceEntry.debit, d.total) && near(invoiceEntry.credit, 0), invoiceEntry);
   const receiptEntry = stmt.body.entries.find((e) => e.kind === 'txn' && String(e.notes || '').includes('cash counter receipt'));
-  ok('statement lists the receipt as a separate credit on its actual receipt date', !!receiptEntry && receiptEntry.label === 'Payment received' && receiptEntry.date === dueSummary.body.today && near(receiptEntry.credit, 1), receiptEntry);
+  ok('statement preserves the linked bill id and actual receipt date for payment details', !!receiptEntry && receiptEntry.label === 'Payment received' && receiptEntry.date === dueSummary.body.today && receiptEntry.document_id === firstAllocation.body.allocations[0]?.documentId && near(receiptEntry.credit, 1), receiptEntry);
   const legacyCredit = stmt.body.entries.find((e) => e.legacy_payment && e.document_number === legacyBill.body.document.number);
-  ok('unlinked legacy paid amount is shown as a bill-date credit so balances reconcile', !!legacyCredit && legacyCredit.date === legacyBill.body.document.date && near(legacyCredit.credit, 300), legacyCredit);
+  ok('legacy paid amount keeps its bill id and is shown as a bill-date credit', !!legacyCredit && legacyCredit.document_id === legacyBill.body.document.id && legacyCredit.date === legacyBill.body.document.date && near(legacyCredit.credit, 300), legacyCredit);
   ok('statement running balance matches the party balance', near(stmt.body.running, stmt.body.party.balance), { running: stmt.body.running, balance: stmt.body.party.balance });
 
   const pay = await call('POST', '/api/transactions', { partyId: kerala.id, type: 'you_got', amount: 4662, mode: 'upi', reference: 'UTR-TEST-1' });

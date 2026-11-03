@@ -1171,6 +1171,8 @@ tr:hover .row-actions { opacity: 1; }
 .stmt-scroll { width: 100%; overflow: hidden; }
 .stmt-entry { display: grid; grid-template-columns: 88px minmax(150px, 1fr) 92px 92px 104px; gap: 8px; align-items: center; min-width: 0; padding: 10px 0; border-bottom: 1px solid var(--line); font-size: 13.5px; }
 .stmt-entry .dt { color: var(--muted); font-size: 12.5px; white-space: nowrap; }
+.stmt-entry.stmt-has-receipts { cursor: pointer; }
+.stmt-entry.stmt-has-receipts:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; border-radius: 4px; }
 .stmt-entry .stmt-ref { display: flex; align-items: center; gap: 4px; min-width: 0; font-weight: 650; }
 .stmt-entry .stmt-ref-no { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .stmt-entry .stmt-mode { flex: 0 0 auto; padding: 1px 3px; border-radius: 4px; background: var(--surface-2); color: var(--muted); font-size: 9px; font-weight: 700; }
@@ -1179,6 +1181,10 @@ tr:hover .row-actions { opacity: 1; }
 .stmt-entry .bal { font-weight: 700; width: auto; }
 .stmt-entry .credit-col { color: var(--green); }
 .stmt-entry .debit-col { color: var(--red); }
+.stmt-expand { flex: 0 0 auto; width: 17px; height: 17px; padding: 0; border: 1px solid var(--line); border-radius: 50%; background: var(--surface); color: var(--muted); font-size: 13px; line-height: 14px; cursor: pointer; }
+.stmt-payment-detail { display: grid; grid-template-columns: 86px 84px 140px minmax(0, 1fr); align-items: start; gap: 8px; padding: 7px 8px 7px 96px; border-bottom: 1px solid var(--line); background: var(--surface-2); color: var(--muted); font-size: 11px; }
+.stmt-payment-detail b { color: var(--text); font-size: 10px; }
+.stmt-payment-note { min-width: 0; overflow-wrap: anywhere; }
 .ledger-money-short { display: none; }
 @media (max-width: 700px) {
   .stmt-scroll { margin: 0; }
@@ -1187,6 +1193,9 @@ tr:hover .row-actions { opacity: 1; }
   .stmt-entry .dt { font-size: 11px; }
   .stmt-entry .stmt-mode { font-size: 8px; padding: 1px 2px; }
   .stmt-entry .num, .stmt-entry .bal { font-size: 11.5px; }
+  .stmt-expand { width: 15px; height: 15px; font-size: 12px; line-height: 12px; }
+  .stmt-payment-detail { grid-template-columns: 54px 50px 94px minmax(0, 1fr); gap: 4px; padding: 7px 3px; font-size: 10px; }
+  .stmt-payment-detail b { font-size: 9px; }
   .date-long, .ledger-money-long { display: none; }
   .date-short, .ledger-money-short { display: inline; }
   .stmt-header { display: grid; font-size: 10.5px !important; letter-spacing: 0 !important; }
