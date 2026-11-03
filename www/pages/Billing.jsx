@@ -768,13 +768,15 @@ function DocViewer({ doc, party, payments, business, onClose, onEdit, onShare, o
             </Field>
           </div>
           <div className="btn-row" style={{ marginTop: 10 }}>
-            {[0.25, 0.5, 1].map((f) => (
-              <button key={f} className="btn sm" onClick={() => setPayAmt(Math.round(doc.due_amount * f * 100) / 100)}>
-                {f === 1 ? 'Full balance' : `${f * 100}%`}
-              </button>
-            ))}
+            <button className="btn sm" onClick={() => setPayAmt(Math.round(doc.due_amount * 100) / 100)}>
+              {isPurchase ? 'Full bill balance' : 'This invoice balance'}
+            </button>
           </div>
-          <div className="hint" style={{ marginTop: 8 }}>{isPurchase ? 'This records payment against this purchase bill; no new item or invoice is created.' : 'This records payment against this invoice; no new item is required.'}</div>
+          <div className="hint" style={{ marginTop: 8 }}>
+            {isPurchase
+              ? 'This payment applies only to this purchase bill. Other bills for this supplier stay due. No new item or invoice is created.'
+              : 'This payment applies only to this invoice. Any previous unpaid invoices stay due and must be paid from their own invoice. No new item is required.'}
+          </div>
         </Modal>
       )}
 
