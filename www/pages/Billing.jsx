@@ -377,6 +377,7 @@ function DocViewer({ doc, party, payments, business, onClose, onEdit, onShare, o
   const [payMode, setPayMode] = useState('upi');
   const [ewb, setEwb] = useState({ vehicleNo: doc.vehicle_no || '', transportDocNo: doc.transport_doc_no || '', validDays: 4 });
   const isSale = doc.type === 'sale';
+  const isPurchase = doc.type === 'purchase';
   const isEstimate = Boolean(doc.is_estimate);
 
   return (
@@ -404,6 +405,7 @@ function DocViewer({ doc, party, payments, business, onClose, onEdit, onShare, o
               </button>
             )}
             {isSale && doc.due_amount > 0 && doc.status === 'active' && <button className="btn green" onClick={() => setPayOpen(true)}><Icon.rupee size={14} /> Receive payment</button>}
+            {isPurchase && doc.due_amount > 0 && doc.status === 'active' && <button className="btn red" onClick={() => setPayOpen(true)}><Icon.rupee size={14} /> Pay supplier</button>}
             <button className="btn" onClick={() => onDuplicate(doc)}><Icon.copy size={14} /> Duplicate</button>
             <button className="btn" onClick={() => onEdit(doc)}><Icon.edit size={14} /> Edit</button>
             <button
@@ -752,13 +754,13 @@ function DocViewer({ doc, party, payments, business, onClose, onEdit, onShare, o
       </Modal>
 
       {payOpen && (
-        <Modal title="Receive payment" sub={`${doc.party_name} · balance ${money(doc.due_amount)}`} onClose={() => setPayOpen(false)}
+        <Modal title={isPurchase ? 'Pay supplier bill' : 'Receive payment'} sub={`${doc.party_name} · balance ${money(doc.due_amount)}`} onClose={() => setPayOpen(false)}
           footer={<>
             <button className="btn" onClick={() => setPayOpen(false)}>Cancel</button>
-            <button className="btn green" onClick={() => { onPaid(doc, payAmt, payMode); setPayOpen(false); }}>Save payment</button>
+            <button className={`btn ${isPurchase ? 'red' : 'green'}`} onClick={() => { onPaid(doc, payAmt, payMode); setPayOpen(false); }} disabled={!payAmt || payAmt <= 0 || payAmt > doc.due_amount + 0.005}>Save payment</button>
           </>}>
           <div className="form-grid">
-            <Field label="Amount" req><input className="input" type="number" value={payAmt} onChange={(e) => setPayAmt(Number(e.target.value))} /></Field>
+            <Field label={isPurchase ? 'Amount paid' : 'Amount received'} req><input className="input" type="number" min="0.01" max={doc.due_amount} step="0.01" value={payAmt} onChange={(e) => setPayAmt(Number(e.target.value))} /></Field>
             <Field label="Mode">
               <select className="input" value={payMode} onChange={(e) => setPayMode(e.target.value)}>
                 {['upi', 'cash', 'bank', 'card', 'cheque'].map((m) => <option key={m} value={m}>{m.toUpperCase()}</option>)}
@@ -772,6 +774,7 @@ function DocViewer({ doc, party, payments, business, onClose, onEdit, onShare, o
               </button>
             ))}
           </div>
+          <div className="hint" style={{ marginTop: 8 }}>{isPurchase ? 'This records payment against this purchase bill; no new item or invoice is created.' : 'This records payment against this invoice; no new item is required.'}</div>
         </Modal>
       )}
 
