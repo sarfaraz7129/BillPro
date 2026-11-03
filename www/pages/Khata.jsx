@@ -227,7 +227,6 @@ function Ledger({ partyId, business, onClose, onEdit, onChanged, toast }) {
   const [confirm, setConfirm] = useState(null);
   const [intOpen, setIntOpen] = useState(false);
   const [interest, setInterest] = useState({ rate: 18, days: 30 });
-  const [expandedBills, setExpandedBills] = useState({});
 
   const load = () => api.statement(partyId).then(setData).catch((e) => toast(e.message, 'err'));
   useEffect(() => { load(); }, [partyId]);
@@ -276,30 +275,21 @@ function Ledger({ partyId, business, onClose, onEdit, onChanged, toast }) {
             const isBill = ['invoice', 'bill', 'sale_return'].includes(e.kind);
             const reference = isBill ? e.reference : (e.document_number || e.reference || e.label);
             const receipts = e.receipts || [];
-            const expanded = !!expandedBills[String(e.id)];
-            const toggleExpanded = () => setExpandedBills((old) => ({ ...old, [String(e.id)]: !old[String(e.id)] }));
-            const modeSummary = receipts.length === 1 ? String(receipts[0].mode || 'paid').toUpperCase() : receipts.length > 1 ? `${receipts.length} PAY` : (e.mode ? String(e.mode).toUpperCase() : '');
-            return <React.Fragment key={`${e.kind}-${e.id ?? i}`}>
-              <div className={`stmt-entry${receipts.length ? ' stmt-has-receipts' : ''}`} role={receipts.length ? 'button' : undefined} tabIndex={receipts.length ? 0 : undefined} aria-expanded={receipts.length ? expanded : undefined}
-                onClick={receipts.length ? toggleExpanded : undefined}
-                onKeyDown={receipts.length ? (event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); toggleExpanded(); } } : undefined}>
-                <div className="dt" title={fmtDate(e.date)}><span className="date-long">{fmtDate(e.date)}</span><span className="date-short">{compactLedgerDate(e.date)}</span></div>
-                <div className="stmt-ref" title={[reference, modeSummary].filter(Boolean).join(' · ')}>
-                  {receipts.length > 0 && <button type="button" className="stmt-expand" aria-label={expanded ? 'Hide receipts' : 'Show receipts'} onClick={(event) => { event.stopPropagation(); toggleExpanded(); }}>{expanded ? '−' : '+'}</button>}
-                  <span className="stmt-ref-no">{reference || '—'}</span>
-                  {modeSummary && <span className="stmt-mode">{modeSummary}</span>}
-                </div>
-                <div className="num pos credit-col">{e.credit ? <><span className="ledger-money-long">{money(e.credit)}</span><span className="ledger-money-short">{compactLedgerAmount(e.credit)}</span></> : '—'}</div>
-                <div className="num neg debit-col">{e.debit ? <><span className="ledger-money-long">{money(e.debit)}</span><span className="ledger-money-short">{compactLedgerAmount(e.debit)}</span></> : '—'}</div>
-                <div className="bal" style={{ color: e.balance >= 0 ? 'var(--red)' : 'var(--green)' }}><span className="ledger-money-long">{money(e.balance)}</span><span className="ledger-money-short">{compactLedgerAmount(e.balance)}</span></div>
+            const modes = [...new Set(receipts.map((r) => String(r.mode || '').toUpperCase()).filter(Boolean))];
+            const modeSummary = receipts.length === 1
+              ? `${modes[0] || 'PAID'}${receipts[0].legacy_payment ? '*' : ` ${compactLedgerDate(receipts[0].date)}`}`
+              : receipts.length > 1 ? modes.join('/') : (e.mode ? String(e.mode).toUpperCase() : '');
+            const receiptTitle = receipts.map((r) => `${String(r.mode || 'MODE NOT RECORDED').toUpperCase()} ${r.legacy_payment ? 'receipt date not recorded' : fmtDate(r.date)} ${money(r.credit || r.debit || 0)}`).join(' · ');
+            return <div className="stmt-entry" key={`${e.kind}-${e.id ?? i}`}>
+              <div className="dt" title={fmtDate(e.date)}><span className="date-long">{fmtDate(e.date)}</span><span className="date-short">{compactLedgerDate(e.date)}</span></div>
+              <div className="stmt-ref" title={[reference, receiptTitle || modeSummary, e.legacy_payment ? 'Receipt date not separately saved' : ''].filter(Boolean).join(' · ')}>
+                <span className="stmt-ref-no">{reference || '—'}</span>
+                {modeSummary && <span className="stmt-mode">{modeSummary}</span>}
               </div>
-              {expanded && receipts.map((payment, j) => <div className="stmt-payment-detail" key={`${payment.id}-${j}`}>
-                <span>{fmtDate(payment.date)}</span>
-                <b>{String(payment.mode || 'MODE NOT RECORDED').toUpperCase()}</b>
-                <span className={payment.credit ? 'pos' : 'neg'}>{payment.credit ? `Credit ${money(payment.credit)}` : `Debit ${money(payment.debit)}`}</span>
-                <span className="stmt-payment-note">{payment.notes || (payment.legacy_payment ? 'Receipt date not separately saved' : '')}</span>
-              </div>)}
-            </React.Fragment>;
+              <div className="num pos credit-col">{e.credit ? <><span className="ledger-money-long">{money(e.credit)}</span><span className="ledger-money-short">{compactLedgerAmount(e.credit)}</span></> : '—'}</div>
+              <div className="num neg debit-col">{e.debit ? <><span className="ledger-money-long">{money(e.debit)}</span><span className="ledger-money-short">{compactLedgerAmount(e.debit)}</span></> : '—'}</div>
+              <div className="bal" style={{ color: e.balance >= 0 ? 'var(--red)' : 'var(--green)' }}><span className="ledger-money-long">{money(e.balance)}</span><span className="ledger-money-short">{compactLedgerAmount(e.balance)}</span></div>
+            </div>;
           })}
         </div>
       </div>
