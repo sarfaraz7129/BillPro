@@ -206,6 +206,19 @@ async function run() {
   ]);
   const oneFullReceipt = fullGroupedRows.find((row) => row.receipt_group === 'receipt-800');
   ok('a single ₹800 receipt appears once and clears the ₹800 balance', fullGroupedRows.length === 3 && near(oneFullReceipt?.credit, 800) && near(oneFullReceipt?.balance, 0), oneFullReceipt);
+  const walkInList = await call('GET', '/api/parties?type=customer&q=Walk-in Customer');
+  const walkInParty = walkInList.body.parties.find((party) => party.name.toLowerCase() === 'walk-in customer');
+  const walkInEstimate = await call('POST', '/api/documents', {
+    type: 'sale', partyName: 'Walk-in Customer', isEstimate: true,
+    items: [{ name: 'Walk-in estimate item', hsn: '9983', unit: 'service', qty: 1, rate: 360, gstRate: 0 }],
+    paidAmount: 0, roundOff: false
+  });
+  ok('walk-in estimate without an explicitly selected party is linked to the Walk-in Customer ledger', !!walkInParty && walkInEstimate.status === 201 && walkInEstimate.body.document.party_id === walkInParty.id && walkInEstimate.body.document.number.startsWith('EST-'), { party: walkInParty, document: walkInEstimate.body.document });
+  const walkInStatement = await call('GET', `/api/parties/${walkInParty.id}/statement`);
+  ok('Walk-in Customer statement includes the estimate series bill', walkInStatement.body.entries.some((entry) => entry.reference === walkInEstimate.body.document.number && entry.kind === 'invoice'), walkInStatement.body.entries);
+  const walkInPdf = await fetch(base + `/api/pdf/statement/${walkInParty.id}`, { headers: { Authorization: 'Bearer ' + token } });
+  const walkInPdfBytes = Buffer.from(await walkInPdf.arrayBuffer());
+  ok('Walk-in Customer statement PDF is generated with the linked ledger history', walkInPdf.status === 200 && walkInPdfBytes.subarray(0, 4).toString() === '%PDF' && walkInPdfBytes.length > 1000, { status: walkInPdf.status, bytes: walkInPdfBytes.length });
   const legacyBill = await call('POST', '/api/documents', {
     type: 'sale', partyId: kerala.id, partyName: kerala.name, partyGstin: kerala.gstin, partyStateCode: kerala.state_code,
     items: [{ name: 'Legacy paid service', hsn: '9983', unit: 'service', qty: 1, rate: 1000, gstRate: 0 }],

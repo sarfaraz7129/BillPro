@@ -25,7 +25,7 @@ function prepareLedgerRows(entries = []) {
     }
 
     const isBillCreationPayment = entry.kind === 'txn'
-      && String(entry.notes || '').startsWith(BILL_CREATION_PAYMENT_NOTE)
+      && (String(entry.notes || '').startsWith(BILL_CREATION_PAYMENT_NOTE) || !!entry.legacy_payment)
       && entry.document_id != null;
     const bill = isBillCreationPayment ? bills.get(String(entry.document_id)) : null;
     if (bill) {

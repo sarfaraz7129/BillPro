@@ -42,6 +42,23 @@ router.use(auth, loadBusiness);
 
 const TYPES = ['sale', 'purchase', 'quotation', 'expense'];
 
+function ensureWalkInParty(businessId) {
+  let party = db.prepare(`SELECT id FROM parties WHERE business_id = ? AND type = 'customer'
+    AND lower(trim(name)) = 'walk-in customer' LIMIT 1`).get(businessId);
+  if (!party) {
+    try {
+      const created = db.prepare(`INSERT INTO parties (business_id, type, name, phone, credit_limit, credit_days)
+        VALUES (?, 'customer', 'Walk-in Customer', '', 0, 0)`).run(businessId);
+      party = { id: created.lastInsertRowid };
+    } catch (error) {
+      party = db.prepare(`SELECT id FROM parties WHERE business_id = ? AND type = 'customer'
+        AND lower(trim(name)) = 'walk-in customer' LIMIT 1`).get(businessId);
+      if (!party) throw error;
+    }
+  }
+  return party.id;
+}
+
 router.get('/', (req, res) => {
   const type = req.query.type || 'sale';
   const status = req.query.status || '';
@@ -144,6 +161,11 @@ router.post('/', (req, res) => {
     body.date = body.date || todayIST;
   }
 
+  const selectedPartyName = String(body.partyName || body.party_name || 'Walk-in Customer').trim();
+  if (type === 'sale' && !(body.partyId || body.party_id) && selectedPartyName.toLowerCase() === 'walk-in customer') {
+    body.partyId = ensureWalkInParty(req.business.id);
+  }
+
   const doc = buildDocument(req.business, body, type);
   const tx = db.transaction(() => {
     const info = db.prepare(`INSERT INTO documents (${DOC_COLS}) VALUES (${DOC_PLACEHOLDERS})`).run(...docValues(doc));
@@ -241,6 +263,9 @@ router.post('/:id/duplicate', (req, res) => {
     partyStateCode: src.party_state_code, date: targetDate,
     items, paymentMode: src.payment_mode, notes: src.notes, status: 'active'
   };
+  if (src.type === 'sale' && !body.partyId && String(body.partyName || '').trim().toLowerCase() === 'walk-in customer') {
+    body.partyId = ensureWalkInParty(req.business.id);
+  }
   const doc = buildDocument(req.business, body, src.type);
   const tx = db.transaction(() => {
     const info = db.prepare(`INSERT INTO documents (${DOC_COLS}) VALUES (${DOC_PLACEHOLDERS})`).run(...docValues(doc));

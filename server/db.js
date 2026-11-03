@@ -278,6 +278,22 @@ try {
     db.exec("UPDATE users SET initial_password = 'BillPro@123' WHERE initial_password IS NULL");
   }
 
+  // Consolidate anonymous walk-in sales under the business's Walk-in Customer account
+  // so they appear in Khata statements and outstanding-balance workflows.
+  const walkInBusinesses = db.prepare(`SELECT DISTINCT business_id FROM documents
+    WHERE party_id IS NULL AND type = 'sale' AND lower(trim(COALESCE(party_name, ''))) = 'walk-in customer'`).all();
+  for (const row of walkInBusinesses) {
+    let walkIn = db.prepare(`SELECT id FROM parties WHERE business_id = ? AND type = 'customer'
+      AND lower(trim(name)) = 'walk-in customer' LIMIT 1`).get(row.business_id);
+    if (!walkIn) {
+      const created = db.prepare(`INSERT INTO parties (business_id, type, name, phone, credit_limit, credit_days)
+        VALUES (?, 'customer', 'Walk-in Customer', '', 0, 0)`).run(row.business_id);
+      walkIn = { id: created.lastInsertRowid };
+    }
+    db.prepare(`UPDATE documents SET party_id = ? WHERE business_id = ? AND party_id IS NULL AND type = 'sale'
+      AND lower(trim(COALESCE(party_name, ''))) = 'walk-in customer'`).run(walkIn.id, row.business_id);
+  }
+
   // Migration: add a receipt-level key so bill allocations from one collection can be shown as one receipt.
   const transactionCols = db.prepare('PRAGMA table_info(transactions)').all().map((c) => c.name);
   if (!transactionCols.includes('receipt_group')) {

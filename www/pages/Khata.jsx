@@ -246,9 +246,9 @@ function Ledger({ partyId, business, onClose, onEdit, onChanged, toast }) {
             const initialPayments = e.initialPayments || [];
             const paymentModes = [...new Set(initialPayments.map((payment) => String(payment.mode || '').toUpperCase()).filter(Boolean))];
             const modeSummary = initialPayments.length === 1
-              ? `${paymentModes[0] || 'PAID'} ${compactLedgerDate(initialPayments[0].date)}`
+              ? `${paymentModes[0] || 'PAID'}${initialPayments[0].legacy_payment ? '*' : ` ${compactLedgerDate(initialPayments[0].date)}`}`
               : initialPayments.length > 1 ? paymentModes.join('/') : (e.mode ? String(e.mode).toUpperCase() : '');
-            const initialPaymentTitle = initialPayments.map((payment) => `${String(payment.mode || 'MODE NOT RECORDED').toUpperCase()} ${fmtDate(payment.date)} ${money(payment.credit || payment.debit || 0)}`).join(' · ');
+            const initialPaymentTitle = initialPayments.map((payment) => `${String(payment.mode || 'MODE NOT RECORDED').toUpperCase()} ${payment.legacy_payment ? 'receipt date not separately recorded' : fmtDate(payment.date)} ${money(payment.credit || payment.debit || 0)}`).join(' · ');
             const receiptAllocationTitle = (e.receiptAllocations || []).map((allocation) => `${allocation.unallocated ? 'Unallocated credit' : allocation.document_number || 'Bill'}: ${money(allocation.amount)}`).join(' · ');
             return <div className="stmt-entry" key={`${e.kind}-${e.id ?? i}`}>
               <div className="dt" title={fmtDate(e.date)}><span className="date-long">{fmtDate(e.date)}</span><span className="date-short">{compactLedgerDate(e.date)}</span></div>

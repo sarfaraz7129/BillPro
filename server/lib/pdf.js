@@ -410,7 +410,7 @@ function truncate(s, n) {
 const fmt = (n) => Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 /** Party account statement PDF (khata style). */
-function statementPdf(business, party, entries, openingLabel) {
+function statementPdf(business, party, entries, openingLabel, closingBalance) {
   return new Promise((resolve, reject) => {
     const pdf = new PDFDocument({ size: 'A4', margin: 36 });
     const chunks = [];
@@ -465,11 +465,24 @@ function statementPdf(business, party, entries, openingLabel) {
       pdf.fillColor(MUTED).text(openingLabel, 40, y, { width: 250 });
       y += 13;
     }
+    if (entries.some((entry) => (entry.initialPayments || []).some((payment) => payment.legacy_payment) || entry.legacy_payment)) {
+      pdf.fontSize(7).fillColor(MUTED).text('* Historical receipt date not separately recorded; amount is included on the bill date.', 40, y, { width: 500 });
+      y += 12;
+      pdf.fontSize(8);
+    }
     entries.forEach((e) => {
       if (y > 770) { pdf.addPage(); y = 50; }
       pdf.fillColor(MUTED).text(e.date, xs[0], y, { width: 66 });
       pdf.fillColor(INK).text(truncate(e.label, 40), xs[1], y, { width: 180 });
-      pdf.fillColor(MUTED).text(e.reference || e.mode || '', xs[2], y, { width: 66 });
+      const initialPayments = e.initialPayments || [];
+      const initialModes = initialPayments.map((payment) => {
+        const mode = String(payment.mode || 'PAID').toUpperCase();
+        if (payment.legacy_payment) return `${mode}*`;
+        const parts = String(payment.date || '').slice(0, 10).split('-');
+        return parts.length === 3 ? `${mode} ${parts[2]}/${parts[1]}` : mode;
+      });
+      const reference = initialModes.length ? initialModes.join('/') : [e.reference, e.mode].filter(Boolean).join(' · ');
+      pdf.fillColor(MUTED).text(truncate(reference, 16), xs[2], y, { width: 66 });
       pdf.fillColor('#b91c1c').text(e.debit ? fmt(e.debit) : '', xs[3], y, { width: 56, align: 'right' });
       pdf.fillColor('#047857').text(e.credit ? fmt(e.credit) : '', xs[4], y, { width: 56, align: 'right' });
       pdf.fillColor(INK).font('Helvetica-Bold').text(fmt(e.balance), xs[5], y, { width: 86, align: 'right' });
@@ -480,7 +493,7 @@ function statementPdf(business, party, entries, openingLabel) {
 
     y += 8;
     pdf.font('Helvetica-Bold').fontSize(9).fillColor(INK).text('CLOSING BALANCE', 370, y, { width: 116 });
-    const last = entries.length ? entries[entries.length - 1].balance : 0;
+    const last = closingBalance !== undefined ? Number(closingBalance) : entries.length ? entries[entries.length - 1].balance : 0;
     pdf.text(`${last >= 0 ? 'To receive ' : 'To pay '}${fmt(Math.abs(last))}`, 490, y, { width: 86, align: 'right' });
     pdf.end();
   });
