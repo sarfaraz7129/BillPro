@@ -83,7 +83,9 @@ router.get('/party/:partyId/outstanding', (req, res) => {
     WHERE business_id = ? AND party_id = ? AND type = 'sale' AND status = 'active' AND due_amount > 0
     ORDER BY date ASC, id ASC`).all(req.business.id, party.id);
   const totalDue = round2(invoices.reduce((sum, invoice) => sum + Number(invoice.due_amount || 0), 0));
-  res.json({ partyId: party.id, totalDue, invoiceCount: invoices.length, invoices, today: istToday() });
+  const balance = Number(partyBalance(req.business.id, party.id)?.balance || 0);
+  const collectableAmount = Math.max(totalDue, Math.max(0, balance));
+  res.json({ partyId: party.id, totalDue, invoiceCount: invoices.length, invoices, balance, collectableAmount, today: istToday() });
 });
 
 /** Overdue invoices across the business - drives the reminder queue. */
@@ -267,6 +269,8 @@ router.post('/:id/payment', (req, res) => {
     const receiptGroup = crypto.randomUUID();
     const allocations = [];
     let totalDue = 0;
+    let customerBalanceBefore = 0;
+    let unallocatedAmount = 0;
     let validationError = null;
     let remaining = amount;
     const tx = db.transaction(() => {
@@ -275,9 +279,11 @@ router.post('/:id/payment', (req, res) => {
         WHERE business_id = ? AND party_id = ? AND type = 'sale' AND status = 'active' AND due_amount > 0
         ORDER BY date ASC, id ASC`).all(req.business.id, doc.party_id);
       totalDue = round2(invoices.reduce((sum, invoice) => sum + Number(invoice.due_amount || 0), 0));
+      customerBalanceBefore = round2(Number(partyBalance(req.business.id, doc.party_id)?.balance || 0));
+      const maxReceipt = round2(Math.max(totalDue, Math.max(0, customerBalanceBefore)));
       if (totalDue <= 0) { validationError = 'This customer has no outstanding invoices.'; return; }
-      if (amount > totalDue + 0.005) {
-        validationError = `Amount exceeds the customer's total due of ${totalDue.toFixed(2)}.`;
+      if (amount > maxReceipt + 0.005) {
+        validationError = `Amount exceeds the customer's collectable balance of ${maxReceipt.toFixed(2)}.`;
         return;
       }
       for (const invoice of invoices) {
@@ -295,16 +301,27 @@ router.post('/:id/payment', (req, res) => {
         allocations.push({ documentId: invoice.id, number: invoice.number, amount: applied, dueRemaining: newDue });
         remaining = round2(remaining - applied);
       }
+      if (remaining > 0.005) {
+        unallocatedAmount = remaining;
+        db.prepare(`INSERT INTO transactions (business_id, party_id, type, amount, date, mode, document_id, receipt_group, notes)
+          VALUES (?,?,?,?,?,?,?,?,?)`)
+          .run(req.business.id, doc.party_id, 'you_got', remaining, date, mode, null, receiptGroup, `Payment received${receiptNote ? ` · ${receiptNote}` : ''}`);
+      }
       logActivity(req.business.id, req.user.id, 'payment.recorded', `Customer ${doc.party_name} paid ${amount} across ${allocations.length} invoice(s)`);
     });
     tx();
     if (validationError) return res.status(400).json({ error: validationError });
-    const totalDueAfter = round2(totalDue - amount);
+    const totalAllocated = round2(allocations.reduce((sum, allocation) => sum + allocation.amount, 0));
+    const totalDueAfter = round2(Math.max(0, totalDue - totalAllocated));
+    const customerBalanceAfter = round2(Number(partyBalance(req.business.id, doc.party_id)?.balance || 0));
     return res.json({
       document: getDoc(req, doc.id),
       totalReceived: amount,
       totalDueBefore: totalDue,
       totalDueAfter,
+      customerBalanceBefore,
+      customerBalanceAfter,
+      unallocatedAmount,
       allocations,
       allocationOrder: 'oldest-first',
       paymentDate: date

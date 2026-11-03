@@ -249,7 +249,7 @@ function Ledger({ partyId, business, onClose, onEdit, onChanged, toast }) {
               ? `${paymentModes[0] || 'PAID'} ${compactLedgerDate(initialPayments[0].date)}`
               : initialPayments.length > 1 ? paymentModes.join('/') : (e.mode ? String(e.mode).toUpperCase() : '');
             const initialPaymentTitle = initialPayments.map((payment) => `${String(payment.mode || 'MODE NOT RECORDED').toUpperCase()} ${fmtDate(payment.date)} ${money(payment.credit || payment.debit || 0)}`).join(' · ');
-            const receiptAllocationTitle = (e.receiptAllocations || []).map((allocation) => `${allocation.document_number || 'Bill'}: ${money(allocation.amount)}`).join(' · ');
+            const receiptAllocationTitle = (e.receiptAllocations || []).map((allocation) => `${allocation.unallocated ? 'Unallocated credit' : allocation.document_number || 'Bill'}: ${money(allocation.amount)}`).join(' · ');
             return <div className="stmt-entry" key={`${e.kind}-${e.id ?? i}`}>
               <div className="dt" title={fmtDate(e.date)}><span className="date-long">{fmtDate(e.date)}</span><span className="date-short">{compactLedgerDate(e.date)}</span></div>
               <div className="stmt-ref" title={[e.label, reference, initialPaymentTitle || modeSummary, receiptAllocationTitle, e.legacy_payment ? 'Receipt date not separately saved' : ''].filter(Boolean).join(' · ')}>
@@ -334,7 +334,7 @@ function CustomerReceiptModal({ initialParty, onClose, onSaved, toast }) {
     api.partyOutstanding(party.id).then((data) => {
       if (!alive) return;
       setSummary(data);
-      setAmount(Number(data.totalDue) > 0 ? String(data.totalDue) : '');
+      setAmount(Number(data.collectableAmount) > 0 ? String(data.collectableAmount) : '');
     }).catch((e) => {
       if (alive) setErr(e.message || 'Could not load customer due bills');
     }).finally(() => { if (alive) setDueBusy(false); });
@@ -344,6 +344,8 @@ function CustomerReceiptModal({ initialParty, onClose, onSaved, toast }) {
   const chooseParty = (p) => { setParty(p); setQuery(p.name); setMatches([]); };
   const changeParty = () => { setParty(null); setSummary(null); setAmount(''); setQuery(''); setErr(''); };
   const totalDue = Number(summary?.totalDue) || 0;
+  const customerBalance = Number(summary?.balance) || 0;
+  const collectableAmount = Number(summary?.collectableAmount) || 0;
   const hasInvoices = (summary?.invoices || []).length > 0;
 
   const save = async () => {
@@ -351,7 +353,7 @@ function CustomerReceiptModal({ initialParty, onClose, onSaved, toast }) {
     if (!party || !summary) return setErr('Select a customer first.');
     const value = Number(amount);
     if (!Number.isFinite(value) || value <= 0) return setErr('Enter a payment amount.');
-    if (hasInvoices && value > totalDue + 0.005) return setErr(`Amount cannot exceed the total due of ${money(totalDue)}.`);
+    if (collectableAmount > 0 && value > collectableAmount + 0.005) return setErr(`Amount cannot exceed the customer's balance of ${money(collectableAmount)}.`);
     setSaving(true);
     try {
       if (hasInvoices) {
@@ -371,7 +373,7 @@ function CustomerReceiptModal({ initialParty, onClose, onSaved, toast }) {
     <Modal title="Receive payment from customer" sub="One dated receipt in Khata · bill balances update oldest first" onClose={onClose}
       footer={<>
         <button className="btn" onClick={onClose} disabled={saving}>Cancel</button>
-        <button className="btn green" onClick={save} disabled={saving || dueBusy || !party || !summary || !amount || Number(amount) <= 0 || (hasInvoices && Number(amount) > totalDue + 0.005)}>
+        <button className="btn green" onClick={save} disabled={saving || dueBusy || !party || !summary || !amount || Number(amount) <= 0 || (collectableAmount > 0 && Number(amount) > collectableAmount + 0.005)}>
           {saving ? 'Saving…' : 'Save payment'}
         </button>
       </>}>
@@ -394,7 +396,7 @@ function CustomerReceiptModal({ initialParty, onClose, onSaved, toast }) {
           </div>
         )}
         {party && <>
-          <Field label="Amount received" req><input className="input" type="number" min="0.01" max={hasInvoices ? totalDue : undefined} step="0.01" value={amount} disabled={dueBusy || !summary} onChange={(e) => setAmount(e.target.value)} /></Field>
+          <Field label="Amount received" req><input className="input" type="number" min="0.01" max={collectableAmount > 0 ? collectableAmount : undefined} step="0.01" value={amount} disabled={dueBusy || !summary} onChange={(e) => setAmount(e.target.value)} /></Field>
           <Field label="Payment mode">
             <select className="input" value={mode} onChange={(e) => setMode(e.target.value)}>
               {['upi', 'cash', 'bank', 'card', 'cheque'].map((m) => <option key={m} value={m}>{m.toUpperCase()}</option>)}
@@ -402,11 +404,13 @@ function CustomerReceiptModal({ initialParty, onClose, onSaved, toast }) {
           </Field>
           <Field label="Payment note" full><input className="input" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Optional note or reference" maxLength={500} /></Field>
           <div className="hint" style={{ gridColumn: '1 / -1' }}>
-            {dueBusy ? 'Loading outstanding bills…' : hasInvoices ? `Total due: ${money(totalDue)} · ${summary?.invoiceCount || 0} unpaid bill(s)` : 'No unpaid invoices; this will be recorded as a customer Khata receipt/advance.'}
+            {dueBusy ? 'Loading customer balance…' : hasInvoices
+              ? `Customer balance: ${money(customerBalance)} · Invoice due: ${money(totalDue)} · Max receipt: ${money(collectableAmount)}`
+              : collectableAmount > 0 ? `Customer ledger balance: ${money(customerBalance)}; receipt will be recorded directly in Khata.` : 'No unpaid invoices; a receipt will be recorded as a customer Khata advance.'}
             {summary?.today ? ` · Received date: ${fmtDate(summary.today)} (IST, automatic)` : ''}
           </div>
           <div className="btn-row" style={{ gridColumn: '1 / -1' }}>
-            <button className="btn sm" type="button" disabled={dueBusy || !hasInvoices} onClick={() => setAmount(String(totalDue))}>Full balance</button>
+            <button className="btn sm" type="button" disabled={dueBusy || !summary || collectableAmount <= 0} onClick={() => setAmount(String(collectableAmount))}>Full balance</button>
             {summary?.invoiceCount > 1 && <span className="hint">Khata records the receipt once; bill balances update oldest first.</span>}
           </div>
         </>}

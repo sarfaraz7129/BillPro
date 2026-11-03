@@ -51,6 +51,7 @@ function prepareLedgerRows(entries = []) {
       receipt.credit = roundLedger(receipt.credit + Number(entry.credit || 0));
       receipt.receiptAllocations.push({
         document_number: entry.document_number || entry.reference || null,
+        unallocated: entry.document_id == null,
         amount: Number(entry.credit || entry.debit || 0),
         notes: entry.notes || ''
       });

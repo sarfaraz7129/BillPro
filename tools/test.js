@@ -144,6 +144,24 @@ async function run() {
   const fullReceiptDocIds = new Set(fullCollection.body.allocations.map((allocation) => String(allocation.documentId)));
   const groupedReceiptAllocations = fullReceiptStatement.body.entries.filter((entry) => entry.kind === 'txn' && entry.receipt_group && entry.mode === 'upi' && fullReceiptDocIds.has(String(entry.document_id)) && String(entry.notes || '').startsWith('Payment received ·'));
   ok('all invoice allocations for one collection share a receipt group and total the amount received', groupedReceiptAllocations.length === fullCollection.body.allocations.length && new Set(groupedReceiptAllocations.map((entry) => entry.receipt_group)).size === 1 && near(groupedReceiptAllocations.reduce((sum, entry) => sum + entry.credit, 0), refreshedDue.body.totalDue), groupedReceiptAllocations);
+
+  const receiptPartyRes = await call('POST', '/api/parties', { name: 'Receipt Balance Test', type: 'customer' });
+  const receiptParty = receiptPartyRes.body.party;
+  const receiptBillRes = await call('POST', '/api/documents', {
+    type: 'sale', partyId: receiptParty.id, partyName: receiptParty.name,
+    items: [{ name: 'Receipt balance service', hsn: '9983', unit: 'service', qty: 1, rate: 1000, gstRate: 0 }],
+    paidAmount: 0, roundOff: false
+  });
+  await call('POST', '/api/transactions', { partyId: receiptParty.id, type: 'you_gave', amount: 4000, mode: 'cash', notes: 'Prior customer debit' });
+  const receiptPartyDue = await call('GET', `/api/documents/party/${receiptParty.id}/outstanding`);
+  ok('receive-payment limit uses the full customer ledger balance, not just invoice dues', near(receiptPartyDue.body.totalDue, 1000) && near(receiptPartyDue.body.collectableAmount, 5000), receiptPartyDue.body);
+  const overNetBalanceReceipt = await call('POST', `/api/documents/${receiptBillRes.body.document.id}/payment`, { amount: 5001, mode: 'upi', allDue: true });
+  ok('prevents collecting above the full customer balance', overNetBalanceReceipt.status === 400, overNetBalanceReceipt.body);
+  const mixedBalanceReceipt = await call('POST', `/api/documents/${receiptBillRes.body.document.id}/payment`, { amount: 3000, mode: 'upi', allDue: true });
+  const mixedBalanceStatement = await call('GET', `/api/parties/${receiptParty.id}/statement`);
+  const groupedMixedReceipt = prepareLedgerRows(mixedBalanceStatement.body.entries).find((entry) => entry.receipt_group);
+  ok('receipt above invoice dues is accepted once, with excess reducing other customer balance', mixedBalanceReceipt.status === 200 && near(mixedBalanceReceipt.body.unallocatedAmount, 2000) && near(mixedBalanceReceipt.body.customerBalanceAfter, 2000) && near(groupedMixedReceipt?.credit, 3000) && near(groupedMixedReceipt?.balance, 2000), { response: mixedBalanceReceipt.body, receiptRow: groupedMixedReceipt });
+
   const settledDocs = await Promise.all(refreshedDue.body.invoices.map((x) => call('GET', `/api/documents/${x.id}`)));
   ok('every due bill is marked paid after full-balance collection', settledDocs.every((x) => x.status === 200 && x.body.document.payment_status === 'paid' && near(x.body.document.due_amount, 0)), settledDocs.map((x) => x.body.document && ({ number: x.body.document.number, status: x.body.document.payment_status, due: x.body.document.due_amount })));
   const editedPaidDoc = settledDocs[0].body.document;
