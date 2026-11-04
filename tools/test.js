@@ -221,7 +221,7 @@ async function run() {
   ok('Walk-in Customer statement includes the estimate series bill', walkInStatement.body.entries.some((entry) => entry.reference === walkInEstimate.body.document.number && entry.kind === 'invoice'), walkInStatement.body.entries);
   const walkInPdf = await fetch(base + `/api/pdf/statement/${walkInParty.id}`, { headers: { Authorization: 'Bearer ' + token } });
   const walkInPdfBytes = Buffer.from(await walkInPdf.arrayBuffer());
-  ok('Walk-in Customer statement PDF is generated with the linked ledger history', walkInPdf.status === 200 && walkInPdfBytes.subarray(0, 4).toString() === '%PDF' && walkInPdfBytes.length > 1000, { status: walkInPdf.status, bytes: walkInPdfBytes.length });
+  ok('Walk-in Customer statement PDF is generated fresh with the same ledger builder', walkInPdf.status === 200 && /no-store/.test(walkInPdf.headers.get('cache-control') || '') && walkInPdfBytes.subarray(0, 4).toString() === '%PDF' && walkInPdfBytes.length > 1000, { status: walkInPdf.status, cache: walkInPdf.headers.get('cache-control'), bytes: walkInPdfBytes.length });
   const legacyBill = await call('POST', '/api/documents', {
     type: 'sale', partyId: kerala.id, partyName: kerala.name, partyGstin: kerala.gstin, partyStateCode: kerala.state_code,
     items: [{ name: 'Legacy paid service', hsn: '9983', unit: 'service', qty: 1, rate: 1000, gstRate: 0 }],

@@ -398,6 +398,10 @@ function truncate(s, n) {
   return str.length > n ? str.slice(0, n - 1) + '\u2026' : str;
 }
 const fmt = (n) => Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const statementDate = (value) => {
+  const match = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return match ? `${match[3]}/${match[2]}/${match[1].slice(-2)}` : String(value || '');
+};
 
 /** Party account statement PDF (khata style). */
 function statementPdf(business, party, entries, openingLabel, closingBalance) {
@@ -462,7 +466,7 @@ function statementPdf(business, party, entries, openingLabel, closingBalance) {
     }
     entries.forEach((e) => {
       if (y > 770) { pdf.addPage(); y = 50; }
-      pdf.fillColor(MUTED).text(e.date, xs[0], y, { width: 66 });
+      pdf.fillColor(MUTED).text(statementDate(e.date), xs[0], y, { width: 66 });
       pdf.fillColor(INK).text(truncate(e.label, 40), xs[1], y, { width: 180 });
       const initialPayments = e.initialPayments || [];
       const initialModes = initialPayments.map((payment) => {
@@ -481,7 +485,16 @@ function statementPdf(business, party, entries, openingLabel, closingBalance) {
       pdf.moveTo(40, y - 3).lineTo(576, y - 3).strokeColor(LINE).lineWidth(0.4).stroke();
     });
 
-    y += 8;
+    if (y > 750) { pdf.addPage(); y = 50; }
+    y += 4;
+    const debitTotal = round2(entries.reduce((sum, entry) => sum + Number(entry.debit || 0), 0));
+    const creditTotal = round2(entries.reduce((sum, entry) => sum + Number(entry.credit || 0), 0));
+    pdf.moveTo(40, y).lineTo(576, y).strokeColor(LINE).lineWidth(0.6).stroke();
+    y += 5;
+    pdf.font('Helvetica-Bold').fontSize(8.5).fillColor(INK).text('TOTALS', 300, y, { width: 66, align: 'right' });
+    pdf.fillColor('#b91c1c').text(fmt(debitTotal), xs[3], y, { width: 56, align: 'right' });
+    pdf.fillColor('#047857').text(fmt(creditTotal), xs[4], y, { width: 56, align: 'right' });
+    y += 17;
     pdf.font('Helvetica-Bold').fontSize(9).fillColor(INK).text('CLOSING BALANCE', 370, y, { width: 116 });
     const last = closingBalance !== undefined ? Number(closingBalance) : entries.length ? entries[entries.length - 1].balance : 0;
     pdf.text(`${last >= 0 ? 'To receive ' : 'To pay '}${fmt(Math.abs(last))}`, 490, y, { width: 86, align: 'right' });

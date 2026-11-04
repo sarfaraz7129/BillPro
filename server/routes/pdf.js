@@ -5,6 +5,7 @@ const { auth, loadBusiness } = require('../middleware');
 const { documentPdf, statementPdf, tablePdf, money } = require('../lib/pdf');
 const { hsnSummary, round2, stateName } = require('../lib/gst');
 const { partyBalance } = require('../lib/service');
+const { buildPartyStatement } = require('../lib/statement');
 const { istToday } = require('../lib/time');
 const { prepareLedgerRows } = require('../../www/src/ledger');
 
@@ -13,6 +14,9 @@ router.use(auth, loadBusiness);
 
 const send = (res, buf, filename, asDownload = false) => {
   res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Cache-Control', 'private, no-store, no-cache, must-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
   res.setHeader('Content-Disposition', `${asDownload ? 'attachment' : 'inline'}; filename="${filename}"`);
   res.send(buf);
 };
@@ -46,66 +50,10 @@ router.get('/statement/:partyId', async (req, res, next) => {
     if (!party) return res.status(404).json({ error: 'Party not found' });
     const from = req.query.from || '1900-01-01';
     const to = req.query.to || '2999-12-31';
-    const docs = db.prepare(`SELECT id, type, number, date, total, due_amount, paid_amount, payment_status, payment_mode
-      FROM documents WHERE business_id = ? AND party_id = ? AND status = 'active'
-        AND type IN ('sale', 'purchase', 'sale_return') AND date BETWEEN ? AND ? ORDER BY date, id`)
-      .all(req.business.id, party.id, from, to);
-    const txns = db.prepare(`SELECT t.id, t.type, t.amount, t.date, t.mode, t.reference, t.notes, t.document_id, t.receipt_group, d.number AS doc_number
-      FROM transactions t LEFT JOIN documents d ON d.id = t.document_id AND d.business_id = t.business_id
-      WHERE t.business_id = ? AND t.party_id = ? AND t.date BETWEEN ? AND ? ORDER BY t.date, t.id`)
-      .all(req.business.id, party.id, from, to);
-    let running = round2((party.balance_type === 'CR' ? -1 : 1) * party.opening_balance);
-    const entries = [];
-    if (party.opening_balance) entries.push({
-      kind: 'opening', id: 'opening', date: from > '1900-01-01' ? from : party.created_at.slice(0, 10),
-      label: 'Opening balance', reference: party.balance_type,
-      debit: party.balance_type === 'DR' ? party.opening_balance : 0,
-      credit: party.balance_type === 'CR' ? party.opening_balance : 0,
-      balance: running
-    });
-    const linkedPaid = new Map(db.prepare(`SELECT document_id, type, COALESCE(SUM(amount), 0) amount
-      FROM transactions WHERE business_id = ? AND party_id = ? AND document_id IS NOT NULL GROUP BY document_id, type`)
-      .all(req.business.id, party.id).map((r) => [`${r.document_id}:${r.type}`, Number(r.amount || 0)]));
-    const merged = [
-      ...docs.flatMap((d) => {
-        const expectedType = d.type === 'sale' ? 'you_got' : 'you_gave';
-        const linked = Number(linkedPaid.get(`${d.id}:${expectedType}`) || 0);
-        const untrackedPaid = round2(Math.max(0, Number(d.paid_amount || 0) - linked));
-        const billEvent = { sort: `${d.date}T1:${String(d.id).padStart(12, '0')}`, eventKind: 'document', ...d };
-        if (untrackedPaid <= 0.005) return [billEvent];
-        return [billEvent, {
-          sort: `${d.date}T2:0:${String(d.id).padStart(12, '0')}`, eventKind: 'transaction',
-          id: `legacy-${d.id}`, document_id: d.id, document_number: d.number, type: expectedType,
-          amount: untrackedPaid, date: d.date, mode: d.payment_mode, reference: d.number,
-          doc_number: d.number, notes: 'Historical bill payment has no separate receipt date; shown on the bill date.', legacy_payment: true
-        }];
-      }),
-      ...txns.map((t) => ({ sort: `${t.date}T2:1:${String(t.id).padStart(12, '0')}`, eventKind: 'transaction', ...t }))
-    ].sort((a, b) => a.sort.localeCompare(b.sort));
-
-    merged.forEach((row) => {
-      if (row.eventKind === 'document' && row.type === 'sale') {
-        running = round2(running + row.total);
-        entries.push({ kind: 'invoice', id: row.id, date: row.date, label: `Invoice ${row.number}`, reference: row.number, debit: row.total, credit: 0, balance: running });
-      } else if (row.eventKind === 'document' && row.type === 'purchase') {
-        running = round2(running - row.total);
-        entries.push({ kind: 'bill', id: row.id, date: row.date, label: `Purchase ${row.number}`, reference: row.number, debit: 0, credit: row.total, balance: running });
-      } else if (row.eventKind === 'document' && row.type === 'sale_return') {
-        running = round2(running - row.total);
-        entries.push({ kind: 'sale_return', id: row.id, date: row.date, label: `Sales return ${row.number}`, reference: row.number, debit: 0, credit: row.total, balance: running });
-      } else if (row.eventKind === 'transaction' && row.type === 'you_gave') {
-        running = round2(running + row.amount);
-        entries.push({ kind: 'txn', id: row.id, date: row.date, label: row.legacy_payment ? 'Payment on bill (date unavailable)' : row.doc_number ? 'Payment made' : 'You Gave', reference: row.reference || row.doc_number, document_id: row.document_id || null, document_number: row.doc_number, receipt_group: row.receipt_group || null, mode: row.mode, notes: row.notes, legacy_payment: !!row.legacy_payment, debit: row.amount, credit: 0, balance: running });
-      } else if (row.eventKind === 'transaction' && row.type === 'you_got') {
-        running = round2(running - row.amount);
-        entries.push({ kind: 'txn', id: row.id, date: row.date, label: row.legacy_payment ? 'Payment on bill (date unavailable)' : row.doc_number ? 'Payment received' : 'You Got', reference: row.reference || row.doc_number, document_id: row.document_id || null, document_number: row.doc_number, receipt_group: row.receipt_group || null, mode: row.mode, notes: row.notes, legacy_payment: !!row.legacy_payment, debit: 0, credit: row.amount, balance: running });
-      } else if (row.eventKind === 'transaction') {
-        running = round2(running + row.amount);
-        entries.push({ kind: 'txn', id: row.id, date: row.date, label: row.type === 'interest' ? 'Interest charged' : 'Adjustment', reference: row.mode || '', mode: row.mode, notes: row.notes, debit: row.amount, credit: 0, balance: running });
-      }
-    });
-    const displayEntries = prepareLedgerRows(entries);
-    const buf = await statementPdf(req.business, party, displayEntries, null, running);
+    // Use the same statement query and running-balance builder as the Khata JSON view.
+    const statement = buildPartyStatement(req.business.id, party, from, to);
+    const displayEntries = prepareLedgerRows(statement.entries);
+    const buf = await statementPdf(req.business, party, displayEntries, null, statement.running);
     send(res, buf, `Statement-${party.name.replace(/\W+/g, '-')}.pdf`);
   } catch (e) { next(e); }
 });
