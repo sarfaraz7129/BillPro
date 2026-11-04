@@ -668,22 +668,6 @@ export default function SuperAdmin({ user, toast }) {
                             )}
                             <button
                               className="btn sm"
-                              disabled={persistenceInfo?.isPersistent !== true}
-                              style={{ opacity: persistenceInfo?.isPersistent === true ? 1 : 0.55, cursor: persistenceInfo?.isPersistent === true ? 'pointer' : 'not-allowed' }}
-                              title={persistenceInfo?.isPersistent === true ? 'Lock customer into permanent registry' : 'Unavailable: this deployment has no persistent storage'}
-                              onClick={async () => {
-                                try {
-                                  const res = await api.adminPersistUser(u.id);
-                                  toast(res.message || 'Client locked into permanent registry!', 'ok');
-                                } catch (err) {
-                                  toast(err.message || 'Failed to persist client', 'err');
-                                }
-                              }}
-                            >
-                              📌 Lock Permanent
-                            </button>
-                            <button
-                              className="btn sm"
                               title="Renew license plan"
                               onClick={() => {
                                 setRenewTarget(u);
@@ -876,23 +860,6 @@ export default function SuperAdmin({ user, toast }) {
                         onClick={() => openEditModal(u)}
                       >
                         <Icon.edit size={13} /> Edit Client
-                      </button>
-                      <button
-                        type="button"
-                        className="btn sm"
-                        disabled={persistenceInfo?.isPersistent !== true}
-                        style={{ fontWeight: 600, justifyContent: 'center', opacity: persistenceInfo?.isPersistent === true ? 1 : 0.55, cursor: persistenceInfo?.isPersistent === true ? 'pointer' : 'not-allowed' }}
-                        title={persistenceInfo?.isPersistent === true ? 'Lock client into permanent registry' : 'Unavailable: this deployment has no persistent storage'}
-                        onClick={async () => {
-                          try {
-                            const res = await api.adminPersistUser(u.id);
-                            toast(res.message || 'Client locked into permanent registry!', 'ok');
-                          } catch (err) {
-                            toast(err.message || 'Failed to persist client', 'err');
-                          }
-                        }}
-                      >
-                        📌 Lock Permanent
                       </button>
                       {!isSelf && (
                         <button
