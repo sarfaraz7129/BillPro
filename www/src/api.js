@@ -341,7 +341,7 @@ export const api = {
 
 /** URL for a PDF - opened in a new tab, so the token rides along as a query param. */
 export const pdfUrl = (path, download = false) =>
-  `/api/pdf/${path}?token=${encodeURIComponent(getToken() || '')}${download ? '&download=1' : ''}`;
+  `/api/pdf/${path}?token=${encodeURIComponent(getToken() || '')}&v=${Date.now()}${download ? '&download=1' : ''}`;
 export const csvUrl = (report, params) => `/api/reports/export/${report}${qs({ ...(params || {}), token: getToken() || '' })}`;
 
 export const money = (n) =>
